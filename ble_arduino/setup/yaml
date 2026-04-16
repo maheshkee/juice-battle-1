@@ -1,0 +1,7 @@
+name: ble_arduino
+description: ""
+icon: 😀
+ports: []
+bricks:
+- arduino:web_ui: {}
+network_mode: "host"
