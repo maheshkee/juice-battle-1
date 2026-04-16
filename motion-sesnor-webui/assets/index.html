@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Motion Sensor</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+      margin: 0;
+    }
+    h1 { font-size: 1.4rem; font-weight: 500; margin-bottom: 2rem; }
+
+    #status-circle {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: #1a1a1a;
+      border: 3px solid #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 500;
+      letter-spacing: 0.05em;
+      transition: background 0.4s, border-color 0.4s, color 0.4s;
+      margin-bottom: 1rem;
+    }
+    #status-circle.detected {
+      background: #3d1a00;
+      border-color: #ff6600;
+      color: #ff6600;
+    }
+    #status-circle.clear {
+      background: #001a0d;
+      border-color: #00cc66;
+      color: #00cc66;
+    }
+
+    #status-text {
+      font-size: 1.1rem;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+    #last-time {
+      font-size: 0.8rem;
+      color: #666;
+      margin-bottom: 2rem;
+    }
+
+    #log-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #555;
+      margin-bottom: 0.75rem;
+      align-self: flex-start;
+    }
+    #log {
+      width: 100%;
+      max-width: 400px;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-size: 0.8rem;
+      font-family: monospace;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .log-entry { padding: 3px 0; border-bottom: 1px solid #1a1a1a; }
+    .log-entry:last-child { border-bottom: none; }
+    .log-detected { color: #ff6600; }
+    .log-clear { color: #00cc66; }
+
+    #conn-status {
+      font-size: 0.75rem;
+      color: #555;
+      margin-top: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Motion Sensor Monitor</h1>
+
+  <div id="status-circle">WAITING</div>
+  <div id="status-text">Connecting...</div>
+  <div id="last-time">Last event: Never</div>
+
+  <div id="log-title">Event log</div>
+  <div id="log"><div class="log-entry" style="color:#555;">Waiting for events...</div></div>
+
+  <div id="conn-status">● Connecting to board...</div>
+
+  <script src="/libs/socket.io.min.js"></script>
+  <script>
+    const socket = io();  // connects to same host:port automatically
+
+    const circle = document.getElementById('status-circle');
+    const statusText = document.getElementById('status-text');
+    const lastTime = document.getElementById('last-time');
+    const log = document.getElementById('log');
+    const connStatus = document.getElementById('conn-status');
+
+    socket.on('connect', () => {
+      connStatus.textContent = '● Connected';
+      connStatus.style.color = '#00cc66';
+    });
+
+    socket.on('disconnect', () => {
+      connStatus.textContent = '● Disconnected';
+      connStatus.style.color = '#cc3300';
+    });
+
+    // This event name matches exactly what main.py sends: ui.send_message("motion_update", ...)
+    socket.on('motion_update', (data) => {
+      // Update the big circle
+      circle.className = data.motion ? 'detected' : 'clear';
+      circle.textContent = data.status;
+
+      // Update text below
+      statusText.textContent = data.motion ? '⚠ Motion Detected' : '✓ Area Clear';
+      lastTime.textContent = 'Last event: ' + data.time;
+
+      // Add to log
+      const entry = document.createElement('div');
+      entry.className = 'log-entry ' + (data.motion ? 'log-detected' : 'log-clear');
+      entry.textContent = data.time + '  →  ' + data.status;
+      log.insertBefore(entry, log.firstChild);  // newest at top
+
+      // Keep log from growing forever — max 50 entries
+      while (log.children.length > 50) {
+        log.removeChild(log.lastChild);
+      }
+    });
+  </script>
+</body>
+</html>
