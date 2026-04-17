@@ -12,3 +12,36 @@ h1{font-size:1.4rem;font-weight:500;margin-bottom:2rem}
 .log-detected{color:#ff6600}.log-clear{color:#00cc66}.log-waiting{color:#555}
 #conn-status{font-size:.75rem;color:#555;margin-top:1.5rem}
 #conn-status.connected{color:#00cc66}#conn-status.disconnected{color:#cc3300}
+.section-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #444;
+  margin-bottom: 0.5rem;
+  margin-top: 1.5rem;
+  align-self: flex-start;
+}
+#remote-sensors {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+.remote-placeholder { font-size: 0.8rem; color: #333; padding: 0.5rem 0; }
+.remote-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #222;
+  background: #111;
+  transition: border-color 0.4s, background 0.4s;
+}
+.remote-card.detected { background: #3d1a00; border-color: #ff6600; }
+.remote-card.clear    { background: #001a0d; border-color: #00cc66; }
+.remote-name  { font-size: 0.85rem; color: #aaa; }
+.remote-card.detected .remote-status { color: #ff6600; font-weight: 500; }
+.remote-card.clear    .remote-status { color: #00cc66; font-weight: 500; }

@@ -1,7 +1,7 @@
 # 🟢 motion-sensor-webui-ble
 
-**PIR Motion Detector with Live Web Dashboard + BLE Advertising**
-Arduino UNO Q · SR602 PIR sensor · BLE GATT · Arduino App Lab
+**Multi-room PIR Motion Detector — Web Dashboard + BLE GATT + Remote Sensors**
+Arduino UNO Q · SR602/HC-SR501 PIR · BLE GATT · ESP32 remote node · Arduino App Lab
 
 ---
 
@@ -11,43 +11,51 @@ Arduino UNO Q · SR602 PIR sensor · BLE GATT · Arduino App Lab
 |---|---|---|
 | v1.0 | ✅ Complete | SR602 PIR + web dashboard + event log |
 | v1.1 | ✅ Complete | MCU RGB LEDs — red on detection, green on clear |
-| v1.2 | ✅ Complete | BLE GATT server — phone can connect and receive notifications |
+| v1.2 | ✅ Complete | BLE GATT server — phone connects and receives notifications |
+| v1.3 | ✅ Complete | BLE scanner — connects to remote ESP32 sensor, multi-room dashboard |
 
 ---
 
 ## What this does
 
-Detects human presence using a miniature SR602 PIR sensor. When motion is detected:
+Detects human presence using PIR sensors — one local (SR602 on AQ2) and one remote (ESP32-C3 in another room). When motion is detected anywhere:
 
-- Web dashboard updates in real time (orange circle + event log)
-- MCU RGB LEDs turn red (detection) or green (clear)
-- BLE advertisement updates — phone sees `AQ2-Motion` in scanner
-- GATT characteristic notifies connected phone with `0x01` (detected) or `0x00` (clear)
+- Web dashboard updates in real time — separate status per room
+- MCU RGB LEDs turn red (detection) or green (clear) on the local board
+- BLE GATT characteristic notifies connected phone instantly
+- Event log shows all events tagged by source room
 
 ---
 
-## Architecture — the full stack
+## Architecture — the full dual-role BLE stack
 
 ```
-SR602 PIR sensor (hardware)
-      ↓  digital HIGH/LOW on D2
-STM32U585 MCU  (Arduino sketch — Zephyr OS)
-      ↓  Bridge.call("motion_event", state)
-QRB2210 MPU  (Python — Debian Linux)
-      ├─→  Socket.IO → Browser dashboard (port 7000)
-      └─→  BlueZ D-Bus → BLE GATT → Phone (nRF Connect / custom app)
+Remote room                          Hub room (AQ2)
+───────────                          ──────────────
+ESP32-C3                             SR602 PIR → D2 pin
+PIR → GPIO4                                ↓
+  ↓ BLE GATT                        STM32U585 MCU
+  ↓ Service: a00c0000...                   ↓ Bridge RPC
+  ↓ Char: a00c0001...               QRB2210 MPU (Linux)
+  ↓ Name: PIR-ESP32                        ├─ BLE Peripheral → Phone
+         ↓                                 │  (GATT server, AQ2-Motion)
+         └──── BLE ────────────────────────┤
+                                           ├─ BLE Central → ESP32
+                                           │  (GATT client, scanner)
+                                           └─ WebUI → Browser (port 7000)
 ```
 
-### The two processors
+**AQ2 runs in BLE combo mode simultaneously:**
+- **Peripheral role** — advertises as `AQ2-Motion`, phone connects to it
+- **Central role** — connects to `PIR-ESP32`, subscribes to notifications
 
-| Processor | Role | Code |
-|---|---|---|
-| STM32U585 (MCU) | Real-time sensor reading, edge detection, LED control | `sketch/sketch.ino` |
-| QRB2210 (MPU) | Web server, BLE advertising, GATT server, event routing | `python/` |
+This is handled natively by BlueZ on Linux. Same `hci0` adapter does both at once.
 
 ---
 
 ## Hardware
+
+### AQ2 (hub board)
 
 | Component | Details |
 |---|---|
@@ -55,7 +63,7 @@ QRB2210 MPU  (Python — Debian Linux)
 | Sensor | SR602 / HW-438 miniature PIR module |
 | Connection | 3 jumper wires |
 
-### Wiring
+#### Wiring
 
 | SR602 pin | UNO Q header | Pin | Wire |
 |---|---|---|---|
@@ -63,7 +71,16 @@ QRB2210 MPU  (Python — Debian Linux)
 | − (ground) | JANALOG | Pin 6 — GND | Black |
 | O (signal) | JDIGITAL | Pin 3 — D2 | Any |
 
-> SR602 is 3.3V native — no level shifting required.
+### ESP32-C3 Super Mini (remote node)
+
+| Component | Details |
+|---|---|
+| Board | ESP32-C3 Super Mini |
+| Sensor | PIR sensor on GPIO4 |
+| LED | Status LED on GPIO8 |
+| BLE | Advertises as `PIR-ESP32` |
+| Service UUID | `a00c0000-0000-0000-0000-000000000000` |
+| Characteristic | `a00c0001-0000-0000-0000-000000000000` (Read + Notify) |
 
 ---
 
@@ -74,15 +91,16 @@ motion-sensor-webui-ble/
 ├── assets/
 │   ├── index.html          ← HTML structure only
 │   ├── style.css           ← all presentation
-│   ├── app.js              ← all socket + DOM logic
+│   ├── app.js              ← socket + DOM logic, multi-room UI
 │   └── libs/
 │       └── socket.io.min.js
 ├── python/
 │   ├── main.py             ← entry point, wires all modules
-│   ├── config.py           ← all constants (UUIDs, paths, lib names)
-│   ├── motion.py           ← PIR Bridge handler, state management
-│   ├── web_handler.py      ← WebUI setup, socket events
-│   └── ble_manager.py      ← BLE advertisement + GATT server
+│   ├── config.py           ← all constants, remote sensor registry
+│   ├── motion.py           ← local PIR Bridge handler
+│   ├── web_handler.py      ← WebUI, socket events, multi-room state
+│   ├── ble_manager.py      ← BLE peripheral (GATT server for phone)
+│   └── ble_scanner.py      ← BLE central (GATT client for remote sensors)
 ├── sketch/
 │   ├── sketch.ino          ← PIR read, edge detect, LED, Bridge.call
 │   └── sketch.yaml         ← library dependencies
@@ -92,92 +110,69 @@ motion-sensor-webui-ble/
 └── app.yaml
 ```
 
-### Why modular Python?
+### Adding a new remote sensor
 
-Each file has one job. Adding a new feature (email alerts, Telegram, speaker output) means adding one new file and one import in `main.py` — never touching existing code.
+Open `python/config.py` and add one entry:
 
 ```python
-# main.py is just wiring
-ble = BLEManager()
-ui  = web_handler.setup()
-motion.setup(lambda state: [web_handler.broadcast_motion(state), ble.update(state)])
-App.run()
+REMOTE_SENSORS = {
+    "ESP32-Room": {
+        "mac":       "10:00:3B:CD:63:32",
+        "char_uuid": "a00c0001-0000-0000-0000-000000000000",
+    },
+    "AQ1-Room": {                                    # ← add this
+        "mac":       "XX:XX:XX:XX:XX:XX",
+        "char_uuid": "a00b0001-0000-0000-0000-000000000000",
+    },
+}
 ```
 
-### Why split frontend files?
-
-- `index.html` — what is on the page (structure)
-- `style.css` — how it looks (presentation)
-- `app.js` — how it behaves (logic)
-
-Change the layout without touching JS. Change colors without touching HTML. Clean separation.
+That's it. The scanner connects automatically. The web UI creates a new card for the room. No other files need changing.
 
 ---
 
 ## BLE details
 
-### Advertisement
+### AQ2 as peripheral (phone connects to this)
 - Device name: `AQ2-Motion`
-- Manufacturer data: `0xFF 0xFF` + `0x01` (detected) or `0x00` (clear)
-- Visible in any BLE scanner (nRF Connect, LightBlue, etc.)
-
-### GATT server
 - Service UUID: `a00b0000-0000-0000-0000-000000000000`
-- Characteristic UUID: `a00b0001-0000-0000-0000-000000000000`
-- Properties: Read + Notify
-- Value: `0x01` (motion detected) or `0x00` (area clear)
+- Characteristic: `a00b0001-0000-0000-0000-000000000000` (Read + Notify)
+- Value: `0x01` detected / `0x00` clear
 
-### How to connect with nRF Connect
-1. Open nRF Connect → Scanner tab
-2. Find `AQ2-Motion`
-3. Tap Connect
-4. Expand service `a00b0000...`
-5. Tap the subscribe (↓) button on characteristic `a00b0001...`
-6. Wave hand at sensor — phone receives `0x01` notification instantly
+### AQ2 as central (connects to remote sensors)
+- Runs `StartDiscovery()` to find devices
+- Connects as GATT client
+- Calls `StartNotify()` on motion characteristic
+- Receives `PropertiesChanged` D-Bus signal on value change
+
+### How BlueZ discovery works
+BlueZ caches discovered devices at `/org/bluez/hci0/dev_XX_XX_XX_XX_XX_XX`.
+`Connect()` only works if the device is in this cache. The scanner runs
+`StartDiscovery()` first to populate the cache, then connects. After first
+successful connection BlueZ remembers the device across restarts.
 
 ---
 
 ## Setup on a new board
 
 ```bash
-# One command — installs all dependencies, builds wheels, starts D-Bus bridge
 bash setup.sh
 ```
 
-### What setup.sh does
-1. Installs system packages: `libcairo2-dev`, `libgirepository-2.0-dev`, `libdbus-1-dev`, `socat`
-2. Builds `dbus-python` and `PyGObject` wheels from source
-3. Copies 11 shared libraries into `wheels/`
-4. Copies 5 GObject typelibs into `typelibs/`
-5. Creates and starts `dbus-bridge.service` (socat socket relay)
-6. Updates `app.yaml` with correct socket and network config
-
-### Why wheels and shared libs?
-App Lab runs Python inside Docker. `dbus-python` is a C extension — it needs system libraries that aren't inside Docker. We pre-build the wheel on the host, copy the `.so` files, and load them via `ctypes` before importing dbus. The D-Bus socket is forwarded into Docker via socat.
+See `setup.sh` for what it installs. After setup, open App Lab and click Run.
 
 ---
 
 ## Running
 
-1. Open Arduino App Lab
-2. Open `motion-sensor-webui-ble`
-3. Click **Run** — sketch compiles, Python starts (~60s)
+1. Power on ESP32-C3 remote node (other room)
+2. Open Arduino App Lab on AQ2
+3. Open `motion-sensor-webui-ble` → click **Run**
 4. Open browser: `http://192.168.1.154:7000`
-5. Wait 60 seconds for PIR warmup
-6. Open nRF Connect → Scanner → find `AQ2-Motion`
-
----
-
-## Dependencies
-
-### Sketch libraries (sketch.yaml)
-- `Arduino_RouterBridge (0.3.0)` + dependencies
-
-### Python
-- `arduino.app_utils` — App, Bridge (App Lab built-in)
-- `arduino.app_bricks.web_ui` — WebUI Brick
-- `dbus-python 1.4.0` — D-Bus Python bindings (pre-built wheel)
-- `PyGObject 3.56.2` — GLib/GIO Python bindings (pre-built wheel)
+5. Web UI shows:
+   - **Local — AQ2** circle (green/orange)
+   - **Remote sensors** section with ESP32-Room card
+6. Open nRF Connect → scan for `AQ2-Motion` → Connect → subscribe to characteristic
 
 ---
 
@@ -185,24 +180,23 @@ App Lab runs Python inside Docker. `dbus-python` is a C extension — it needs s
 
 | Version | Status | Plan |
 |---|---|---|
-| v1.2 | ✅ Done | BLE GATT server — phone notifications |
-| v1.3 | 🔲 Planned | AQ1 MCU BLE beacon — remote room sensor |
+| v1.3 | ✅ Done | BLE scanner + multi-room dashboard |
+| v1.4 | 🔲 Planned | AQ1 MCU BLE beacon — second remote room |
 | v2.0 | 🔲 Planned | Alert messages — email / Telegram / webhook |
 | v3.0 | 🔲 Planned | Custom mobile app — real push notifications |
-| v4.0 | 🔲 Planned | External output device — speaker / visual alert |
+| v4.0 | 🔲 Planned | External output — speaker / display |
+| v5.0 | 🔲 Planned | Camera + person detection ML model |
+| v6.0 | 🔲 Planned | Regional language TTS + multilingual UI |
 
 ---
 
-## Key learnings from building this
+## Key learnings from v1.3
 
-- App Lab runs Python inside Docker — C extension modules need pre-built wheels + shared libs copied in
-- `sys.path.insert(0, '/usr/lib/python3/dist-packages')` makes system dbus importable without pip
-- D-Bus socket at `/run/dbus/system_bus_socket` is not accessible inside Docker by default — socat bridge forwards it
-- BLE D-Bus callbacks only fire when `GLib.MainLoop().run()` is running — must run in a thread
-- `threading.Event()` with `wait(timeout)` is the clean way to synchronise a background BLE thread with the main thread
-- JANALOG holds power pins (+3V3, GND). JDIGITAL holds digital I/O. They are on opposite sides of the board.
-- PIR sensors detect change in IR — stationary persons eventually stop triggering
-- Active-low LEDs: write LOW to turn ON, HIGH to turn OFF
+- **BLE combo mode** — one adapter can be peripheral and central simultaneously. BlueZ handles this natively. No extra hardware needed.
+- **BlueZ device cache** — `Connect()` requires the device to exist in BlueZ's object manager. Always run `StartDiscovery()` first if the device isn't cached.
+- **GATT client pattern** — `StartNotify()` on a characteristic registers for push updates. `PropertiesChanged` D-Bus signal fires on every value change.
+- **Separation of concerns** — adding a new remote sensor requires changing only `config.py`. The scanner, web handler, and UI update automatically.
+- **Test hardware before debugging code** — always verify device is discoverable with `btmgmt find` or nRF Connect before chasing code issues.
 
 ---
 
