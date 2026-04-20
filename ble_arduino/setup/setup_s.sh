@@ -1,12 +1,16 @@
 #!/bin/bash
 set -e
 
-PROJECT_DIR="$HOME/ArduinoApps/ble_arduino"
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_NAME="$(basename "$PROJECT_DIR")"
+SERVICE_NAME="dbus-bridge-${PROJECT_NAME}"
 
 echo "=================================================="
 echo " BLE GATT Dashboard - Setup Script"
 echo "=================================================="
 echo "Project directory: $PROJECT_DIR"
+echo "Project name: $PROJECT_NAME"
+echo "Service name: $SERVICE_NAME"
 echo ""
 
 # Step 1 - Install socat (only thing needed from system)
@@ -16,10 +20,10 @@ sudo apt install -y socat
 echo "✓ socat installed"
 
 # Step 2 - Create dbus-bridge systemd service
-echo "[2/2] Setting up dbus-bridge systemd service..."
-sudo tee /etc/systemd/system/dbus-bridge.service > /dev/null << EOF
+echo "[2/2] Setting up ${SERVICE_NAME} systemd service..."
+sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null << EOF
 [Unit]
-Description=DBus Unix Bridge for App Lab
+Description=DBus Unix Bridge for ${PROJECT_NAME}
 After=network.target
 
 [Service]
@@ -34,18 +38,18 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable dbus-bridge.service
-sudo systemctl start dbus-bridge.service
-echo "✓ dbus-bridge service created and started"
+sudo systemctl enable ${SERVICE_NAME}.service
+sudo systemctl start ${SERVICE_NAME}.service
+echo "✓ ${SERVICE_NAME} service created and started"
 
 # Verify
 sleep 2
-if systemctl is-active --quiet dbus-bridge.service; then
-    echo "✓ dbus-bridge service is running"
+if systemctl is-active --quiet ${SERVICE_NAME}.service; then
+    echo "✓ ${SERVICE_NAME} service is running"
     ls -la "$PROJECT_DIR/dbus.sock" && echo "✓ dbus.sock created" || echo "✗ dbus.sock not found"
 else
-    echo "✗ dbus-bridge service failed"
-    sudo systemctl status dbus-bridge.service
+    echo "✗ ${SERVICE_NAME} service failed"
+    sudo systemctl status ${SERVICE_NAME}.service
     exit 1
 fi
 
@@ -62,7 +66,6 @@ echo "2. Click Run"
 echo "3. Open http://$(hostname -I | awk '{print $1}'):7000"
 echo ""
 
-# make it executable: chmod +x ~/ArduinoApps/ble_arduino/setup_s.sh
-# before export run: "sudo systemctl stop dbus-bridge.service"  / delete the dbus.sock
-# to check if the service is running: "sudo systemctl status dbus-bridge.service"
-# to start the service: "sudo systemctl start dbus-bridge.service"
+# to check if the service is running: sudo systemctl status dbus-bridge-<your-project>.service
+# to start the service: sudo systemctl start dbus-bridge-<your-project>.service
+# before export run: sudo systemctl stop dbus-bridge-<your-project>.service and delete dbus.sock

@@ -18,7 +18,7 @@ Control the MCU LED, read sensor data, send text commands, and receive timestamp
 ## Project Structure
 
 ```
-ble_arduino/
+<your-project>/
 ├── app.yaml                  # App Lab config
 ├── README.md                 # This file
 ├── assets/
@@ -65,7 +65,7 @@ default content and loses `network_mode: "host"` which is critical.
 3. Find `app.yaml` inside the zip and open it with a text editor
 4. Replace its content with the content from `setup/yaml`:
 ```yaml
-name: ble_arduino
+name: <your-project>
 description: ""
 icon: 😀
 ports: []
@@ -131,8 +131,11 @@ nRF Connect / BLE App (Phone)
 
 **Key:** App Lab mounts the project folder as `/app` inside the container.
 The `dbus-bridge` systemd service creates a Unix socket proxy at
-`ble_arduino/dbus.sock` on the host, which is accessible inside
+`<your-project>/dbus.sock` on the host, which is accessible inside
 the container as `/app/dbus.sock`.
+
+The setup scripts automatically detect the project folder path — so
+renaming the project folder will not break anything.
 
 ---
 
@@ -160,14 +163,15 @@ $'\r': command not found
 Fix it by running:
 ```bash
 sudo apt install dos2unix -y
-dos2unix ~/ArduinoApps/ble_arduino/setup/setup_s.sh
+dos2unix ~/ArduinoApps/<your-project>/setup/setup_s.sh
+dos2unix ~/ArduinoApps/<your-project>/setup/full_setup.sh
 ```
 
 ### Step 4 — Run setup script
 
 ```bash
-chmod +x ~/ArduinoApps/ble_arduino/setup/setup_s.sh
-bash ~/ArduinoApps/ble_arduino/setup/setup_s.sh
+chmod +x ~/ArduinoApps/<your-project>/setup/setup_s.sh
+bash ~/ArduinoApps/<your-project>/setup/setup_s.sh
 ```
 
 ### Step 5 — Run the app
@@ -185,13 +189,13 @@ After a reboot the `dbus-bridge` service starts automatically.
 Before clicking Run, verify it is running:
 
 ```bash
-sudo systemctl status dbus-bridge.service
+sudo systemctl status dbus-bridge-<your-project>.service
 ```
 
 If it is not running, start it manually:
 
 ```bash
-sudo systemctl start dbus-bridge.service
+sudo systemctl start dbus-bridge-<your-project>.service
 ```
 
 Then click Run in App Lab.
@@ -203,31 +207,31 @@ Then click Run in App Lab.
 Before clicking Run, check that `dbus.sock` exists in the project root:
 
 ```bash
-ls -la ~/ArduinoApps/ble_arduino/dbus.sock
+ls -la ~/ArduinoApps/<your-project>/dbus.sock
 ```
 
-If it is **not there**, it means the `dbus-bridge` service is pointing
+If it is **not there**, it means the `dbus-bridge-<your-project>` service is pointing
 to the wrong folder or is not running. Fix it by running:
 
 ```bash
-sudo systemctl stop dbus-bridge.service
+sudo systemctl stop dbus-bridge-<your-project>.service
 sudo systemctl daemon-reload
-sudo systemctl start dbus-bridge.service
+sudo systemctl start dbus-bridge-<your-project>.service
 ```
 
 Then verify the socket was created:
 
 ```bash
-ls -la ~/ArduinoApps/ble_arduino/dbus.sock
+ls -la ~/ArduinoApps/<your-project>/dbus.sock
 ```
 
 Also check the service is pointing to the correct path:
 
 ```bash
-sudo systemctl status dbus-bridge.service
+sudo systemctl status dbus-bridge-<your-project>.service
 ```
 
-The output must show `ble_arduino/dbus.sock` — not any other folder name.
+The output must show the correct project folder path in the service.
 If it shows a different folder name, re-run the setup script and repeat the steps above.
 
 ---
@@ -236,27 +240,27 @@ If it shows a different folder name, re-run the setup script and repeat the step
 
 ```bash
 # Check if dbus-bridge service is running
-sudo systemctl status dbus-bridge.service
+sudo systemctl status dbus-bridge-<your-project>.service
 
 # Start the service manually
-sudo systemctl start dbus-bridge.service
+sudo systemctl start dbus-bridge-<your-project>.service
 
 # Stop the service
-sudo systemctl stop dbus-bridge.service
+sudo systemctl stop dbus-bridge-<your-project>.service
 
 # Force restart the service
-sudo systemctl stop dbus-bridge.service
+sudo systemctl stop dbus-bridge-<your-project>.service
 sudo systemctl daemon-reload
-sudo systemctl start dbus-bridge.service
+sudo systemctl start dbus-bridge-<your-project>.service
 
 # View service logs
-sudo journalctl -u dbus-bridge.service -n 20
+sudo journalctl -u dbus-bridge-<your-project>.service -n 20
 
 # Check if dbus socket exists
-ls -la ~/ArduinoApps/ble_arduino/dbus.sock
+ls -la ~/ArduinoApps/<your-project>/dbus.sock
 
 # Clear App Lab cache (force reinstall of packages)
-rm -rf ~/ArduinoApps/ble_arduino/.cache
+rm -rf ~/ArduinoApps/<your-project>/.cache
 ```
 
 ---
@@ -266,9 +270,9 @@ rm -rf ~/ArduinoApps/ble_arduino/.cache
 Run these commands to clean up before exporting:
 
 ```bash
-sudo systemctl stop dbus-bridge.service
-rm -f ~/ArduinoApps/ble_arduino/dbus.sock
-rm -rf ~/ArduinoApps/ble_arduino/.cache
+sudo systemctl stop dbus-bridge-<your-project>.service
+rm -f ~/ArduinoApps/<your-project>/dbus.sock
+rm -rf ~/ArduinoApps/<your-project>/.cache
 ```
 
 Then export from App Lab.
@@ -281,7 +285,7 @@ Then export from App Lab.
 |---------|----------|
 | BLE not showing in nRF Connect | Check console for `✓ Advertisement registered` |
 | `dbus.sock` not in project root | See Precaution section above |
-| `SystemBus failed` error | Check `dbus-bridge.service` is running |
+| `SystemBus failed` error | Check `dbus-bridge-<your-project>.service` is running |
 | `$'\r': command not found` | Run `dos2unix` on the script — see Step 3 above |
 | WebUI not loading | Check board IP and make sure port 7000 is accessible |
 | LED not responding | Check sketch is flashed — look for MCU flash logs in console |
