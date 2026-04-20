@@ -277,6 +277,3 @@ or Bridge.provide() in the sketch.
 
 ---
 
-## License
-
-MIT
