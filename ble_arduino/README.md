@@ -1,6 +1,6 @@
 # BLE GATT Dashboard — Arduino UNO Q
 
-A BLE GATT server running on the Arduino UNO Q with a WebUI dashboard.
+A BLE GATT server running on the Arduino UNO Q (AQ1/AQ2) with a WebUI dashboard.
 Control the MCU LED, read sensor data, send text commands, and receive timestamp notifications
 — all from a browser or a BLE app like nRF Connect.
 
@@ -55,13 +55,13 @@ ble_arduino/
 
 ## ⚠️ IMPORTANT — app.yaml
 
-When you export the zip in App Lab, the `app.yaml` gets reset to its
+When you import the zip in App Lab, the `app.yaml` gets reset to its
 default content and loses `network_mode: "host"` which is critical.
 
 **The fix is to edit `app.yaml` inside the zip BEFORE importing:**
 
 1. Get the zip file
-2. Open the zip with any file manager or archive tool
+2. Open the zip with any archive tool
 3. Find `app.yaml` inside the zip and open it with a text editor
 4. Replace its content with the content from `setup/yaml`:
 ```yaml
@@ -149,16 +149,28 @@ the container as `/app/dbus.sock`.
 
 Import the edited zip file via App Lab → My Apps → Import.
 
-### Step 3 — Run setup script
+### Step 3 — Fix line endings (if zip was handled on Windows)
 
-Open a terminal on the board and run:
+If the zip was downloaded or edited on a Windows machine, the shell
+scripts will have Windows line endings which will cause errors like:
+```
+$'\r': command not found
+```
+
+Fix it by running:
+```bash
+sudo apt install dos2unix -y
+dos2unix ~/ArduinoApps/ble_arduino/setup/setup_s.sh
+```
+
+### Step 4 — Run setup script
 
 ```bash
 chmod +x ~/ArduinoApps/ble_arduino/setup/setup_s.sh
 bash ~/ArduinoApps/ble_arduino/setup/setup_s.sh
 ```
 
-### Step 4 — Run the app
+### Step 5 — Run the app
 
 1. Open **App Lab**
 2. Click **Run**
@@ -270,6 +282,7 @@ Then export from App Lab.
 | BLE not showing in nRF Connect | Check console for `✓ Advertisement registered` |
 | `dbus.sock` not in project root | See Precaution section above |
 | `SystemBus failed` error | Check `dbus-bridge.service` is running |
+| `$'\r': command not found` | Run `dos2unix` on the script — see Step 3 above |
 | WebUI not loading | Check board IP and make sure port 7000 is accessible |
 | LED not responding | Check sketch is flashed — look for MCU flash logs in console |
 | After reboot not working | Check `sudo systemctl status dbus-bridge.service` |
