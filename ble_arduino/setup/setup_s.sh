@@ -1,87 +1,35 @@
 #!/bin/bash
 set -e
 
-# ==================================================
-#  AUTO-DETECT PROJECT DIRECTORY
-# ==================================================
-detect_project_dir() {
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_NAME="$(basename "$PROJECT_DIR")"
+SERVICE_NAME="dbus-bridge-${PROJECT_NAME}"
 
-    # 1. Use CLI argument if provided
-    if [ -n "$1" ]; then
-        echo "$1"
-        return
-    fi
-
-    # 2. Use the directory where this script lives
-    echo "$script_dir"
-}
-
-PROJECT_DIR=$(detect_project_dir "$1")
-
-# ==================================================
-#  CONFIGURATION - Edit these if needed
-# ==================================================
-APP_NAME="BLE GATT Dashboard"
-SERVICE_NAME="dbus-bridge"
-SERVICE_USER="${SUDO_USER:-$(whoami)}"
-SOCK_FILE="$PROJECT_DIR/dbus.sock"
-SYSTEM_BUS_SOCKET="/run/dbus/system_bus_socket"
-PORT=7000
-
-# ==================================================
-#  VALIDATION
-# ==================================================
 echo "=================================================="
-echo " $APP_NAME - Setup Script"
+echo " BLE GATT Dashboard - Setup Script"
 echo "=================================================="
-echo "Project directory : $PROJECT_DIR"
-echo "Service user      : $SERVICE_USER"
-echo "Service name      : $SERVICE_NAME"
-echo "Socket file       : $SOCK_FILE"
-echo "Dashboard port    : $PORT"
+echo "Project directory: $PROJECT_DIR"
+echo "Project name: $PROJECT_NAME"
+echo "Service name: $SERVICE_NAME"
 echo ""
 
-# Ensure project directory exists
-if [ ! -d "$PROJECT_DIR" ]; then
-    echo "[!] Project directory not found: $PROJECT_DIR"
-    echo "    Create it first or pass the correct path as an argument:"
-    echo "    $0 /path/to/your/project"
-    exit 1
-fi
-
-# Ensure system D-Bus socket exists
-if [ ! -S "$SYSTEM_BUS_SOCKET" ]; then
-    echo "[!] System D-Bus socket not found at $SYSTEM_BUS_SOCKET"
-    echo "    Is D-Bus running? Try: sudo systemctl start dbus"
-    exit 1
-fi
-
-# ==================================================
-#  STEP 1 - Install socat
-# ==================================================
+# Step 1 - Install socat (only thing needed from system)
 echo "[1/2] Installing socat..."
 sudo apt update -qq
 sudo apt install -y socat
-echo "✔ socat installed"
+echo "✓ socat installed"
 
-# ==================================================
-#  STEP 2 - Create systemd service
-# ==================================================
-echo "[2/2] Setting up $SERVICE_NAME systemd service..."
-
+# Step 2 - Create dbus-bridge systemd service
+echo "[2/2] Setting up ${SERVICE_NAME} systemd service..."
 sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null << EOF
 [Unit]
-Description=DBus Unix Bridge for $APP_NAME
+Description=DBus Unix Bridge for ${PROJECT_NAME}
 After=network.target
 
 [Service]
-User=$SERVICE_USER
-ExecStartPre=/bin/rm -f $SOCK_FILE
-ExecStart=/usr/bin/socat \
-    UNIX-LISTEN:$SOCK_FILE,fork,reuseaddr,mode=0777,unlink-early \
-    UNIX-CONNECT:$SYSTEM_BUS_SOCKET
+User=arduino
+ExecStartPre=/bin/rm -f ${PROJECT_DIR}/dbus.sock
+ExecStart=/usr/bin/socat UNIX-LISTEN:${PROJECT_DIR}/dbus.sock,fork,reuseaddr,mode=0777,unlink-early UNIX-CONNECT:/run/dbus/system_bus_socket
 Restart=always
 RestartSec=3
 
@@ -92,45 +40,32 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable ${SERVICE_NAME}.service
 sudo systemctl start ${SERVICE_NAME}.service
-echo "✔ $SERVICE_NAME service created and started"
+echo "✓ ${SERVICE_NAME} service created and started"
 
-# ==================================================
-#  VERIFICATION
-# ==================================================
+# Verify
 sleep 2
-
 if systemctl is-active --quiet ${SERVICE_NAME}.service; then
-    echo "✔ $SERVICE_NAME service is running"
-    ls -la "$SOCK_FILE" && echo "✔ $(basename $SOCK_FILE) created" \
-                        || echo "? $(basename $SOCK_FILE) not found"
+    echo "✓ ${SERVICE_NAME} service is running"
+    ls -la "$PROJECT_DIR/dbus.sock" && echo "✓ dbus.sock created" || echo "✗ dbus.sock not found"
 else
-    echo "✘ $SERVICE_NAME service failed to start"
+    echo "✗ ${SERVICE_NAME} service failed"
     sudo systemctl status ${SERVICE_NAME}.service
     exit 1
 fi
 
-# Clear venv cache if present
-CACHE_DIR="$PROJECT_DIR/.cache"
-if [ -d "$CACHE_DIR" ]; then
-    rm -rf "$CACHE_DIR"
-    echo "✔ Cache cleared: $CACHE_DIR"
-fi
+# Clean venv cache
+rm -rf "$PROJECT_DIR/.cache"
+echo "✓ Cache cleared"
 
-# ==================================================
-#  DONE
-# ==================================================
-HOST_IP=$(hostname -I | awk '{print $1}')
 echo ""
 echo "=================================================="
 echo " Setup Complete!"
 echo "=================================================="
 echo "1. Open App Lab"
 echo "2. Click Run"
-echo "3. Open http://$HOST_IP:$PORT"
+echo "3. Open http://$(hostname -I | awk '{print $1}'):7000"
 echo ""
-echo "--- Useful commands ---"
-echo "chmod +x $0                                       # make executable"
-echo "sudo systemctl status  ${SERVICE_NAME}.service    # check status"
-echo "sudo systemctl start   ${SERVICE_NAME}.service    # start service"
-echo "sudo systemctl stop    ${SERVICE_NAME}.service    # stop service"
-echo "rm -f $SOCK_FILE                                  # delete socket manually"
+
+# to check if the service is running: sudo systemctl status dbus-bridge-<your-project>.service
+# to start the service: sudo systemctl start dbus-bridge-<your-project>.service
+# before export run: sudo systemctl stop dbus-bridge-<your-project>.service and delete dbus.sock
