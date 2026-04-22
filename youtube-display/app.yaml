@@ -1,0 +1,6 @@
+name: youtube-display
+description: Stream YouTube videos to external display from phone
+ports:
+- 7000
+bricks:
+- arduino:web_ui: {}
