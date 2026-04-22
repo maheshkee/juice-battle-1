@@ -1,6 +1,0 @@
-name: pir_motion_detector_501
-description: A motion detection system using the HC-SR501 PIR sensor on the Arduino UNO Q. The MCU detects motion in real time and drives the onboard RGB LED. The
-ports: []
-bricks:
-- arduino:web_ui: {}
-icon: 😀
