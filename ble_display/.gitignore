@@ -1,0 +1,21 @@
+# App Lab runtime files
+.cache/
+dbus.sock
+launcher.sock
+
+# Trusted devices file (generated at runtime)
+trusted_devices.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp
+*.swo

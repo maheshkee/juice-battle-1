@@ -1,0 +1,20 @@
+# ble-display - Python dependencies
+#
+# All BLE/D-Bus dependencies are C extensions that cannot be installed
+# from PyPI on the board aarch64 architecture. They are provided as
+# pre-built wheels copied from the existing ble_arduino project.
+#
+# The setup.sh script copies them automatically from ble_arduino.
+# If you need to copy manually:
+#   cp -r ~/ArduinoApps/ble_arduino/wheels   ~/ArduinoApps/ble_display/
+#   cp -r ~/ArduinoApps/ble_arduino/typelibs ~/ArduinoApps/ble_display/
+#
+# --- pre-built wheels ---
+/app/wheels/dbus_python-1.4.0-cp313-cp313-linux_aarch64.whl
+/app/wheels/pycairo-1.29.0-cp313-cp313-linux_aarch64.whl
+/app/wheels/pygobject-3.56.2-cp313-cp313-linux_aarch64.whl
+#
+# --- no PyPI packages needed ---
+# arduino.app_utils / arduino.app_bricks  -> App Lab runtime
+# dbus, gi.repository                     -> installed via wheels above
+# subprocess, threading, re, datetime     -> Python built-ins

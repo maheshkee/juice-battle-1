@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Motion Sensor Monitor</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <h1>Motion Sensor Monitor</h1>
+
+  <div class="section-label">Local — AQ2</div>
+  <div id="status-circle">WAITING</div>
+  <div id="status-text">Connecting...</div>
+  <div id="last-time">Last event: Never</div>
+
+  <div class="section-label">Remote sensors</div>
+  <div id="remote-sensors">
+    <div class="remote-placeholder">Connecting to remote sensors...</div>
+  </div>
+
+  <div id="log-title">Event log</div>
+  <div id="log">
+    <div class="log-entry log-waiting">Waiting for events...</div>
+  </div>
+
+  <div id="conn-status">&#9679; Connecting to board...</div>
+
+  <script src="/libs/socket.io.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
