@@ -1,14 +1,19 @@
 #!/bin/bash
-# Setup script for BLE GATT Dashboard on Arduino UNO Q
-# Run this once on a new board after copying the project
+# Full setup script for BLE GATT Dashboard on Arduino UNO Q
+# Run this once on a fresh board with no wheels
 
 set -e
 
-PROJECT_DIR="$HOME/ArduinoApps/ble_arduino"
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_NAME="$(basename "$PROJECT_DIR")"
+SERVICE_NAME="dbus-bridge-${PROJECT_NAME}"
+
 echo "=================================================="
-echo " BLE GATT Dashboard - Setup Script"
+echo " BLE GATT Dashboard - Full Setup Script"
 echo "=================================================="
 echo "Project directory: $PROJECT_DIR"
+echo "Project name: $PROJECT_NAME"
+echo "Service name: $SERVICE_NAME"
 echo ""
 
 # Step 1 - Install system dependencies
@@ -79,10 +84,10 @@ else
 fi
 
 # Step 6 - Create dbus-bridge systemd service
-echo "[6/6] Setting up dbus-bridge systemd service..."
-sudo tee /etc/systemd/system/dbus-bridge.service > /dev/null << EOF
+echo "[6/6] Setting up ${SERVICE_NAME} systemd service..."
+sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null << EOF
 [Unit]
-Description=DBus Unix Bridge for App Lab
+Description=DBus Unix Bridge for ${PROJECT_NAME}
 After=network.target
 
 [Service]
@@ -97,20 +102,20 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable dbus-bridge.service
-sudo systemctl start dbus-bridge.service
-echo "✓ dbus-bridge service created and started"
+sudo systemctl enable ${SERVICE_NAME}.service
+sudo systemctl start ${SERVICE_NAME}.service
+echo "✓ ${SERVICE_NAME} service created and started"
 
 # Verify service
 sleep 2
-if systemctl is-active --quiet dbus-bridge.service; then
-    echo "✓ dbus-bridge service is running"
+if systemctl is-active --quiet ${SERVICE_NAME}.service; then
+    echo "✓ ${SERVICE_NAME} service is running"
 else
-    echo "✗ dbus-bridge service failed to start"
-    sudo systemctl status dbus-bridge.service
+    echo "✗ ${SERVICE_NAME} service failed to start"
+    sudo systemctl status ${SERVICE_NAME}.service
 fi
 
-# Clean venv so it rebuilds with new wheels
+# Clean venv cache
 echo ""
 echo "Cleaning venv cache..."
 rm -rf "$PROJECT_DIR/.cache"
@@ -127,5 +132,6 @@ echo "2. Click Run"
 echo "3. Open http://$(hostname -I | awk '{print $1}'):7000"
 echo ""
 
-# make it executable: chmod +x ~/ArduinoApps/ble_arduino/setup_s.sh
-# before export run: sudo systemctl stop dbus-bridge.service
+# to check if the service is running: sudo systemctl status dbus-bridge-<your-project>.service
+# to start the service: sudo systemctl start dbus-bridge-<your-project>.service
+# before export run: sudo systemctl stop dbus-bridge-<your-project>.service and delete dbus.sock
