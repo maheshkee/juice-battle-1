@@ -1,0 +1,7 @@
+name: ble-display
+description: "A BLE-controlled YouTube display running on the Arduino UNO Q. Send a YouTube link from your phone over Bluetooth - the board opens it fullscreen on"
+ports:
+- 7000
+bricks:
+- arduino:web_ui: {}
+icon: 📺

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>BLE Display</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #000;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            cursor: none;
+        }
+
+        /* ── screens ── */
+        .screen {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        .screen.active { display: flex; }
+
+        /* ── idle ── */
+        #idle-screen {
+            background: radial-gradient(ellipse at 30% 40%, #0a0a2e 0%, #000 70%);
+            flex-direction: column;
+            gap: 24px;
+        }
+        .idle-logo {
+            font-size: 5rem;
+            animation: pulse-logo 3s ease-in-out infinite;
+        }
+        .idle-title {
+            font-size: 1.4rem;
+            letter-spacing: 0.4em;
+            color: rgba(255,255,255,0.3);
+            text-transform: uppercase;
+        }
+        .idle-hint {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.15);
+            letter-spacing: 0.15em;
+            animation: blink 2.5s ease-in-out infinite;
+        }
+        /* floating particles */
+        .particles {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .particle {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: rgba(255,255,255,0.4);
+            border-radius: 50%;
+            animation: float-up linear infinite;
+        }
+
+        /* ── youtube ── */
+        #youtube-screen { background: #000; }
+        #player { width: 100vw; height: 100vh; }
+
+        /* ── clock ── */
+        #clock-screen {
+            background: #000;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .clock-time {
+            font-size: clamp(4rem, 18vw, 14rem);
+            font-weight: 100;
+            letter-spacing: -0.02em;
+            color: #fff;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+        .clock-time .colon {
+            animation: blink 1s step-end infinite;
+            display: inline-block;
+            width: 0.35em;
+            text-align: center;
+        }
+        .clock-date {
+            font-size: clamp(1rem, 2.5vw, 2rem);
+            color: rgba(255,255,255,0.35);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+        }
+        .clock-seconds-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background: rgba(255,255,255,0.6);
+            transition: width 1s linear;
+        }
+
+        /* ── toast notification ── */
+        .toast {
+            position: fixed;
+            bottom: 32px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 999px;
+            padding: 10px 24px;
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.8);
+            letter-spacing: 0.05em;
+            transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1), opacity 0.4s;
+            opacity: 0;
+            z-index: 999;
+            pointer-events: none;
+        }
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        @keyframes pulse-logo {
+            0%,100% { transform: scale(1);   opacity: 0.9; }
+            50%      { transform: scale(1.06); opacity: 1;   }
+        }
+        @keyframes blink {
+            0%,100% { opacity: 1;   }
+            50%      { opacity: 0;   }
+        }
+        @keyframes float-up {
+            0%   { transform: translateY(110vh) translateX(0);   opacity: 0; }
+            10%  { opacity: 0.6; }
+            90%  { opacity: 0.2; }
+            100% { transform: translateY(-10vh) translateX(40px); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── idle ── -->
+<div id="idle-screen" class="screen active">
+    <div class="particles" id="particles"></div>
+    <div class="idle-logo">📺</div>
+    <div class="idle-title">BLE Display</div>
+    <div class="idle-hint">Send a YouTube link via Bluetooth</div>
+</div>
+
+<!-- ── youtube ── -->
+<div id="youtube-screen" class="screen">
+    <div id="player"></div>
+</div>
+
+<!-- ── clock ── -->
+<div id="clock-screen" class="screen">
+    <div class="clock-time">
+        <span id="clock-h">00</span><span class="colon">:</span><span id="clock-m">00</span><span class="colon">:</span><span id="clock-s">00</span>
+    </div>
+    <div class="clock-date" id="clock-date"></div>
+    <div class="clock-seconds-bar" id="sec-bar"></div>
+</div>
+
+<!-- ── toast ── -->
+<div class="toast" id="toast"></div>
+
+<!-- Socket.IO -->
+<script src="/libs/socket.io.min.js"></script>
+<!-- YouTube IFrame API -->
+<script src="https://www.youtube.com/iframe_api"></script>
+<script src="display.js"></script>
+</body>
+</html>
