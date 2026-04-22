@@ -64,12 +64,12 @@ current_url  = None
 current_mode = 'idle'
 url_history  = []
 
-bus             = None
-is_scanning     = False
-scan_results    = {}
-connected       = {}
-trusted         = {}
-discovering     = set()
+bus          = None
+is_scanning  = False
+scan_results = {}
+connected    = {}
+trusted      = {}
+discovering  = set()
 
 adv_mgr_global  = None
 adv_global      = None
