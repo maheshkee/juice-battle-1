@@ -1,16 +1,40 @@
 from arduino.app_utils import App
 from arduino.app_bricks.web_ui import WebUI
 import os
+import sys
+import ctypes
+
+# Load shared libs for BLE (same pattern as ble_arduino project)
+os.environ['GI_TYPELIB_PATH'] = '/app/typelibs'
+os.environ['DBUS_SYSTEM_BUS_ADDRESS'] = 'unix:path=/app/dbus.sock'
+
+for lib in [
+    'libm.so.6', 'libcap.so.2', 'libpcre2-8.so.0',
+    'libselinux.so.1', 'libaudit.so.1', 'libcap-ng.so.0',
+    'libexpat.so.1', 'libdbus-1.so.3', 'libapparmor.so.1',
+    'libsystemd.so.0', 'libgirepository-2.0.so.0',
+]:
+    try:
+        ctypes.CDLL(f'/app/wheels/{lib}')
+    except Exception as e:
+        print(f'[MAIN] lib load failed {lib}: {e}', flush=True)
+
+sys.path.insert(0, '/usr/lib/python3/dist-packages')
+
+from ble_central import BLECentral
 
 ui = WebUI()
 CMD_FILE = "/app/cmd.txt"
 LAUNCHER_SCRIPT = "/home/arduino/launcher.sh"
 
 def install_launcher_if_needed():
+    sentinel = "/home/arduino/launcher.sh.installed"
     if os.path.exists(LAUNCHER_SCRIPT):
         print("[SETUP] Launcher already installed.", flush=True)
         return
     print("[SETUP] Writing launcher script...", flush=True)
+    open(sentinel, 'w').close()
+    print("[SETUP] Launcher script written.", flush=True)
     with open(LAUNCHER_SCRIPT, "w") as f:
         f.write('''#!/bin/bash
 export DISPLAY=:0
@@ -61,14 +85,29 @@ done
     os.chmod(LAUNCHER_SCRIPT, 0o755)
     print("[SETUP] Launcher script written.", flush=True)
 
+def extract_video_id(url):
+    if "/shorts/" in url:
+        return url.split("/shorts/")[1].split("?")[0]
+    elif "youtu.be/" in url:
+        return url.split("youtu.be/")[1].split("?")[0]
+    elif "v=" in url:
+        return url.split("v=")[1].split("&")[0]
+    return None
+
+def on_ble_url(url):
+    print(f'[BLE] URL received: {url}', flush=True)
+    video_id = extract_video_id(url)
+    if not video_id:
+        print(f'[BLE] Invalid URL: {url}', flush=True)
+        return
+    with open(CMD_FILE, "w") as f:
+        f.write(video_id)
+    ui.send_message("status", {"state": "playing", "video_id": video_id})
+
 def on_play_video(sid, data):
     url = data.get("url", "")
-    try:
-        if "/shorts/" in url:
-            video_id = url.split("/shorts/")[1].split("?")[0]
-        else:
-            video_id = url.split("v=")[1].split("&")[0]
-    except (IndexError, AttributeError):
+    video_id = extract_video_id(url)
+    if not video_id:
         ui.send_message("error", {"message": "Invalid YouTube URL"})
         return
     with open(CMD_FILE, "w") as f:
@@ -92,7 +131,12 @@ def on_admin(sid, data):
         with open(CMD_FILE, "w") as f:
             f.write("STOP")
 
+
 install_launcher_if_needed()
+
+ble = BLECentral(on_url_received=on_ble_url)
+ble.start()
+
 ui.on_message("play_video", on_play_video)
 ui.on_message("control", on_control)
 ui.on_message("admin", on_admin)
