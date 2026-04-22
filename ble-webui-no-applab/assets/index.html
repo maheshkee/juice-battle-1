@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BLE WebUI v1 - Arduino UNO Q</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="header">
+  <div class="header-title">BLE WebUI v1</div>
+  <div class="header-sub">Arduino UNO Q - MPU/MCU Bridge</div>
+</div>
+<div class="grid">
+  <div class="card" id="card-ble">
+    <div class="card-label">BLE STATUS</div>
+    <div class="status-row">
+      <div class="dot" id="ble-dot"></div>
+      <div class="status-text" id="ble-text">Waiting for connection...</div>
+    </div>
+    <div class="detail" id="ble-device"></div>
+  </div>
+  <div class="card" id="card-led">
+    <div class="card-label">MCU LED3_G - PH11</div>
+    <div class="status-row">
+      <div class="dot green" id="led-dot"></div>
+      <div class="status-text" id="led-text">OFF</div>
+    </div>
+    <div class="detail">active-low - controlled via BLE write</div>
+  </div>
+  <div class="card" id="card-uuids">
+    <div class="card-label">BLE SERVICE INFO</div>
+    <div class="uuid-row"><span class="uuid-label">Service</span><span class="uuid-val">FFE0</span></div>
+    <div class="uuid-row"><span class="uuid-label">LED char</span><span class="uuid-val">FFE1 write+notify</span></div>
+    <div class="uuid-row"><span class="uuid-label">Status char</span><span class="uuid-val">FFE2 read+notify</span></div>
+    <div class="uuid-row"><span class="uuid-label">Write 01</span><span class="uuid-val uuid-on">LED ON</span></div>
+    <div class="uuid-row"><span class="uuid-label">Write 00</span><span class="uuid-val uuid-off">LED OFF</span></div>
+  </div>
+  <div class="card card-wide" id="card-log">
+    <div class="card-label">LIVE EVENT LOG <span id="event-count" class="count">0 events</span></div>
+    <div class="log-container" id="log"></div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

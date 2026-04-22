@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>BLE Hub -- Dashboard</title>
+    <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<div class="container">
+
+    <!-- header -->
+    <header>
+        <div class="header-left">
+            <div class="status-dot" id="statusDot"></div>
+        </div>
+        <h1>BLE Hub</h1>
+        <div class="header-right">
+            <div class="connected-count" id="deviceBadge">0 connected</div>
+            <button class="ble-icon-btn" id="bleIconBtn" onclick="openBlePanel()" title="Bluetooth">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"></polyline>
+                </svg>
+                <span class="ble-dot-indicator" id="bleDotIndicator"></span>
+            </button>
+        </div>
+    </header>
+
+    <!-- mode bar -->
+    <div class="mode-bar">
+        <span class="mode-label">Display</span>
+        <div class="mode-btns">
+            <button class="mode-btn" onclick="setMode('idle')"    id="btn-idle">Idle</button>
+            <button class="mode-btn" onclick="setMode('youtube')" id="btn-youtube-mode">YouTube</button>
+            <button class="mode-btn" onclick="setMode('clock')"   id="btn-clock">Clock</button>
+        </div>
+    </div>
+
+    <!-- 3 cards in a row -->
+    <div class="cards-row">
+
+        <!-- URL card -->
+        <div class="card url-card">
+            <div class="card-header">
+                <span class="card-icon">&#128279;</span>
+                <span class="card-title">Send YouTube URL</span>
+            </div>
+            <div class="url-input-col">
+                <input type="text" id="urlInput" placeholder="https://www.youtube.com/watch?v=..."/>
+                <button class="btn-send" onclick="sendUrl()">&#9654; Play</button>
+            </div>
+            <div class="now-playing">
+                <span class="np-label">Now playing</span>
+                <span class="np-url" id="npUrl">-</span>
+            </div>
+        </div>
+
+        <!-- Player controls card -->
+        <div class="card controls-card">
+            <div class="card-header">
+                <span class="card-icon">&#127918;</span>
+                <span class="card-title">Player Controls</span>
+            </div>
+            <div class="controls-grid">
+                <button class="ctrl-btn" id="playPauseBtn" onclick="togglePlayPause()">|| Pause</button>
+                <button class="ctrl-btn" id="muteBtn"      onclick="toggleMute()">Mute</button>
+                <button class="ctrl-btn wide stop-btn" onclick="sendCmd('stop')">Stop &amp; Idle</button>
+            </div>
+        </div>
+
+        <!-- History card -->
+        <div class="card history-card">
+            <div class="card-header">
+                <span class="card-icon">&#128203;</span>
+                <span class="card-title">URL History</span>
+            </div>
+            <div class="history-list" id="historyList">
+                <div class="history-empty">No links sent yet</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- log -->
+    <div class="log-section">
+        <div class="log-header">
+            <span>Event Log</span>
+            <button class="btn-clear" onclick="clearLog()">Clear</button>
+        </div>
+        <div class="log-console" id="console"></div>
+    </div>
+
+</div>
+
+<!-- BLE popup overlay -->
+<div class="ble-overlay" id="bleOverlay" onclick="closeBlePanel(event)">
+    <div class="ble-panel" id="blePanel">
+
+        <div class="ble-panel-header">
+            <div class="ble-panel-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"></polyline>
+                </svg>
+                Bluetooth
+            </div>
+            <div class="ble-panel-actions">
+                <span class="ble-scan-status" id="bleScanStatus"></span>
+                <button class="ble-refresh-btn" id="refreshBtn" onclick="toggleScan()" title="Refresh">
+                    <svg id="refreshIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                    </svg>
+                </button>
+                <button class="ble-close-btn" onclick="closeBlePanel()">&#10005;</button>
+            </div>
+        </div>
+
+        <div class="ble-scan-bar">
+            <div class="ble-scan-progress" id="bleScanProgress"></div>
+        </div>
+
+        <div class="ble-body">
+
+            <div class="ble-section" id="knownSection" style="display:none">
+                <div class="ble-section-title">Paired Devices</div>
+                <div id="knownList"></div>
+            </div>
+            <div class="ble-section">
+                <div class="ble-section-title">Available Devices</div>
+                <div id="availableList">
+                    <div class="ble-empty">Scanning for devices...</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script src="/libs/socket.io.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

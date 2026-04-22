@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>BLE GATT Dashboard</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-left">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Connecting...</span>
+            </div>
+            <h1>BLE GATT Dashboard</h1>
+            <div class="device-name">BLE</div>
+        </header>
+
+        <!-- BLE Status Bar -->
+        <div class="ble-status-bar">
+            <div class="ble-status-left">
+                <div class="ble-indicator">
+                    <span class="ble-dot" id="bleDot"></span>
+                    <span id="bleStatusText">No device connected</span>
+                </div>
+                <div class="device-info" id="deviceInfo"></div>
+            </div>
+            <div class="adv-controls">
+                <div class="adv-status">
+                    <span class="adv-dot" id="advDot"></span>
+                    <span id="advStatusText">Advertising...</span>
+                </div>
+                <button class="adv-btn start-btn" id="startAdvBtn" onclick="startAdv()" disabled>Start</button>
+                <button class="adv-btn stop-btn" id="stopAdvBtn" onclick="stopAdv()">Stop</button>
+            </div>
+        </div>
+
+        <div class="cards">
+            <!-- Random Sensor -->
+            <div class="card sensor-card">
+                <div class="card-header">
+                    <span class="card-icon">📡</span>
+                    <span class="card-title">Random Sensor</span>
+                    <span class="badge read">READ</span>
+                </div>
+                <div class="card-value" id="sensorValue">--</div>
+                <div class="card-uuid">a00b0001-0000-0000-0000-000000000000</div>
+                <div class="card-time" id="sensorTime">No data yet</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="sensorProgress"></div>
+                </div>
+            </div>
+
+            <!-- Text Command -->
+            <div class="card command-card">
+                <div class="card-header">
+                    <span class="card-icon">✏️</span>
+                    <span class="card-title">Text Command</span>
+                    <span class="badge write">WRITE</span>
+                </div>
+                <div class="card-value command-value" id="commandValue">--</div>
+                <div class="card-uuid">a00b0002-0000-0000-0000-000000000000</div>
+                <div class="card-time" id="commandTime">No data yet</div>
+                <div class="command-history" id="commandHistory"></div>
+            </div>
+
+            <!-- Timestamp -->
+            <div class="card timestamp-card">
+                <div class="card-header">
+                    <span class="card-icon">🕐</span>
+                    <span class="card-title">Timestamp</span>
+                    <span class="badge notify">NOTIFY</span>
+                </div>
+                <div class="card-value" id="timestampValue">--:--:--</div>
+                <div class="card-uuid">a00b0003-0000-0000-0000-000000000000</div>
+                <div class="card-time" id="timestampTime">Not notifying</div>
+                <div class="notify-indicator" id="notifyIndicator">
+                    <span class="pulse"></span> Waiting for notifications...
+                </div>
+            </div>
+
+            <!-- LED Control -->
+            <div class="card led-card">
+                <div class="card-header">
+                    <span class="card-icon">💡</span>
+                    <span class="card-title">Built-in LED</span>
+                    <span class="badge mcu">MCU</span>
+                </div>
+                <div class="led-display" id="ledDisplay">
+                    <div class="led-bulb" id="ledBulb"></div>
+                    <div class="led-state-text" id="ledStateText">OFF</div>
+                </div>
+                <div class="card-time" id="ledTime">No data yet</div>
+                <button class="led-toggle-btn" id="ledToggleBtn" onclick="toggleLed()">
+                    Toggle LED
+                </button>
+            </div>
+        </div>
+
+        <!-- Log Console -->
+        <div class="console-section">
+            <div class="console-header">
+                <span>📋 Event Log</span>
+                <button class="clear-btn" onclick="clearLog()">Clear</button>
+            </div>
+            <div class="console" id="console"></div>
+        </div>
+    </div>
+
+    <script src="/libs/socket.io.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
