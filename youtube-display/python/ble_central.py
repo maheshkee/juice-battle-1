@@ -111,28 +111,28 @@ class BLECentral:
             GLib.idle_add(self._connect, path)
 
     def _connect(self, path):
-    try:
-        dev_obj = self.bus.get_object(BLUEZ, path)
-        device = dbus.Interface(dev_obj, DEVICE_IFACE)
-
-        # Remove device first if previously cached
         try:
-            self.adapter.RemoveDevice(dbus.ObjectPath(path))
-            time.sleep(1)
-        except Exception:
-            pass
-
-        print(f'[BLE_CENTRAL] Connecting...', flush=True)
-        device = dbus.Interface(self.bus.get_object(BLUEZ, path), DEVICE_IFACE)
-        device.Connect()
-        self.target_device = path
-        print('[BLE_CENTRAL] Connected', flush=True)
-        time.sleep(4)
-        GLib.idle_add(self._find_characteristic)
-    except Exception as e:
-        print(f'[BLE_CENTRAL] Connect failed: {e}', flush=True)
-        GLib.timeout_add(5000, lambda: self._start_scan() or False)
-    return False
+            dev_obj = self.bus.get_object(BLUEZ, path)
+            device = dbus.Interface(dev_obj, DEVICE_IFACE)
+    
+            # Remove device first if previously cached
+            try:
+                self.adapter.RemoveDevice(dbus.ObjectPath(path))
+                time.sleep(1)
+            except Exception:
+                pass
+    
+            print(f'[BLE_CENTRAL] Connecting...', flush=True)
+            device = dbus.Interface(self.bus.get_object(BLUEZ, path), DEVICE_IFACE)
+            device.Connect()
+            self.target_device = path
+            print('[BLE_CENTRAL] Connected', flush=True)
+            time.sleep(4)
+            GLib.idle_add(self._find_characteristic)
+        except Exception as e:
+            print(f'[BLE_CENTRAL] Connect failed: {e}', flush=True)
+            GLib.timeout_add(5000, lambda: self._start_scan() or False)
+        return False
 
     def _find_characteristic(self):
         try:
