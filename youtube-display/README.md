@@ -7,15 +7,16 @@ Stream YouTube videos to an external display from your phone — using an Arduin
 ## What It Does
 
 ```
-Phone browser → sends YouTube URL → Arduino UNO Q → plays video fullscreen on LCD
-Phone browser → pause / resume / stop / volume → controls playback in real time
+Phone app (Flutter) → BLE → Arduino UNO Q → plays video fullscreen on LCD
+Phone app → pause / resume / stop / volume → controls playback in real time
 ```
 
 - Home screen with live clock displayed on LCD at all times
 - No YouTube controls visible — clean fullscreen video
 - Video loops automatically
-- WiFi control from any browser on the same network
-- BLE URL delivery (v1.2, in progress — requires Flutter phone app)
+- BLE control from Flutter phone app (v1.2)
+- WiFi control from any browser on the same network (legacy)
+- Cursor hidden on display at all times
 
 ---
 
@@ -27,6 +28,7 @@ Phone browser → pause / resume / stop / volume → controls playback in real t
 | External display | Any HDMI monitor or USB-C DisplayPort monitor |
 | USB-C hub | Anker or Noovoo — for HDMI output (not Apple dongles) |
 | Power | USB-C 5V/3A, or 7-24V on VIN pin |
+| Android phone | Flutter app installed |
 
 **Display connection:**
 - Monitor with USB-C DP input: plug USB-C cable directly from board to monitor
@@ -38,37 +40,59 @@ Phone browser → pause / resume / stop / volume → controls playback in real t
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Phone (same WiFi network)                                  │
-│  Browser opens http://BOARD_IP:7000                         │
-│  Sends YouTube URL via Socket.IO                            │
+│  Phone (Flutter app — yt_display_app)                       │
+│  Scans BLE → connects to board → writes URL + commands      │
 └─────────────────────┬───────────────────────────────────────┘
-                      │ WiFi / Socket.IO
+                      │ BLE (GATT Write)
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Arduino UNO Q — MPU (QRB2210, Debian Linux)                │
 │                                                             │
 │  App Lab (Docker)                                           │
-│  ├── main.py          — WebUI events + BLE URL handler      │
-│  ├── ble_central.py   — BLE scanner (v1.2)                  │
-│  └── WebUI brick      — Socket.IO server at port 7000       │
+│  ├── main.py           — WebUI events + BLE command handler │
+│  ├── ble_gatt_serve.py — BLE peripheral GATT server         │
+│  └── WebUI brick       — Socket.IO server at port 7000      │
 │                                                             │
 │  Host system                                                │
-│  ├── launcher.sh      — Chromium kiosk manager              │
-│  ├── dbus-bridge      — D-Bus socket bridge for BLE         │
-│  └── Xorg / XFCE      — Display server                      │
+│  ├── launcher.sh       — Chromium kiosk manager             │
+│  ├── unclutter         — Hides mouse cursor on display      │
+│  ├── dbus-bridge       — D-Bus socket bridge for BLE        │
+│  └── Xorg / XFCE       — Display server                     │
 └─────────────────────┬───────────────────────────────────────┘
                       │ cmd.txt file bridge
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Chromium (kiosk mode)                                      │
-│  ├── splash.html      — Home screen with clock              │
-│  └── player.html      — YouTube IFrame player               │
-│       └── YouTube CDN — streams video                       │
+│  ├── splash.html       — Home screen with clock             │
+│  └── player.html       — YouTube IFrame player              │
+│       └── YouTube CDN  — streams video                      │
 └─────────────────────┬───────────────────────────────────────┘
                       │ MIPI-DSI → ANX7625 → USB-C → DisplayPort
                       ▼
                External LCD Display
 ```
+
+---
+
+## BLE Architecture (v1.2)
+
+```
+Board = Peripheral (advertises, hosts characteristics, receives writes)
+Phone = Central (scans, connects, writes URL + commands)
+```
+
+**Service UUID:** `a01c0000-0000-0000-0000-000000000000`
+**CMD Characteristic:** `a01c0001-0000-0000-0000-000000000000` — WRITE
+
+**Write protocol:**
+| What phone sends | Board action |
+|---|---|
+| Raw YouTube URL | Extract video ID, play on LCD |
+| `CMD:PAUSE` | Pause video |
+| `CMD:RESUME` | Resume video |
+| `CMD:STOP` | Stop video, return to home screen |
+| `CMD:VOL_UP` | Volume +10 |
+| `CMD:VOL_DOWN` | Volume -10 |
 
 ---
 
@@ -79,20 +103,22 @@ youtube-display/
 ├── setup.sh              ← run once per board
 ├── deploy.sh             ← run to start/restart app
 ├── README.md             ← this file
-├── app.yaml              ← App Lab config
+├── app.yaml              ← App Lab config (network_mode: host required)
 ├── python/
 │   ├── main.py           ← Python entry point
-│   ├── ble_central.py    ← BLE central scanner
+│   ├── ble_gatt_serve.py ← BLE peripheral GATT server (v1.2)
+│   ├── ble_central.py    ← legacy BLE scanner (replaced in v1.2)
 │   └── requirements.txt  ← Python wheel dependencies
 ├── sketch/
 │   ├── sketch.ino        ← MCU sketch (minimal Bridge only)
 │   └── sketch.yaml       ← Arduino Zephyr profile
 ├── assets/
-│   ├── index.html        ← Phone controller UI
-│   ├── splash.html       ← LCD home screen
+│   ├── index.html        ← Phone controller UI (WiFi)
+│   ├── splash.html       ← LCD home screen (clock + BLE status)
 │   ├── player.html       ← YouTube iframe player
 │   ├── admin.html        ← Developer backdoor panel
 │   └── socket.io.min.js  ← Socket.IO client library
+├── app/                  ← Flutter phone app source (yt_display_app)
 ├── wheels/               ← Pre-built Python wheels + .so libs (BLE)
 └── typelibs/             ← GObject introspection typelibs (BLE)
 ```
@@ -116,7 +142,9 @@ cd youtube-display
 bash setup.sh
 ```
 
-This installs all system dependencies, configures auto-login, creates the launcher service, sets timezone, and prepares everything for production use. Takes 2-5 minutes.
+This installs all system dependencies, configures auto-login, creates the
+launcher service, sets timezone, installs unclutter, and prepares everything
+for production use. Takes 2-5 minutes.
 
 ### Step 3 — Reboot
 
@@ -124,7 +152,8 @@ This installs all system dependencies, configures auto-login, creates the launch
 sudo reboot
 ```
 
-After reboot, the board will automatically start the App and show the home screen on the display.
+After reboot, the board will automatically start the app and show the home
+screen on the display.
 
 ### Step 4 — Deploy app
 
@@ -132,14 +161,20 @@ After reboot, the board will automatically start the App and show the home scree
 bash deploy.sh
 ```
 
-### Step 5 — Use it
+### Step 5 — Install Flutter app on phone
 
-Open your phone browser and go to:
-```
-http://BOARD_IP:7000
+Build the APK from `app/yt_display_app/` or install pre-built APK:
+```bash
+# On Windows
+cd app\yt_display_app
+flutter build apk --debug
+adb install build\app\outputs\flutter-apk\app-debug.apk
 ```
 
-Paste a YouTube URL and tap **Play on Display**.
+### Step 6 — Use it
+
+Open the Flutter app on your phone, tap **SCAN**, connect to **YT-Display**,
+paste a YouTube URL and tap send.
 
 ---
 
@@ -154,27 +189,11 @@ https://www.youtube.com/shorts/VIDEO_ID
 
 ---
 
-## Phone Controller UI
-
-Open `http://BOARD_IP:7000` in any browser on the same WiFi network.
-
-| Control | Action |
-|---|---|
-| Play on Display | Starts video on LCD |
-| ⏸ Pause | Pauses video |
-| ▶ Resume | Resumes video |
-| ⏹ Stop | Stops video, returns to home screen |
-| 🔉 Vol − | Decreases volume |
-| 🔊 Vol + | Increases volume |
-
----
-
 ## Developer Access
 
-### SSH backdoor
+### SSH
 
 ```bash
-# From your laptop — always works regardless of what's on screen
 ssh arduino@BOARD_IP
 
 # Show desktop (kills kiosk Chromium)
@@ -193,8 +212,6 @@ bash ~/ArduinoApps/youtube-display/deploy.sh
 http://BOARD_IP:7000/admin.html
 ```
 
-Provides: Show home screen, Stop launcher, Reboot board buttons.
-
 ### View live logs
 
 ```bash
@@ -205,12 +222,7 @@ arduino-app-cli app logs user:youtube-display
 
 ```bash
 echo -n "dQw4w9WgXcQ" > ~/ArduinoApps/youtube-display/cmd.txt
-```
-
-### Manual stop
-
-```bash
-echo -n "STOP" > ~/ArduinoApps/youtube-display/cmd.txt
+echo -n "STOP"        > ~/ArduinoApps/youtube-display/cmd.txt
 ```
 
 ---
@@ -220,9 +232,10 @@ echo -n "STOP" > ~/ArduinoApps/youtube-display/cmd.txt
 | What | Where | Why |
 |---|---|---|
 | LightDM auto-login | `/etc/lightdm/lightdm.conf` | No password prompt on boot |
-| App Lab GUI hidden | `~/.config/autostart/ArduinoAppLab.desktop` | Prevents flash on screen during transitions |
+| App Lab GUI hidden | `~/.config/autostart/ArduinoAppLab.desktop` | Prevents flash on screen |
 | Launcher autostart | `~/.config/autostart/youtube-display-launcher.desktop` | Starts kiosk on desktop login |
 | dbus-bridge service | `/etc/systemd/system/dbus-bridge.service` | Bridges D-Bus into Docker for BLE |
+| unclutter | system package | Hides mouse cursor on display |
 | Default app | `arduino-app-cli properties` | App starts automatically on boot |
 | Timezone | Asia/Kolkata (IST) | Correct clock on splash screen |
 
@@ -238,9 +251,11 @@ Power on
   → youtube-display App starts automatically
   → dbus-bridge socket ready
   → XFCE autostart fires launcher.sh
+  → unclutter hides cursor
   → launcher.sh waits for port 7000
   → WebUI brick ready
   → Chromium opens splash.html (home screen with clock)
+  → Board advertises as YT-Display over BLE
   → Board ready for use
 ```
 
@@ -254,10 +269,11 @@ Total boot-to-ready time: ~90 seconds
 |---|---|---|
 | Black screen on boot | LightDM auto-login not configured | Run `bash setup.sh` |
 | App Lab GUI appears on screen | ArduinoAppLab.desktop not disabled | Run `bash setup.sh` |
-| "Site not reached" on display | App not ready yet | Wait 90s from power-on |
-| Video shows thumbnail only | Chromium opened URL as tab in existing session | `bash deploy.sh` |
-| Video not playing, only audio | RAM pressure | Run `pkill -f WebKitWebProcess` |
+| Cursor visible on screen | unclutter not installed | `sudo apt install unclutter` |
 | BLE D-Bus failed | dbus-bridge not running | `sudo systemctl restart dbus-bridge` |
+| Phone can't find board | Board not advertising | Check logs for `[BLE] Advertising as YT-Display` |
+| URL characteristic not found | Wrong UUID in phone app | Must be `a01c0001-0000-0000-0000-000000000000` |
+| Video shows thumbnail only | Chromium reused existing session | `bash deploy.sh` |
 | Clock shows wrong time | NTP or timezone | `sudo timedatectl set-timezone Asia/Kolkata` |
 | App status: failed on boot | Race condition on startup | `bash deploy.sh` manually |
 
@@ -268,42 +284,12 @@ Total boot-to-ready time: ~90 seconds
 | Version | Feature | Status |
 |---|---|---|
 | v1.0 | WiFi URL → IFrame YouTube → LCD | ✅ Complete |
-| v1.1 | Smooth transitions, no flash | 🔄 In progress |
-| v1.2 | BLE URL delivery (board = central, phone = peripheral) | 🔄 Board side done, Flutter app pending |
-| v2.0 | Replace Chromium+IFrame with mpv+Invidious (lower RAM) | 📋 Planned |
-| v2.1 | QR code pairing — unique board ↔ phone bonding | 📋 Planned |
-| v3.0 | Stream any internet video (not just YouTube) | 📋 Planned |
-| v4.0 | Stream video from phone local storage | 📋 Planned |
-| deploy | Mass deployment via arduino-app-cli + custom board image | 📋 Planned |
-
----
-
-## BLE Technical Details (v1.2)
-
-**Service UUID:** `a01c0000-0000-0000-0000-000000000000`  
-**URL Characteristic:** `a01c0001-0000-0000-0000-000000000000`  
-Properties: Read + Notify  
-Value: YouTube URL as UTF-8 string
-
-The board acts as **BLE central** — it scans for devices advertising the service UUID, connects, and reads/subscribes to the URL characteristic. The phone acts as **BLE peripheral** — requires the Flutter app (in development).
-
----
-
-## Known Issues
-
-- Brief desktop flash during video→home transition (XFCE desktop visible for ~0.3s)
-- RAM usage is high (~1.3Gi) — Chromium + docker + arduino-app-cli. Board has 1.7Gi.
-- App status shows `failed` on fresh boot sometimes — `bash deploy.sh` fixes it
-- BLE connection `le-connection-abort-by-local` with some Android devices (Android RPA address rotation issue)
-
----
-
-## Hardware Notes
-
-- **USB-C port is shared** between display output and power input. If using for display, power the board via VIN pin (7-24V) or JANALOG 5V pin.
-- **Apple USB-C dongles are incompatible** — use Anker or Noovoo hubs.
-- **Voltage warning:** MPU headers (JCTL, JMEDIA) are 1.8V. MCU headers (JDIGITAL, JANALOG) are 3.3V. Never mix.
-- **GPU acceleration disabled** (`--disable-gpu`) — Chromium uses software rendering. Video playback works but uses more CPU.
+| v1.1 | Smooth transitions, no flash | 🔄 Partial |
+| v1.2 | Flutter BLE app, board as peripheral | ✅ Complete |
+| v1.3 | Parent queue + kid viewing schedule | 🔄 In progress |
+| v2.1 | QR code pairing — exclusive board ↔ phone bond | 📋 Planned |
+| v3.0 | Stream any internet video URL | 📋 Planned |
+| v4.0 | Offline USB video playback | 📋 Planned |
 
 ---
 
@@ -311,17 +297,31 @@ The board acts as **BLE central** — it scans for devices advertising the servi
 
 ### System packages
 - `socat` — D-Bus socket bridge
+- `unclutter` — hide mouse cursor on display
 - `libcairo2-dev`, `libgirepository-2.0-dev` — GObject/dbus Python bindings
 - `curl` — port readiness check in launcher
 - `chromium` — video player (pre-installed on AQ2)
 
-### Python (installed via wheels)
+### Python (installed via wheels in project folder)
 - `dbus-python` 1.4.0
 - `pycairo` 1.29.0
 - `pygobject` 3.56.2
 
+### Flutter app dependencies
+- `flutter_blue_plus` ^1.35.2
+- `permission_handler` ^11.3.1
+- `provider` ^6.1.2
+
 ### App Lab Bricks
 - `arduino:web_ui` — WebSocket server at port 7000
+
+---
+
+## Known Issues
+
+- Brief desktop flash during video→home transition (~0.3s)
+- RAM usage is high (~1.3Gi) — Chromium + Docker + arduino-app-cli
+- Phone name not yet shown on LCD splash screen (planned)
 
 ---
 

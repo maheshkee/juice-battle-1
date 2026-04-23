@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# youtube-display — One-time setup script
+# youtube-display -- One-time setup script
 # Run this ONCE on a fresh Arduino UNO Q board after cloning the repo.
 # Usage: bash setup.sh
 # =============================================================================
@@ -24,22 +24,23 @@ fail() { echo -e "${RED}[FAIL]${NC}  $1"; exit 1; }
 
 echo ""
 echo "========================================================"
-echo "  youtube-display — Board Setup"
+echo "  youtube-display -- Board Setup"
 echo "  Arduino UNO Q (AQ2)"
 echo "========================================================"
 echo ""
 
-# ── 1. Verify we are on the right board ──────────────────────────────────────
+# -- 1. Verify we are on the right board --------------------------------------
 log "Checking board..."
 if [ ! -f /etc/arduino-release ] && ! uname -r | grep -q "g0dd6551"; then
     warn "This doesn't look like an Arduino UNO Q board. Proceeding anyway..."
 fi
 
-# ── 2. Install system packages ────────────────────────────────────────────────
+# -- 2. Install system packages -----------------------------------------------
 log "Installing system packages..."
 sudo apt update -qq
 sudo apt install -y \
     socat \
+    unclutter \
     libcairo2-dev \
     libgirepository-2.0-dev \
     curl \
@@ -48,7 +49,7 @@ sudo apt install -y \
     2>/dev/null
 log "System packages installed."
 
-# ── 3. Build Python wheels (if not already present) ───────────────────────────
+# -- 3. Build Python wheels (if not already present) --------------------------
 log "Checking Python wheels..."
 mkdir -p "$WHEELS_DIR"
 
@@ -58,10 +59,10 @@ if [ ! -f "$WHEELS_DIR/dbus_python"*.whl ] 2>/dev/null; then
     pip3 wheel PyGObject --wheel-dir "$WHEELS_DIR" --quiet
     log "Wheels built."
 else
-    log "Wheels already present — skipping build."
+    log "Wheels already present -- skipping build."
 fi
 
-# ── 4. Copy required shared libraries into wheels/ ────────────────────────────
+# -- 4. Copy required shared libraries into wheels/ ---------------------------
 log "Copying shared libraries..."
 for lib in \
     /lib/aarch64-linux-gnu/libdbus-1.so.3 \
@@ -83,7 +84,7 @@ for lib in \
 done
 log "Shared libraries copied."
 
-# ── 5. Copy GObject typelibs ──────────────────────────────────────────────────
+# -- 5. Copy GObject typelibs -------------------------------------------------
 log "Copying typelibs..."
 mkdir -p "$TYPELIBS_DIR"
 for typelib in \
@@ -101,7 +102,7 @@ for typelib in \
 done
 log "Typelibs copied."
 
-# ── 6. Create dbus-bridge systemd service ─────────────────────────────────────
+# -- 6. Create dbus-bridge systemd service ------------------------------------
 log "Creating dbus-bridge service..."
 sudo tee /etc/systemd/system/dbus-bridge.service > /dev/null << EOF
 [Unit]
@@ -123,7 +124,7 @@ sudo systemctl enable dbus-bridge.service
 sudo systemctl start dbus-bridge.service
 log "dbus-bridge service created and started."
 
-# ── 7. Configure LightDM auto-login ──────────────────────────────────────────
+# -- 7. Configure LightDM auto-login ------------------------------------------
 log "Configuring LightDM auto-login..."
 LIGHTDM_CONF="/etc/lightdm/lightdm.conf"
 if ! grep -q "autologin-user=arduino" "$LIGHTDM_CONF"; then
@@ -133,7 +134,7 @@ else
     log "LightDM auto-login already configured."
 fi
 
-# ── 8. Disable Arduino App Lab GUI autostart ──────────────────────────────────
+# -- 8. Disable Arduino App Lab GUI autostart ---------------------------------
 log "Disabling App Lab GUI autostart..."
 mkdir -p "$HOME/.config/autostart"
 if [ -f /etc/xdg/autostart/ArduinoAppLab.desktop ]; then
@@ -141,10 +142,10 @@ if [ -f /etc/xdg/autostart/ArduinoAppLab.desktop ]; then
     echo "Hidden=true" >> "$HOME/.config/autostart/ArduinoAppLab.desktop"
     log "App Lab GUI autostart disabled."
 else
-    log "App Lab autostart file not found — skipping."
+    log "App Lab autostart file not found -- skipping."
 fi
 
-# ── 9. Create launcher.sh ─────────────────────────────────────────────────────
+# -- 9. Create launcher.sh ----------------------------------------------------
 log "Creating launcher.sh..."
 cat > "$LAUNCHER" << 'LAUNCHEREOF'
 #!/bin/bash
@@ -159,6 +160,9 @@ xset -dpms
 xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor1/color-style -s 0 2>/dev/null
 xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor1/image-show -s false 2>/dev/null
 xfconf-query -c xfce4-panel -p /panels/panel-2/autohide-behavior -s 1 2>/dev/null
+
+# Hide cursor on display
+unclutter -idle 0 -root &
 
 echo "[LAUNCHER] Waiting for port 7000..."
 until curl -s http://localhost:7000 > /dev/null 2>&1; do
@@ -204,7 +208,7 @@ LAUNCHEREOF
 chmod +x "$LAUNCHER"
 log "launcher.sh created."
 
-# ── 10. Create XFCE autostart entry ──────────────────────────────────────────
+# -- 10. Create XFCE autostart entry ------------------------------------------
 log "Creating XFCE autostart entry..."
 mkdir -p "$HOME/.config/autostart"
 cat > "$HOME/.config/autostart/youtube-display-launcher.desktop" << EOF
@@ -218,30 +222,34 @@ X-GNOME-Autostart-enabled=true
 EOF
 log "XFCE autostart entry created."
 
-# ── 11. Set timezone ──────────────────────────────────────────────────────────
+# -- 11. Set timezone ---------------------------------------------------------
 log "Setting timezone to Asia/Kolkata..."
 sudo timedatectl set-ntp true
 sudo timedatectl set-timezone Asia/Kolkata
 log "Timezone set."
 
-# ── 12. Set youtube-display as default app ────────────────────────────────────
+# -- 12. Set youtube-display as default app -----------------------------------
 log "Setting youtube-display as default App Lab app..."
 arduino-app-cli properties set default user:youtube-display
 log "Default app set."
 
-# ── 13. Set shell aliases ─────────────────────────────────────────────────────
+# -- 13. Set shell aliases ----------------------------------------------------
 log "Adding shell aliases..."
 if ! grep -q "alias debug-mode" "$HOME/.bashrc"; then
     echo "" >> "$HOME/.bashrc"
     echo "# youtube-display developer aliases" >> "$HOME/.bashrc"
     echo "alias debug-mode='pkill -f /usr/lib/chromium/chromium && echo Desktop restored'" >> "$HOME/.bashrc"
     echo "alias kiosk-mode='$LAUNCHER &'" >> "$HOME/.bashrc"
+    echo "alias yt-logs='arduino-app-cli app logs user:youtube-display 2>/dev/null | tail -30'" >> "$HOME/.bashrc"
+    echo "alias yt-restart='arduino-app-cli app stop user:youtube-display && rm -rf ~/ArduinoApps/youtube-display/.cache && arduino-app-cli app start user:youtube-display'" >> "$HOME/.bashrc"
+    echo "alias yt-stop='arduino-app-cli app stop user:youtube-display'" >> "$HOME/.bashrc"
+    echo "alias yt-start='arduino-app-cli app start user:youtube-display'" >> "$HOME/.bashrc"
     log "Aliases added to .bashrc."
 else
     log "Aliases already in .bashrc."
 fi
 
-# ── 14. Mark setup complete ───────────────────────────────────────────────────
+# -- 14. Mark setup complete --------------------------------------------------
 touch "$HOME/.youtube-display-setup-done"
 
 echo ""
@@ -251,11 +259,14 @@ echo ""
 echo "  Next steps:"
 echo "  1. Reboot the board:  sudo reboot"
 echo "  2. After reboot, run: bash deploy.sh"
-echo "  3. Open phone browser: http://$(hostname -I | awk '{print $1}'):7000"
+echo "  3. Install Flutter app on phone from app/yt_display_app/"
+echo "  4. Open app, tap SCAN, connect to YT-Display"
 echo ""
 echo "  Developer commands (via SSH):"
-echo "  debug-mode  — show desktop"
-echo "  kiosk-mode  — return to splash screen"
-echo "  bash deploy.sh  — restart app"
+echo "  debug-mode   -- show desktop"
+echo "  kiosk-mode   -- return to splash screen"
+echo "  yt-logs      -- view live app logs"
+echo "  yt-restart   -- stop, clear cache, restart app"
+echo "  bash deploy.sh  -- restart app"
 echo "========================================================"
 echo ""

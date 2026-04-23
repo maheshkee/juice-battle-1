@@ -148,13 +148,14 @@ class BLEGattServer:
     Advertises as YT-Display, receives URL and CMD writes from phone.
 
     Usage:
-        server = BLEGattServer(on_url_received, on_cmd_received)
-        # callbacks fire on GLib thread — use GLib.idle_add if touching UI/state
+        server = BLEGattServer(on_url_received, on_cmd_received, on_device_connected, on_device_disconnected)
     """
 
-    def __init__(self, on_url, on_cmd):
-        self._on_url  = on_url
-        self._on_cmd  = on_cmd
+    def __init__(self, on_url, on_cmd, on_connected=None, on_disconnected=None):
+        self._on_url          = on_url
+        self._on_cmd          = on_cmd
+        self._on_connected    = on_connected
+        self._on_disconnected = on_disconnected
         self._ready   = threading.Event()
         t = threading.Thread(target=self._run, daemon=True)
         t.start()
@@ -173,6 +174,14 @@ class BLEGattServer:
             print(f"[BLE] D-Bus failed: {e}", flush=True)
             self._ready.set()
             return
+
+        # Monitor device connections via BlueZ PropertiesChanged signal
+        bus.add_signal_receiver(
+            self._on_properties_changed,
+            dbus_interface="org.freedesktop.DBus.Properties",
+            signal_name="PropertiesChanged",
+            path_keyword="path",
+        )
 
         try:
             adapter  = bus.get_object(BLUEZ, "/org/bluez/hci0")
@@ -206,3 +215,28 @@ class BLEGattServer:
         )
 
         GLib.MainLoop().run()
+
+    def _on_properties_changed(self, interface, changed, invalidated, path):
+        if interface != "org.bluez.Device1":
+            return
+        if "Connected" not in changed:
+            return
+        connected = bool(changed["Connected"])
+        try:
+            from dbus import SystemBus
+            bus = SystemBus()
+            props = dbus.Interface(
+                bus.get_object(BLUEZ, path),
+                "org.freedesktop.DBus.Properties"
+            )
+            name = str(props.Get("org.bluez.Device1", "Name"))
+        except Exception:
+            name = "Phone"
+        if connected:
+            print(f"[BLE] Phone connected: {name}", flush=True)
+            if self._on_connected:
+                GLib.idle_add(self._on_connected, name)
+        else:
+            print(f"[BLE] Phone disconnected: {name}", flush=True)
+            if self._on_disconnected:
+                GLib.idle_add(self._on_disconnected)

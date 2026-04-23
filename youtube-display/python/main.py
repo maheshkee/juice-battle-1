@@ -104,6 +104,14 @@ def on_ble_url(url):
         f.write(video_id)
     ui.send_message("status", {"state": "playing", "video_id": video_id})
 
+def on_ble_connected(device_name):
+    print(f'[BLE] Connected: {device_name}', flush=True)
+    ui.send_message("ble_connected", {"device": device_name})
+
+def on_ble_disconnected():
+    print('[BLE] Phone disconnected', flush=True)
+    ui.send_message("ble_disconnected", {})
+
 def on_ble_cmd(cmd):
     print(f'[BLE] CMD received: {cmd}', flush=True)
     action = cmd.replace("CMD:", "").strip().lower()
@@ -144,7 +152,7 @@ def on_admin(sid, data):
 
 install_launcher_if_needed()
 
-ble = BLEGattServer(on_url=on_ble_url, on_cmd=on_ble_cmd)
+ble = BLEGattServer(on_url=on_ble_url, on_cmd=on_ble_cmd, on_connected=on_ble_connected, on_disconnected=on_ble_disconnected)
 # ble starts automatically on init
 
 ui.on_message("play_video", on_play_video)
