@@ -21,7 +21,7 @@ for lib in [
 
 sys.path.insert(0, '/usr/lib/python3/dist-packages')
 
-from ble_central import BLECentral
+from ble_gatt_serve import BLEGattServer
 
 ui = WebUI()
 CMD_FILE = "/app/cmd.txt"
@@ -104,6 +104,16 @@ def on_ble_url(url):
         f.write(video_id)
     ui.send_message("status", {"state": "playing", "video_id": video_id})
 
+def on_ble_cmd(cmd):
+    print(f'[BLE] CMD received: {cmd}', flush=True)
+    action = cmd.replace("CMD:", "").strip().lower()
+    if action == "stop":
+        with open(CMD_FILE, "w") as f:
+            f.write("STOP")
+        ui.send_message("status", {"state": "stopped"})
+    else:
+        ui.send_message("player_control", {"action": action})
+
 def on_play_video(sid, data):
     url = data.get("url", "")
     video_id = extract_video_id(url)
@@ -134,8 +144,8 @@ def on_admin(sid, data):
 
 install_launcher_if_needed()
 
-ble = BLECentral(on_url_received=on_ble_url)
-ble.start()
+ble = BLEGattServer(on_url=on_ble_url, on_cmd=on_ble_cmd)
+# ble starts automatically on init
 
 ui.on_message("play_video", on_play_video)
 ui.on_message("control", on_control)
