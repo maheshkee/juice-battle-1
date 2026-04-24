@@ -7,6 +7,7 @@ import '../services/board_state.dart';
 import '../widgets/connect_section.dart';
 import '../widgets/youtube_section.dart';
 import '../widgets/player_controls.dart';
+import '../widgets/bt_audio_section.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -39,7 +40,6 @@ class _HomeScreenState extends State<HomeScreen> {
       Permission.bluetoothConnect,
       Permission.location,
     ].request();
-    // Small delay then re-check — Android sometimes needs a moment
     await Future.delayed(const Duration(milliseconds: 500));
   }
 
@@ -90,6 +90,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   onVolUp:   () => ble.playerVolUp(),
                   onVolDown: () => ble.playerVolDown(),
                 ),
+                const SizedBox(height: 12),
+                BtAudioSection(
+                  enabled: connected,
+                  ble:     ble,
+                ),
               ]),
             ),
           ),
@@ -139,7 +144,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          child: const Icon(Icons.play_circle_fill, color: Colors.white, size: 22),
+          child: const Icon(Icons.play_circle_fill,
+            color: Colors.white, size: 22),
         ),
         const SizedBox(width: 12),
         const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -167,17 +173,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Container(
-              width: 7,
-              height: 7,
+              width: 7, height: 7,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: statusColor,
-                boxShadow: [
-                  BoxShadow(
-                    color: statusColor.withOpacity(0.6),
-                    blurRadius: 8,
-                  ),
-                ],
+                boxShadow: [BoxShadow(
+                  color: statusColor.withOpacity(0.6),
+                  blurRadius: 8,
+                )],
               ),
             ),
             const SizedBox(width: 6),

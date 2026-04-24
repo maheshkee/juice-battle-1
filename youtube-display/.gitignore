@@ -3,3 +3,18 @@ __pycache__/
 *.pyc
 cmd.txt
 data/
+# Runtime files
+bt_cmd.txt
+bt_result.txt
+cmd.txt
+dbus.sock
+launcher.sock
+
+# Backup files
+*.bak
+*.bak2
+
+# Cache
+.cache/
+__pycache__/
+*.pyc

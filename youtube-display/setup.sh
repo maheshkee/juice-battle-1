@@ -11,7 +11,7 @@ APP_NAME="youtube-display"
 APP_DIR="/home/arduino/ArduinoApps/youtube-display"
 WHEELS_DIR="$APP_DIR/wheels"
 TYPELIBS_DIR="$APP_DIR/typelibs"
-LAUNCHER="$HOME/launcher.sh"
+LAUNCHER="$HOME/ArduinoApps/youtube-display/launcher.sh"
 
 GREEN='\033[0;32m'
 AMBER='\033[0;33m'
@@ -46,6 +46,12 @@ sudo apt install -y \
     curl \
     xdotool \
     x11-utils \
+    bluetooth \
+    bluez \
+    pipewire \
+    pipewire-pulse \
+    wireplumber \
+    libspa-0.2-bluetooth \
     2>/dev/null
 log "System packages installed."
 
@@ -145,111 +151,110 @@ else
     log "App Lab autostart file not found -- skipping."
 fi
 
-# -- 9. Create launcher.sh ----------------------------------------------------
-log "Creating launcher.sh..."
-cat > "$LAUNCHER" << 'LAUNCHEREOF'
-#!/bin/bash
-export DISPLAY=:0
-export XAUTHORITY=/home/arduino/.Xauthority
-CMD_FILE="/home/arduino/ArduinoApps/youtube-display/cmd.txt"
-
-xset s off
-xset s noblank
-xset -dpms
-
-xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor1/color-style -s 0 2>/dev/null
-xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor1/image-show -s false 2>/dev/null
-xfconf-query -c xfce4-panel -p /panels/panel-2/autohide-behavior -s 1 2>/dev/null
-
-# Hide cursor on display
-unclutter -idle 0 -root &
-
-echo "[LAUNCHER] Waiting for port 7000..."
-until curl -s http://localhost:7000 > /dev/null 2>&1; do
-    sleep 1
-done
-echo "[LAUNCHER] Ready."
-
-pkill -f "/usr/lib/chromium/chromium" 2>/dev/null
-sleep 0.5
-rm -rf /tmp/chrome-splash
-/usr/bin/chromium --kiosk \
-    --no-sandbox --disable-gpu \
-    --noerrdialogs --disable-infobars \
-    --user-data-dir=/tmp/chrome-splash \
-    "http://localhost:7000/splash.html" &
-
-while true; do
-    if [ -f "$CMD_FILE" ]; then
-        CMD=$(cat "$CMD_FILE")
-        rm -f "$CMD_FILE"
-        pkill -f "/usr/lib/chromium/chromium" 2>/dev/null
-        sleep 0.3
-        if [ "$CMD" = "STOP" ]; then
-            rm -rf /tmp/chrome-splash
-            /usr/bin/chromium --kiosk \
-                --no-sandbox --disable-gpu \
-                --noerrdialogs --disable-infobars \
-                --user-data-dir=/tmp/chrome-splash \
-                "http://localhost:7000/splash.html" &
-        else
-            rm -rf /tmp/chrome-player
-            /usr/bin/chromium --kiosk \
-                --no-sandbox --disable-gpu \
-                --noerrdialogs --disable-infobars \
-                --autoplay-policy=no-user-gesture-required \
-                --user-data-dir=/tmp/chrome-player \
-                "http://localhost:7000/player.html?v=$CMD" &
-        fi
-    fi
-    sleep 0.5
-done
-LAUNCHEREOF
-chmod +x "$LAUNCHER"
-log "launcher.sh created."
-
-# -- 10. Create XFCE autostart entry ------------------------------------------
+# -- 9. Create XFCE autostart entry for launcher ------------------------------
 log "Creating XFCE autostart entry..."
 mkdir -p "$HOME/.config/autostart"
 cat > "$HOME/.config/autostart/youtube-display-launcher.desktop" << EOF
 [Desktop Entry]
 Type=Application
 Name=YouTube Display Launcher
-Exec=$LAUNCHER
+Exec=bash $LAUNCHER
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
 EOF
 log "XFCE autostart entry created."
 
-# -- 11. Set timezone ---------------------------------------------------------
+# -- 10. Set timezone ---------------------------------------------------------
 log "Setting timezone to Asia/Kolkata..."
 sudo timedatectl set-ntp true
 sudo timedatectl set-timezone Asia/Kolkata
 log "Timezone set."
 
-# -- 12. Set youtube-display as default app -----------------------------------
+# -- 11. Set youtube-display as default app -----------------------------------
 log "Setting youtube-display as default App Lab app..."
-arduino-app-cli properties set default user:youtube-display
+arduino-app-cli properties set default user:youtube-display 2>/dev/null || \
+    warn "Could not set default app -- set manually after reboot"
 log "Default app set."
 
-# -- 13. Set shell aliases ----------------------------------------------------
+# -- 12. Install bt-autoconnect service ---------------------------------------
+log "Setting up Bluetooth auto-connect service..."
+
+# Install bt-autoconnect.py to /usr/local/bin/
+if [ -f "$APP_DIR/bt-autoconnect.py" ]; then
+    sudo cp "$APP_DIR/bt-autoconnect.py" /usr/local/bin/bt-autoconnect.py
+    sudo chmod +x /usr/local/bin/bt-autoconnect.py
+    log "bt-autoconnect.py installed to /usr/local/bin/"
+else
+    warn "bt-autoconnect.py not found in $APP_DIR -- skipping BT auto-connect"
+fi
+
+# Create systemd user service
+mkdir -p "$HOME/.config/systemd/user"
+cat > "$HOME/.config/systemd/user/bt-autoconnect.service" << 'EOF'
+[Unit]
+Description=Bluetooth Auto-Connect for trusted audio devices
+After=bluetooth.target pipewire.service wireplumber.service
+Wants=pipewire.service wireplumber.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/bt-autoconnect.py
+StandardOutput=journal
+StandardError=journal
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable bt-autoconnect.service
+log "bt-autoconnect.service installed and enabled."
+
+# -- 13. Create WirePlumber BT A2DP rule --------------------------------------
+log "Creating WirePlumber A2DP auto-connect rule..."
+sudo mkdir -p /etc/pipewire/wireplumber.conf.d
+sudo tee /etc/pipewire/wireplumber.conf.d/51-bt-autoconnect.conf > /dev/null << 'EOF'
+# Auto-connect Bluetooth audio devices using A2DP (high quality stereo)
+# Applies to ALL Bluetooth audio devices - no device-specific config needed
+monitor.bluez.rules = [
+  {
+    matches = [
+      {
+        device.name = "~bluez_card.*"
+      }
+    ]
+    actions = {
+      update-props = {
+        bluez5.auto-connect  = [ a2dp_sink ]
+        bluez5.hw-volume     = [ a2dp_sink ]
+      }
+    }
+  }
+]
+EOF
+log "WirePlumber A2DP rule created."
+
+# -- 14. Set shell aliases ----------------------------------------------------
 log "Adding shell aliases..."
 if ! grep -q "alias debug-mode" "$HOME/.bashrc"; then
-    echo "" >> "$HOME/.bashrc"
-    echo "# youtube-display developer aliases" >> "$HOME/.bashrc"
-    echo "alias debug-mode='pkill -f /usr/lib/chromium/chromium && echo Desktop restored'" >> "$HOME/.bashrc"
-    echo "alias kiosk-mode='$LAUNCHER &'" >> "$HOME/.bashrc"
-    echo "alias yt-logs='arduino-app-cli app logs user:youtube-display 2>/dev/null | tail -30'" >> "$HOME/.bashrc"
-    echo "alias yt-restart='arduino-app-cli app stop user:youtube-display && rm -rf ~/ArduinoApps/youtube-display/.cache && arduino-app-cli app start user:youtube-display'" >> "$HOME/.bashrc"
-    echo "alias yt-stop='arduino-app-cli app stop user:youtube-display'" >> "$HOME/.bashrc"
-    echo "alias yt-start='arduino-app-cli app start user:youtube-display'" >> "$HOME/.bashrc"
+    cat >> "$HOME/.bashrc" << EOF
+
+# youtube-display developer aliases
+alias debug-mode='pkill -f /usr/lib/chromium/chromium && echo Desktop restored'
+alias kiosk-mode='bash $LAUNCHER &'
+alias yt-logs='arduino-app-cli app logs user:youtube-display 2>/dev/null | tail -30'
+alias yt-restart='arduino-app-cli app stop user:youtube-display && rm -rf ~/ArduinoApps/youtube-display/.cache && arduino-app-cli app start user:youtube-display'
+alias yt-stop='arduino-app-cli app stop user:youtube-display'
+alias yt-start='arduino-app-cli app start user:youtube-display'
+EOF
     log "Aliases added to .bashrc."
 else
     log "Aliases already in .bashrc."
 fi
 
-# -- 14. Mark setup complete --------------------------------------------------
+# -- 15. Mark setup complete --------------------------------------------------
 touch "$HOME/.youtube-display-setup-done"
 
 echo ""
@@ -258,11 +263,25 @@ echo "  Setup complete!"
 echo ""
 echo "  Next steps:"
 echo "  1. Reboot the board:  sudo reboot"
-echo "  2. After reboot, run: bash deploy.sh"
-echo "  3. Install Flutter app on phone from app/yt_display_app/"
-echo "  4. Open app, tap SCAN, connect to YT-Display"
+echo "  2. Pair your Bluetooth speaker (one time only):"
+echo "     bluetoothctl"
+echo "     scan on"
+echo "     -- wait for speaker name to appear --"
+echo "     scan off"
+echo "     pair <MAC>"
+echo "     trust <MAC>"
+echo "     connect <MAC>"
+echo "     exit"
 echo ""
-echo "  Developer commands (via SSH):"
+echo "  NOTE: The app scanner only shows BLE-capable speakers."
+echo "  Classic-BT-only earbuds must be paired via bluetoothctl."
+echo "  Once trusted they auto-connect on every reboot."
+echo ""
+echo "  3. Deploy the app:    bash deploy.sh"
+echo "  4. Install Flutter app on phone from app/yt_display_app/"
+echo "  5. Open app, tap SCAN, connect to YT-Display"
+echo ""
+echo "  Developer commands (via SSH after reboot):"
 echo "  debug-mode   -- show desktop"
 echo "  kiosk-mode   -- return to splash screen"
 echo "  yt-logs      -- view live app logs"
