@@ -156,6 +156,7 @@ function initPlayer(videoId) {
       onReady: e => e.target.playVideo(),
       onStateChange: e => {
         if (e.data === YT.PlayerState.ENDED && currentVideoId) {
+                socket.emit("video_ended", {videoId: currentVideoId});
           player.loadVideoById(currentVideoId);
         }
       }
