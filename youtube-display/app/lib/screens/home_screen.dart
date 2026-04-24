@@ -8,6 +8,9 @@ import '../widgets/connect_section.dart';
 import '../widgets/youtube_section.dart';
 import '../widgets/player_controls.dart';
 import '../widgets/bt_audio_section.dart';
+import '../widgets/queue_section.dart';
+import '../widgets/queue_controls.dart';
+import '../widgets/local_section.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,6 +28,10 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ble   = context.read<BleService>();
       final board = context.read<BoardState>();
+
+      // Wire board state into ble service for EVT handling
+      ble.setBoardState(board);
+
       _subs.add(ble.connState.listen((s) {
         setState(() {});
         if (s == ConnState.disconnected) board.clearCurrentUrl();
@@ -63,12 +70,15 @@ class _HomeScreenState extends State<HomeScreen> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               child: Column(children: [
+                // Connect
                 ConnectSection(
                   state:        ble.state,
                   onScan:       () => ble.startScan(),
                   onDisconnect: () => ble.disconnect(),
                 ),
                 const SizedBox(height: 12),
+
+                // YouTube single play
                 YouTubeSection(
                   currentUrl: board.currentUrl,
                   history:    board.urlHistory,
@@ -79,6 +89,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
+
+                // Playback controls
                 PlayerControls(
                   enabled:   connected,
                   onPause:   () => ble.playerPause(),
@@ -91,6 +103,43 @@ class _HomeScreenState extends State<HomeScreen> {
                   onVolDown: () => ble.playerVolDown(),
                 ),
                 const SizedBox(height: 12),
+
+                // Queue builder
+                QueueSection(
+                  enabled: connected,
+                  board:   board,
+                  onSend: () {
+                    final today = DateTime.now();
+                    final date  = '${today.year}-'
+                        '${today.month.toString().padLeft(2,'0')}-'
+                        '${today.day.toString().padLeft(2,'0')}';
+                    ble.queueSet(board.pendingQueue, date);
+                  },
+                ),
+                const SizedBox(height: 12),
+
+                // Queue controls
+                QueueControls(
+                  enabled:    connected,
+                  queueState: board.queueState,
+                  onPlay:     () => ble.queuePlay(),
+                  onReplay:   () => ble.queueReplay(),
+                  onSkip:     () => ble.queueSkip(),
+                  onPause:    () => ble.queuePause(),
+                  onResume:   () => ble.queueResume(),
+                  onStop:     () => ble.queueStop(),
+                ),
+                const SizedBox(height: 12),
+
+                // Local storage
+                LocalSection(
+                  enabled: connected,
+                  board:   board,
+                  ble:     ble,
+                ),
+                const SizedBox(height: 12),
+
+                // BT audio
                 BtAudioSection(
                   enabled: connected,
                   ble:     ble,
@@ -127,8 +176,7 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
       child: Row(children: [
         Container(
-          width: 40,
-          height: 40,
+          width: 40, height: 40,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               colors: [Color(0xFFFF0000), Color(0xFF8B0000)],
@@ -136,32 +184,20 @@ class _HomeScreenState extends State<HomeScreen> {
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFFFF0000).withOpacity(0.3),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            boxShadow: [BoxShadow(
+              color: const Color(0xFFFF0000).withOpacity(0.3),
+              blurRadius: 12, offset: const Offset(0, 4),
+            )],
           ),
-          child: const Icon(Icons.play_circle_fill,
-            color: Colors.white, size: 22),
+          child: const Icon(Icons.play_circle_fill, color: Colors.white, size: 22),
         ),
         const SizedBox(width: 12),
         const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('YT DISPLAY',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-              letterSpacing: 2,
-            )),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
+              color: Colors.white, letterSpacing: 2)),
           Text('Arduino UNO Q',
-            style: TextStyle(
-              fontSize: 10,
-              color: Color(0xFF4A5568),
-              letterSpacing: 1,
-            )),
+            style: TextStyle(fontSize: 10, color: Color(0xFF4A5568), letterSpacing: 1)),
         ]),
         const Spacer(),
         Container(
@@ -175,22 +211,15 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               width: 7, height: 7,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: statusColor,
+                shape: BoxShape.circle, color: statusColor,
                 boxShadow: [BoxShadow(
-                  color: statusColor.withOpacity(0.6),
-                  blurRadius: 8,
-                )],
+                  color: statusColor.withOpacity(0.6), blurRadius: 8)],
               ),
             ),
             const SizedBox(width: 6),
             Text(statusText,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: statusColor,
-                letterSpacing: 1,
-              )),
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                color: statusColor, letterSpacing: 1)),
           ]),
         ),
       ]),

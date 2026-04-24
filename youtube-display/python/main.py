@@ -46,6 +46,14 @@ def write_cmd(cmd):
 
 
 def push_evt(data):
+    # Send via BLE EVT characteristic to phone
+    # ble may not be initialized yet at module load time
+    # so we use a late-binding approach
+    try:
+        ble.push_evt(data)
+    except Exception:
+        pass
+    # Also send via Socket.IO for web dashboard
     ui.send_message(data.get("event", "evt"), data)
 
 
@@ -196,8 +204,10 @@ def on_ble_cmd(cmd):
         queue_engine.goto(raw.split(":", 1)[1])
     elif raw == "QUEUE_PAUSE":
         queue_engine.pause()
+        ui.send_message("player_control", {"action": "pause"})
     elif raw == "QUEUE_RESUME":
         queue_engine.resume()
+        ui.send_message("player_control", {"action": "resume"})
     elif raw == "QUEUE_STOP":
         queue_engine.stop()
     elif raw.startswith("QUEUE_SET:"):
