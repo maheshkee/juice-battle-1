@@ -113,7 +113,9 @@ class QueueEngine:
         if self.status == "paused" and self.queue:
             self.status = "playing"
             self._save()
-            self._play_current()
+            self._push_status()
+            # Don't call _play_current() — that restarts video from beginning
+            # Just signal the player to resume via main.py
 
     def stop(self):
         """CMD:QUEUE_STOP"""

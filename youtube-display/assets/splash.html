@@ -204,7 +204,7 @@ function showLocal(filename) {
   document.getElementById("local-wrap").style.display  = "block";
 
   const vid = document.getElementById("local-video");
-  vid.src = "/assets/videos/" + filename;
+  vid.src = "/videos/" + filename;
   vid.load();
   vid.play().catch(e => console.log("[LOCAL] play error:", e));
 
