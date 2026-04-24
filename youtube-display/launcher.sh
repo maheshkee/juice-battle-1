@@ -1,7 +1,6 @@
 #!/bin/bash
 export DISPLAY=:0
 export XAUTHORITY=/home/arduino/.Xauthority
-CMD_FILE="/home/arduino/ArduinoApps/youtube-display/cmd.txt"
 
 xset s off
 xset s noblank
@@ -12,8 +11,8 @@ xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor1/color-style -s 0
 xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor1/image-show -s false
 xfconf-query -c xfce4-panel -p /panels/panel-2/autohide-behavior -s 1
 
-# Hide cursor
 unclutter -idle 0 -root &
+
 echo "[LAUNCHER] Waiting for port 7000..."
 until curl -s http://localhost:7000 > /dev/null 2>&1; do
     sleep 1
@@ -22,39 +21,18 @@ echo "[LAUNCHER] Ready."
 
 pkill -f "/usr/lib/chromium/chromium" 2>/dev/null
 sleep 0.5
-rm -rf /tmp/chrome-splash
+rm -rf /tmp/chrome-kiosk
 /usr/bin/chromium --kiosk \
     --no-sandbox --disable-gpu \
     --noerrdialogs --disable-infobars \
-    --user-data-dir=/tmp/chrome-splash \
+    --autoplay-policy=no-user-gesture-required \
+    --user-data-dir=/tmp/chrome-kiosk \
     "http://localhost:7000/splash.html" &
 
+# BT command bridge — untouched
+BT_CMD_FILE="/home/arduino/ArduinoApps/youtube-display/bt_cmd.txt"
+BT_RESULT_FILE="/home/arduino/ArduinoApps/youtube-display/bt_result.txt"
 while true; do
-    if [ -f "$CMD_FILE" ]; then
-        CMD=$(cat "$CMD_FILE")
-        rm -f "$CMD_FILE"
-        pkill -f "/usr/lib/chromium/chromium" 2>/dev/null
-        sleep 0.3
-        if [ "$CMD" = "STOP" ]; then
-            rm -rf /tmp/chrome-splash
-            /usr/bin/chromium --kiosk \
-                --no-sandbox --disable-gpu \
-                --noerrdialogs --disable-infobars \
-                --user-data-dir=/tmp/chrome-splash \
-                "http://localhost:7000/splash.html" &
-        else
-            rm -rf /tmp/chrome-player
-            /usr/bin/chromium --kiosk \
-                --no-sandbox --disable-gpu \
-                --noerrdialogs --disable-infobars \
-                --autoplay-policy=no-user-gesture-required \
-                --user-data-dir=/tmp/chrome-player \
-                "http://localhost:7000/player.html?v=$CMD" &
-        fi
-    fi
-    # BT command bridge
-    BT_CMD_FILE="/home/arduino/ArduinoApps/youtube-display/bt_cmd.txt"
-    BT_RESULT_FILE="/home/arduino/ArduinoApps/youtube-display/bt_result.txt"
     if [ -f "$BT_CMD_FILE" ]; then
         BT_CMD=$(cat "$BT_CMD_FILE")
         rm -f "$BT_CMD_FILE"

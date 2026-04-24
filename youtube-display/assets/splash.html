@@ -7,6 +7,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; cursor: none; }
   body { background: #0f0f0f; width: 100vw; height: 100vh; overflow: hidden;
     font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+
   #home {
     width: 100vw; height: 100vh;
     display: flex; flex-direction: column;
@@ -18,6 +19,18 @@
     top: 0; left: 0; background: #000;
   }
   #yt-player { width: 100%; height: 100%; }
+
+  #local-wrap {
+    width: 100vw; height: 100vh;
+    display: none; position: fixed;
+    top: 0; left: 0; background: #000;
+  }
+  #local-video {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    background: #000;
+  }
+
   .logo {
     width: 80px; height: 80px; background: #ff0000;
     border-radius: 18px; display: flex; align-items: center;
@@ -49,21 +62,13 @@
   .dot:nth-child(3) { animation-delay: 0.4s; }
   .colon { animation: blink 1s step-end infinite; }
   .ble-status {
-    margin-top: 28px;
-    font-size: 12px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: #1a1a1a;
-    transition: color 0.5s ease;
+    margin-top: 28px; font-size: 12px; letter-spacing: 0.2em;
+    text-transform: uppercase; color: #1a1a1a; transition: color 0.5s ease;
   }
   .ble-status.connected { color: #cc0000; }
   .ble-dot {
-    display: inline-block;
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: #1a1a1a;
-    margin-right: 8px;
-    vertical-align: middle;
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: #1a1a1a; margin-right: 8px; vertical-align: middle;
     transition: background 0.5s ease;
   }
   .ble-status.connected .ble-dot { background: #cc0000; }
@@ -92,121 +97,175 @@
   <div class="dots">
     <div class="dot"></div><div class="dot"></div><div class="dot"></div>
   </div>
+  <div class="ble-status" id="ble-status">
+    <span class="ble-dot"></span><span id="ble-label">Waiting for connection</span>
+  </div>
 </div>
 
+<!-- YouTube player -->
 <div id="player-wrap">
   <div id="yt-player"></div>
 </div>
 
+<!-- Local video player -->
+<div id="local-wrap">
+  <video id="local-video" autoplay playsinline></video>
+</div>
+
 <script src="/socket.io.min.js"></script>
 <script>
-const DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-const MONTHS = ['January','February','March','April','May','June',
-                'July','August','September','October','November','December'];
+const DAYS   = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const MONTHS = ["January","February","March","April","May","June",
+                "July","August","September","October","November","December"];
 
-function pad(n){ return String(n).padStart(2,'0'); }
+function pad(n){ return String(n).padStart(2,"0"); }
 function tick(){
   const now = new Date();
-  document.getElementById('hh').textContent = pad(now.getHours());
-  document.getElementById('mm').textContent = pad(now.getMinutes());
-  document.getElementById('ss').textContent = pad(now.getSeconds());
-  document.getElementById('date').textContent =
-    DAYS[now.getDay()] + ', ' + now.getDate() + ' ' +
-    MONTHS[now.getMonth()] + ' ' + now.getFullYear();
+  document.getElementById("hh").textContent = pad(now.getHours());
+  document.getElementById("mm").textContent = pad(now.getMinutes());
+  document.getElementById("ss").textContent = pad(now.getSeconds());
+  document.getElementById("date").textContent =
+    DAYS[now.getDay()] + ", " + now.getDate() + " " +
+    MONTHS[now.getMonth()] + " " + now.getFullYear();
 }
 tick();
 setInterval(tick, 1000);
+document.getElementById("board-ip").textContent = window.location.hostname + ":7000";
 
-document.getElementById('board-ip').textContent = window.location.hostname + ':7000';
-
-let player = null;
+// ── State ────────────────────────────────────────────────────────────────────
+let ytPlayer       = null;
 let currentVideoId = null;
-let ytReady = false;
+let ytReady        = false;
+let currentMode    = "home"; // "home" | "youtube" | "local"
 
-const tag = document.createElement('script');
-tag.src = 'https://www.youtube.com/iframe_api';
+// ── YouTube IFrame API ───────────────────────────────────────────────────────
+const tag = document.createElement("script");
+tag.src = "https://www.youtube.com/iframe_api";
 document.head.appendChild(tag);
 
 window.onYouTubeIframeAPIReady = () => {
   ytReady = true;
-  console.log('[YT] API ready');
+  console.log("[YT] API ready");
 };
 
-function initPlayer(videoId) {
-  currentVideoId = videoId;
-  document.getElementById('home').style.display = 'none';
-  document.getElementById('player-wrap').style.display = 'block';
+function showHome() {
+  document.getElementById("home").style.display        = "flex";
+  document.getElementById("player-wrap").style.display = "none";
+  document.getElementById("local-wrap").style.display  = "none";
+  if (ytPlayer) ytPlayer.stopVideo();
+  const vid = document.getElementById("local-video");
+  vid.pause();
+  vid.src = "";
+  currentVideoId = null;
+  currentMode    = "home";
+}
 
-  if (player) {
-    player.loadVideoById(videoId);
-    player.playVideo();
+function showYoutube(videoId) {
+  currentVideoId = videoId;
+  currentMode    = "youtube";
+  document.getElementById("home").style.display        = "none";
+  document.getElementById("local-wrap").style.display  = "none";
+  document.getElementById("player-wrap").style.display = "block";
+
+  if (ytPlayer) {
+    ytPlayer.loadVideoById(videoId);
+    ytPlayer.playVideo();
     return;
   }
 
-  player = new YT.Player('yt-player', {
+  ytPlayer = new YT.Player("yt-player", {
     width: window.innerWidth,
     height: window.innerHeight,
     videoId: videoId,
     playerVars: {
       autoplay: 1, controls: 0, modestbranding: 1,
-      rel: 0, iv_load_policy: 3, fs: 0, loop: 1,
-      playlist: videoId
+      rel: 0, iv_load_policy: 3, fs: 0
     },
     events: {
-      onReady: e => e.target.playVideo(),
+      onReady: e => {
+        e.target.setVolume(100);
+        e.target.playVideo();
+      },
       onStateChange: e => {
         if (e.data === YT.PlayerState.ENDED && currentVideoId) {
-                socket.emit("video_ended", {videoId: currentVideoId});
-          player.loadVideoById(currentVideoId);
+          socket.emit("video_ended", {videoId: currentVideoId});
+          ytPlayer.loadVideoById(currentVideoId);
+          ytPlayer.playVideo();
         }
       }
     }
   });
 }
 
-function showHome() {
-  document.getElementById('home').style.display = 'flex';
-  document.getElementById('player-wrap').style.display = 'none';
-  if (player) player.stopVideo();
-  currentVideoId = null;
+function showLocal(filename) {
+  currentMode = "local";
+  document.getElementById("home").style.display        = "none";
+  document.getElementById("player-wrap").style.display = "none";
+  document.getElementById("local-wrap").style.display  = "block";
+
+  const vid = document.getElementById("local-video");
+  vid.src = "/assets/videos/" + filename;
+  vid.load();
+  vid.play().catch(e => console.log("[LOCAL] play error:", e));
+
+  vid.onended = () => {
+    socket.emit("video_ended", {filename: filename});
+  };
 }
 
+// ── Socket.IO ────────────────────────────────────────────────────────────────
 const socket = io();
 
-socket.on('play_video_display', data => {
-  console.log('[DISPLAY] Playing:', data.video_id);
+socket.on("play_video_display", data => {
+  console.log("[DISPLAY] YT:", data.video_id);
   if (ytReady) {
-    initPlayer(data.video_id);
+    showYoutube(data.video_id);
   } else {
     const wait = setInterval(() => {
-      if (ytReady) {
-        clearInterval(wait);
-        initPlayer(data.video_id);
-      }
+      if (ytReady) { clearInterval(wait); showYoutube(data.video_id); }
     }, 200);
   }
 });
 
-socket.on('ble_connected', data => {
-  const el = document.getElementById('ble-status');
-  const lb = document.getElementById('ble-label');
-  el.classList.add('connected');
-  lb.textContent = data.device + ' connected';
+socket.on("play_local_display", data => {
+  console.log("[DISPLAY] Local:", data.filename);
+  showLocal(data.filename);
 });
-socket.on('ble_disconnected', data => {
-  const el = document.getElementById('ble-status');
-  const lb = document.getElementById('ble-label');
-  el.classList.remove('connected');
-  lb.textContent = 'Waiting for connection';
+
+socket.on("player_control", data => {
+  const action = data.action;
+  console.log("[CONTROL]", action);
+
+  if (action === "stop") { showHome(); return; }
+
+  if (currentMode === "youtube" && ytPlayer) {
+    if (action === "pause")    ytPlayer.pauseVideo();
+    if (action === "resume")   ytPlayer.playVideo();
+    if (action === "vol_up")   ytPlayer.setVolume(Math.min(100, ytPlayer.getVolume() + 10));
+    if (action === "vol_down") ytPlayer.setVolume(Math.max(0,   ytPlayer.getVolume() - 10));
+  }
+
+  if (currentMode === "local") {
+    const vid = document.getElementById("local-video");
+    if (action === "pause")    vid.pause();
+    if (action === "resume")   vid.play();
+    if (action === "vol_up")   vid.volume = Math.min(1, vid.volume + 0.1);
+    if (action === "vol_down") vid.volume = Math.max(0, vid.volume - 0.1);
+  }
 });
-socket.on('player_control', data => {
-  console.log('[CONTROL]', data.action);
-  if (!player) return;
-  if (data.action === 'pause')    player.pauseVideo();
-  if (data.action === 'resume')   player.playVideo();
-  if (data.action === 'stop')     showHome();
-  if (data.action === 'vol_up')   player.setVolume(Math.min(100, player.getVolume() + 10));
-  if (data.action === 'vol_down') player.setVolume(Math.max(0,   player.getVolume() - 10));
+
+socket.on("ble_connected", data => {
+  const el = document.getElementById("ble-status");
+  const lb = document.getElementById("ble-label");
+  el.classList.add("connected");
+  lb.textContent = (data.device || "Phone") + " connected";
+});
+
+socket.on("ble_disconnected", () => {
+  const el = document.getElementById("ble-status");
+  const lb = document.getElementById("ble-label");
+  el.classList.remove("connected");
+  lb.textContent = "Waiting for connection";
 });
 </script>
 </body>

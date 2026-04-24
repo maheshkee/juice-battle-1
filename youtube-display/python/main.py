@@ -22,19 +22,39 @@ sys.path.insert(0, "/usr/lib/python3/dist-packages")
 
 from ble_gatt_serve import BLEGattServer
 from queue_engine import QueueEngine
+from local_engine import LocalEngine
 
 ui = WebUI()
-CMD_FILE        = "/app/cmd.txt"
 LAUNCHER_SCRIPT = "/home/arduino/launcher.sh"
 
+
 def write_cmd(cmd):
-    with open(CMD_FILE, "w") as f:
-        f.write(cmd)
+    """Central dispatcher — routes commands to display via Socket.IO.
+    No more cmd.txt for video. BT bridge (bt_cmd.txt) untouched in launcher.sh.
+    """
+    if cmd == "STOP":
+        ui.send_message("player_control", {"action": "stop"})
+    elif cmd.startswith("LOCAL:"):
+        filename = cmd[6:]
+        ui.send_message("play_local_display", {"filename": filename})
+        print(f"[MAIN] Local play: {filename}", flush=True)
+    else:
+        # YouTube video_id
+        ui.send_message("play_video_display", {"video_id": cmd})
+        ui.send_message("status", {"state": "playing", "video_id": cmd})
+        print(f"[MAIN] YT play: {cmd}", flush=True)
+
 
 def push_evt(data):
     ui.send_message(data.get("event", "evt"), data)
 
-queue_engine = QueueEngine(write_cmd_fn=write_cmd, push_evt_fn=push_evt)
+
+queue_engine = LocalEngine_ref = None
+
+def _init_engines():
+    global queue_engine, LocalEngine_ref
+    queue_engine     = QueueEngine(write_cmd_fn=write_cmd, push_evt_fn=push_evt)
+    LocalEngine_ref  = LocalEngine(write_cmd_fn=write_cmd, push_evt_fn=push_evt)
 
 
 def install_launcher_if_needed():
@@ -45,45 +65,84 @@ def install_launcher_if_needed():
     launcher_content = """#!/bin/bash
 export DISPLAY=:0
 export XAUTHORITY=/home/arduino/.Xauthority
-CMD_FILE="/home/arduino/ArduinoApps/youtube-display/cmd.txt"
+
 xset s off
 xset s noblank
 xset -dpms
+xset dpms 0 0 0
+
+xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor1/color-style -s 0
+xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor1/image-show -s false
+xfconf-query -c xfce4-panel -p /panels/panel-2/autohide-behavior -s 1
+
+unclutter -idle 0 -root &
+
 echo "[LAUNCHER] Waiting for port 7000..."
 until curl -s http://localhost:7000 > /dev/null 2>&1; do
     sleep 1
 done
 echo "[LAUNCHER] Ready."
+
 pkill -f "/usr/lib/chromium/chromium" 2>/dev/null
 sleep 0.5
-rm -rf /tmp/chrome-splash
+rm -rf /tmp/chrome-kiosk
 /usr/bin/chromium --kiosk \\
     --no-sandbox --disable-gpu \\
     --noerrdialogs --disable-infobars \\
-    --user-data-dir=/tmp/chrome-splash \\
+    --autoplay-policy=no-user-gesture-required \\
+    --user-data-dir=/tmp/chrome-kiosk \\
     "http://localhost:7000/splash.html" &
+
+# BT command bridge — unchanged
+BT_CMD_FILE="/home/arduino/ArduinoApps/youtube-display/bt_cmd.txt"
+BT_RESULT_FILE="/home/arduino/ArduinoApps/youtube-display/bt_result.txt"
 while true; do
-    if [ -f "$CMD_FILE" ]; then
-        CMD=$(cat "$CMD_FILE")
-        rm -f "$CMD_FILE"
-        pkill -f "/usr/lib/chromium/chromium" 2>/dev/null
-        sleep 0.3
-        if [ "$CMD" = "STOP" ]; then
-            rm -rf /tmp/chrome-splash
-            /usr/bin/chromium --kiosk \\
-                --no-sandbox --disable-gpu \\
-                --noerrdialogs --disable-infobars \\
-                --user-data-dir=/tmp/chrome-splash \\
-                "http://localhost:7000/splash.html" &
-        else
-            rm -rf /tmp/chrome-player
-            /usr/bin/chromium --kiosk \\
-                --no-sandbox --disable-gpu \\
-                --noerrdialogs --disable-infobars \\
-                --autoplay-policy=no-user-gesture-required \\
-                --user-data-dir=/tmp/chrome-player \\
-                "http://localhost:7000/player.html?v=$CMD" &
-        fi
+    if [ -f "$BT_CMD_FILE" ]; then
+        BT_CMD=$(cat "$BT_CMD_FILE")
+        rm -f "$BT_CMD_FILE"
+        echo "[LAUNCHER] BT cmd: $BT_CMD"
+        export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/home/arduino/ArduinoApps/youtube-display/dbus.sock
+        case "$BT_CMD" in
+            BT_LIST)
+                bluetoothctl devices Trusted > "$BT_RESULT_FILE" 2>&1
+                ;;
+            BT_SCAN_START)
+                echo "scanning" > "$BT_RESULT_FILE"
+                timeout 12 bluetoothctl scan on 2>&1 | grep -E "Device|NEW|CHG" >> "$BT_RESULT_FILE" &
+                ;;
+            BT_SCAN_STOP)
+                bluetoothctl scan off > /dev/null 2>&1
+                echo "scan_stopped" > "$BT_RESULT_FILE"
+                ;;
+            BT_PAIR:*)
+                MAC="${BT_CMD#BT_PAIR:}"
+                bluetoothctl pair "$MAC" >> "$BT_RESULT_FILE" 2>&1
+                bluetoothctl trust "$MAC" >> "$BT_RESULT_FILE" 2>&1
+                echo "paired:$MAC" >> "$BT_RESULT_FILE"
+                ;;
+            BT_CONNECT:*)
+                MAC="${BT_CMD#BT_CONNECT:}"
+                bluetoothctl connect "$MAC" > "$BT_RESULT_FILE" 2>&1
+                sleep 3
+                SINK=$(wpctl status | grep -i bluez | head -1 | awk -F. '{print $1}' | xargs)
+                if [ -n "$SINK" ]; then
+                    wpctl set-default "$SINK"
+                    echo "sink_set:$SINK" >> "$BT_RESULT_FILE"
+                fi
+                echo "connected:$MAC" >> "$BT_RESULT_FILE"
+                ;;
+            BT_DISCONNECT:*)
+                MAC="${BT_CMD#BT_DISCONNECT:}"
+                bluetoothctl disconnect "$MAC" > "$BT_RESULT_FILE" 2>&1
+                echo "disconnected:$MAC" >> "$BT_RESULT_FILE"
+                ;;
+            BT_FORGET:*)
+                MAC="${BT_CMD#BT_FORGET:}"
+                bluetoothctl untrust "$MAC" >> "$BT_RESULT_FILE" 2>&1
+                bluetoothctl remove "$MAC" >> "$BT_RESULT_FILE" 2>&1
+                echo "forgotten:$MAC" >> "$BT_RESULT_FILE"
+                ;;
+        esac
     fi
     sleep 0.5
 done
@@ -104,6 +163,8 @@ def extract_video_id(url):
     return None
 
 
+# ── BLE callbacks ─────────────────────────────────────────────────────────────
+
 def on_ble_url(url):
     print(f"[BLE] URL received: {url}", flush=True)
     video_id = extract_video_id(url)
@@ -111,7 +172,6 @@ def on_ble_url(url):
         print(f"[BLE] Invalid URL: {url}", flush=True)
         return
     write_cmd(video_id)
-    ui.send_message("status", {"state": "playing", "video_id": video_id})
 
 def on_ble_connected(device_name):
     print(f"[BLE] Connected: {device_name}", flush=True)
@@ -124,6 +184,8 @@ def on_ble_disconnected():
 def on_ble_cmd(cmd):
     print(f"[BLE] CMD received: {cmd}", flush=True)
     raw = cmd.replace("CMD:", "").strip()
+
+    # Queue commands
     if raw == "QUEUE_PLAY":
         queue_engine.play()
     elif raw == "QUEUE_REPLAY":
@@ -143,6 +205,20 @@ def on_ble_cmd(cmd):
     elif raw == "QUEUE_GET":
         push_evt(queue_engine.get_status())
         push_evt(queue_engine.get_history())
+
+    # Local storage commands
+    elif raw == "LOCAL_LIST":
+        LocalEngine_ref.list_files()
+    elif raw.startswith("LOCAL_PLAY:"):
+        LocalEngine_ref.play_file(raw[11:])
+    elif raw.startswith("LOCAL_QUEUE_SET:"):
+        LocalEngine_ref.set_playlist(raw[16:])
+    elif raw == "LOCAL_QUEUE_PLAY":
+        LocalEngine_ref.play_playlist()
+    elif raw == "LOCAL_USB_IMPORT":
+        LocalEngine_ref.usb_import()
+
+    # Playback commands
     elif raw.lower() == "stop":
         write_cmd("STOP")
         ui.send_message("status", {"state": "stopped"})
@@ -152,6 +228,8 @@ def on_ble_cmd(cmd):
         print(f"[BLE] Unknown command: {raw}", flush=True)
 
 
+# ── WebUI callbacks ───────────────────────────────────────────────────────────
+
 def on_play_video(sid, data):
     url = data.get("url", "")
     video_id = extract_video_id(url)
@@ -159,12 +237,10 @@ def on_play_video(sid, data):
         ui.send_message("error", {"message": "Invalid YouTube URL"})
         return
     write_cmd(video_id)
-    print(f"[youtube-display] Playing: {video_id}", flush=True)
-    ui.send_message("status", {"state": "playing", "video_id": video_id})
 
 def on_control(sid, data):
     action = data.get("action", "")
-    print(f"[youtube-display] Control: {action}", flush=True)
+    print(f"[WebUI] Control: {action}", flush=True)
     if action == "stop":
         write_cmd("STOP")
         ui.send_message("status", {"state": "stopped"})
@@ -178,11 +254,18 @@ def on_admin(sid, data):
 
 def on_video_ended(sid, data):
     video_id = data.get("videoId", "")
-    print(f"[QUEUE] video_ended: {video_id}", flush=True)
-    queue_engine.on_video_ended(video_id)
+    filename = data.get("filename", "")
+    print(f"[MAIN] media_ended: yt={video_id} local={filename}", flush=True)
+    if video_id:
+        queue_engine.on_video_ended(video_id)
+    elif filename:
+        LocalEngine_ref.on_video_ended(filename)
 
+
+# ── Start ─────────────────────────────────────────────────────────────────────
 
 install_launcher_if_needed()
+_init_engines()
 
 ble = BLEGattServer(
     on_url=on_ble_url,
@@ -191,9 +274,9 @@ ble = BLEGattServer(
     on_disconnected=on_ble_disconnected
 )
 
-ui.on_message("play_video",  on_play_video)
-ui.on_message("control",     on_control)
-ui.on_message("admin",       on_admin)
-ui.on_message("video_ended", on_video_ended)
+ui.on_message("play_video",   on_play_video)
+ui.on_message("control",      on_control)
+ui.on_message("admin",        on_admin)
+ui.on_message("video_ended",  on_video_ended)
 
 App.run()
