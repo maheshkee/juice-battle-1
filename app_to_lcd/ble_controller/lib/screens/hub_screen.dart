@@ -85,6 +85,8 @@ class _HubScreenState extends State<HubScreen> {
                       onStop:    () => ble.playerStop(),
                       onMute:    () => ble.playerMute(),
                       onUnmute:  () => ble.playerUnmute(),
+                      onVolUp:   () => ble.playerVolUp(),
+                      onVolDown: () => ble.playerVolDown(),
                     ),
                     const SizedBox(height: 12),
                     BleDevicesPanel(

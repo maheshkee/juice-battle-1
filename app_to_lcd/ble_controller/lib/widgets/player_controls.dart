@@ -7,9 +7,12 @@ class PlayerControls extends StatefulWidget {
   final VoidCallback onStop;
   final VoidCallback onMute;
   final VoidCallback onUnmute;
+  final VoidCallback onVolUp;
+  final VoidCallback onVolDown;
 
   const PlayerControls({super.key, required this.enabled, required this.onPause,
-    required this.onResume, required this.onStop, required this.onMute, required this.onUnmute});
+    required this.onResume, required this.onStop, required this.onMute,
+    required this.onUnmute, required this.onVolUp, required this.onVolDown});
 
   @override
   State<PlayerControls> createState() => _PlayerControlsState();
@@ -62,6 +65,20 @@ class _PlayerControlsState extends State<PlayerControls> {
               setState(() { _playing = true; _muted = false; });
               widget.onStop();
             },
+          )),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: _btn(
+            label: '🔉  VOL DOWN',
+            color: const Color(0xFF7C4DFF),
+            onTap: widget.onVolDown,
+          )),
+          const SizedBox(width: 8),
+          Expanded(child: _btn(
+            label: '🔊  VOL UP',
+            color: const Color(0xFF7C4DFF),
+            onTap: widget.onVolUp,
           )),
         ]),
       ]),
