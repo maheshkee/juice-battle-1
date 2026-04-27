@@ -134,6 +134,8 @@ class BleService {
   Future<void> playerStop()                 => _write('CMD:PLAYER_STOP');
   Future<void> playerMute()                 => _write('CMD:PLAYER_MUTE');
   Future<void> playerUnmute()               => _write('CMD:PLAYER_UNMUTE');
+  Future<void> playerVolUp()                => _write('CMD:PLAYER_VOL_UP');
+  Future<void> playerVolDown()              => _write('CMD:PLAYER_VOL_DOWN');
   Future<void> scanStart()                  => _write('CMD:SCAN_START');
   Future<void> scanStop()                   => _write('CMD:SCAN_STOP');
   Future<void> connectDevice(String mac)    => _write('CMD:CONNECT:$mac');
