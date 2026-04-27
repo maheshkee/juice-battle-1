@@ -19,6 +19,9 @@ until curl -s http://localhost:7000 > /dev/null 2>&1; do
 done
 echo "[LAUNCHER] Ready."
 
+# Wait briefly for App Lab container to stabilize
+sleep 2
+
 pkill -f "/usr/lib/chromium/chromium" 2>/dev/null
 sleep 0.5
 rm -rf /tmp/chrome-kiosk
