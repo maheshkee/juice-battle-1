@@ -3,6 +3,7 @@ from arduino.app_bricks.web_ui import WebUI
 import os
 import sys
 import ctypes
+import time
 
 os.environ["GI_TYPELIB_PATH"] = "/app/typelibs"
 os.environ["DBUS_SYSTEM_BUS_ADDRESS"] = "unix:path=/app/dbus.sock"
@@ -23,6 +24,7 @@ sys.path.insert(0, "/usr/lib/python3/dist-packages")
 from ble_gatt_serve import BLEGattServer
 from queue_engine import QueueEngine
 from local_engine import LocalEngine
+from services import gas_monitor
 
 ui = WebUI()
 import pathlib
@@ -65,6 +67,7 @@ def _init_engines():
     global queue_engine, LocalEngine_ref
     queue_engine     = QueueEngine(write_cmd_fn=write_cmd, push_evt_fn=push_evt)
     LocalEngine_ref  = LocalEngine(write_cmd_fn=write_cmd, push_evt_fn=push_evt)
+    gas_monitor.init(Bridge, push_evt)
 
 
 def install_launcher_if_needed():
@@ -291,17 +294,13 @@ ui.on_message("control",      on_control)
 ui.on_message("admin",        on_admin)
 ui.on_message("video_ended",  on_video_ended)
 
-import threading, time
+import threading
 
-def weight_loop():
+def gas_monitor_loop():
     time.sleep(10)  # wait for bridge to be ready
     while True:
-        try:
-            w = float(Bridge.call("get_weight"))
-            ui.send_message("weight_update", {"value": w})
-        except Exception as e:
-            print(f"[WEIGHT] {e}", flush=True)
-        time.sleep(1)
+        gas_monitor._on_measurement_cycle()
+        time.sleep(21600)  # 6 hours in seconds
 
-threading.Thread(target=weight_loop, daemon=True).start()
+threading.Thread(target=gas_monitor_loop, daemon=True).start()
 App.run()
