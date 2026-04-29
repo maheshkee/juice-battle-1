@@ -11,11 +11,11 @@ Claude is ORCHESTRATOR. Mahesh is EXECUTOR.
 - Never proceed past a failed step
 
 ## Current status
-- gas_monitor.py: NOT STARTED — next task
-- sketch.ino: has weight_loop test code — replace with proper gas monitor implementation
+- gas_monitor.py: DONE — skeleton in python/services/gas_monitor.py
+- sketch.ino: DONE — Zephyr-compatible HX711 bit-bang, get_weight() Bridge RPC
 - splash.html: YT display working — gas view not yet added
 - gas_dashboard.html: NOT CREATED yet
-- Next task: create python/services/ folder + gas_monitor.py skeleton
+- Next task: gas_dashboard.html + splash.html gas panel
 
 ## Board
 - MPU: QRB2210, Debian Linux, Python in Docker at ~/ArduinoApps/home-hub/
@@ -31,11 +31,12 @@ Claude is ORCHESTRATOR. Mahesh is EXECUTOR.
 ├── CLAUDE.md                     ← this file
 ├── python/
 │   ├── main.py                   ← orchestrator only, no logic
-│   ├── config.py                 ← ALL thresholds here (create if missing)
-│   └── services/                 ← create this folder
-│       ├── queue_engine.py       ← YT queue [STABLE — do not touch]
-│       ├── local_engine.py       ← local files [STABLE — do not touch]
-│       ├── ble_gatt_serve.py     ← GATT server [STABLE — do not touch]
+│   ├── config.py                 ← ALL thresholds here
+│   ├── queue_engine.py           ← YT queue [STABLE — do not touch]
+│   ├── local_engine.py           ← local files [STABLE — do not touch]
+│   ├── ble_gatt_serve.py         ← GATT server [STABLE — do not touch]
+│   ├── bt_manager.py             ← BT stub [do not expand without approval]
+│   └── services/
 │       └── gas_monitor.py        ← gas service [ACTIVE — in development]
 ├── sketch/sketch.ino             ← MCU: HX711 + LPUART [ACTIVE]
 ├── assets/
@@ -54,7 +55,7 @@ Claude is ORCHESTRATOR. Mahesh is EXECUTOR.
 | main.py         | wiring only               | own any logic           |
 
 Cross-module coordination → hook/callback in main.py only.
-bt_manager.py does not exist — intentional, do not create it.
+bt_manager.py — stub only. Exists to satisfy ble_gatt_serve.py imports. All BT management functions are no-ops. Do not expand without approval.
 
 ## Never violate
 1. BLE scan: le transport ONLY. auto kills adapter → sudo reboot only recovery.

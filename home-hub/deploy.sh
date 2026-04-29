@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# youtube-display — Deploy script
+# home-hub — Deploy script
 # Run this to start, restart, or update the app.
 # Usage: bash deploy.sh [--logs]
 # =============================================================================
@@ -17,13 +17,17 @@ warn() { echo -e "${AMBER}[WARN]${NC}  $1"; }
 
 # Check setup has been run
 if [ ! -f "$HOME/.$APP_NAME-setup-done" ]; then
-    echo -e "${RED}[ERROR]${NC} Setup not complete. Run: bash setup.sh first."
-    exit 1
+    if command -v socat &>/dev/null && command -v xdotool &>/dev/null; then
+        touch "$HOME/.$APP_NAME-setup-done"
+    else
+        echo -e "${RED}[ERROR]${NC} Setup not complete. Run: bash setup.sh first."
+        exit 1
+    fi
 fi
 
 echo ""
 echo "========================================================"
-echo "  youtube-display — Deploy"
+echo "  $APP_NAME — Deploy"
 echo "========================================================"
 echo ""
 

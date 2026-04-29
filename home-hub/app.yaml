@@ -4,5 +4,3 @@ ports: [7000]
 bricks:
   - arduino:web_ui: {}
 network_mode: "host"
-sockets:
-  - "/run/dbus/system_bus_socket:/run/dbus/system_bus_socket"
