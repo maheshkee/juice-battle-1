@@ -257,6 +257,10 @@ def handle_phone_command(text: str):
             GLib.idle_add(handle_player_cmd, 'mute')
         elif cmd == 'PLAYER_UNMUTE':
             GLib.idle_add(handle_player_cmd, 'unmute')
+        elif cmd == 'PLAYER_VOL_UP':
+            GLib.idle_add(handle_player_cmd, 'vol_up')
+        elif cmd == 'PLAYER_VOL_DOWN':
+            GLib.idle_add(handle_player_cmd, 'vol_down')
 
         elif cmd == 'SCAN_START':
             GLib.idle_add(start_scan)
@@ -769,9 +773,6 @@ def ble_main():
 
     log('=' * 50)
     log(' BLE Hub Started')
-    log('=' * 50)
-    log('Central:    scanning for sensors/devices')
-    log('Peripheral: advertising as BLE-Hub for phone')
     log('=' * 50)
 
     GLib.MainLoop().run()
