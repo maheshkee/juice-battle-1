@@ -5,7 +5,8 @@
 # Usage: bash deploy.sh [--logs]
 # =============================================================================
 
-APP_NAME="youtube-display"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_NAME="$(basename "$SCRIPT_DIR")"
 GREEN='\033[0;32m'
 AMBER='\033[0;33m'
 RED='\033[0;31m'
