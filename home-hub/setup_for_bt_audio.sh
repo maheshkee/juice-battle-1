@@ -45,6 +45,10 @@ echo "  [OK] /usr/local/bin/bt-autoconnect.py installed"
 echo ""
 echo ">> Creating bt-autoconnect systemd user service..."
 
+# Enable linger so user services start at boot without desktop session
+# This is required when setup runs over SSH (no active desktop session)
+loginctl enable-linger "$USER"
+
 mkdir -p "$HOME/.config/systemd/user"
 
 cat > "$HOME/.config/systemd/user/bt-autoconnect.service" << 'SVCEOF'
@@ -64,8 +68,8 @@ RemainAfterExit=yes
 WantedBy=default.target
 SVCEOF
 
-systemctl --user daemon-reload
-systemctl --user enable bt-autoconnect.service
+systemctl --user daemon-reload 2>/dev/null || true
+systemctl --user enable bt-autoconnect.service 2>/dev/null || true
 echo "  [OK] bt-autoconnect.service installed and enabled"
 
 # --- 3. Create WirePlumber BT priority rule ---
