@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Player</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; cursor: none; }
+  body { background: #000; overflow: hidden; width: 100vw; height: 100vh; }
+  #player { width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<div id="player"></div>
+<script src="/socket.io.min.js"></script>
+<script>
+const params  = new URLSearchParams(window.location.search);
+const videoId = params.get('v');
+
+const tag = document.createElement('script');
+tag.src   = 'https://www.youtube.com/iframe_api';
+document.head.appendChild(tag);
+
+let player;
+
+window.onYouTubeIframeAPIReady = () => {
+  player = new YT.Player('player', {
+    width: '100%', height: '100%',
+    videoId: videoId,
+    playerVars: {
+      autoplay: 1, controls: 0, modestbranding: 1,
+      rel: 0, iv_load_policy: 3, fs: 0,
+      loop: 1, playlist: videoId
+    },
+    events: {
+      onReady: e => e.target.playVideo(),
+      onStateChange: e => {
+        if (e.data === YT.PlayerState.ENDED) {
+          player.loadVideoById(videoId);
+        }
+      }
+    }
+  });
+};
+
+const socket = io();
+socket.on('player_control', data => {
+  if (!player) return;
+  if (data.action === 'pause')    player.pauseVideo();
+  if (data.action === 'resume')   player.playVideo();
+  if (data.action === 'vol_up')   player.setVolume(Math.min(100, player.getVolume() + 10));
+  if (data.action === 'vol_down') player.setVolume(Math.max(0,   player.getVolume() - 10));
+});
+</script>
+</body>
+</html>
