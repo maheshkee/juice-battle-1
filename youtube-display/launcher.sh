@@ -1,6 +1,7 @@
 #!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export DISPLAY=:0
-export XAUTHORITY=/home/arduino/.Xauthority
+export XAUTHORITY="$HOME/.Xauthority"
 
 xset s off
 xset s noblank
@@ -33,14 +34,14 @@ rm -rf /tmp/chrome-kiosk
     "http://localhost:7000/splash.html" &
 
 # BT command bridge — untouched
-BT_CMD_FILE="/home/arduino/ArduinoApps/youtube-display/bt_cmd.txt"
-BT_RESULT_FILE="/home/arduino/ArduinoApps/youtube-display/bt_result.txt"
+BT_CMD_FILE="$SCRIPT_DIR/bt_cmd.txt"
+BT_RESULT_FILE="$SCRIPT_DIR/bt_result.txt"
 while true; do
     if [ -f "$BT_CMD_FILE" ]; then
         BT_CMD=$(cat "$BT_CMD_FILE")
         rm -f "$BT_CMD_FILE"
         echo "[LAUNCHER] BT cmd: $BT_CMD"
-        export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/home/arduino/ArduinoApps/youtube-display/dbus.sock
+        export DBUS_SYSTEM_BUS_ADDRESS=unix:path=$SCRIPT_DIR/dbus.sock
         case "$BT_CMD" in
             BT_LIST)
                 bluetoothctl devices Trusted > "$BT_RESULT_FILE" 2>&1

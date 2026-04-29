@@ -7,11 +7,12 @@
 
 set -e
 
-APP_NAME="youtube-display"
-APP_DIR="/home/arduino/ArduinoApps/youtube-display"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_NAME="$(basename "$SCRIPT_DIR")"
+APP_DIR="$SCRIPT_DIR"
 WHEELS_DIR="$APP_DIR/wheels"
 TYPELIBS_DIR="$APP_DIR/typelibs"
-LAUNCHER="$HOME/ArduinoApps/youtube-display/launcher.sh"
+LAUNCHER="$APP_DIR/launcher.sh"
 
 GREEN='\033[0;32m'
 AMBER='\033[0;33m'
@@ -177,40 +178,7 @@ arduino-app-cli properties set default user:youtube-display 2>/dev/null || \
     warn "Could not set default app -- set manually after reboot"
 log "Default app set."
 
-# -- 12. Install bt-autoconnect service ---------------------------------------
-log "Setting up Bluetooth auto-connect service..."
-
-# Install bt-autoconnect.py to /usr/local/bin/
-if [ -f "$APP_DIR/bt-autoconnect.py" ]; then
-    sudo cp "$APP_DIR/bt-autoconnect.py" /usr/local/bin/bt-autoconnect.py
-    sudo chmod +x /usr/local/bin/bt-autoconnect.py
-    log "bt-autoconnect.py installed to /usr/local/bin/"
-else
-    warn "bt-autoconnect.py not found in $APP_DIR -- skipping BT auto-connect"
-fi
-
-# Create systemd user service
-mkdir -p "$HOME/.config/systemd/user"
-cat > "$HOME/.config/systemd/user/bt-autoconnect.service" << 'EOF'
-[Unit]
-Description=Bluetooth Auto-Connect for trusted audio devices
-After=bluetooth.target pipewire.service wireplumber.service
-Wants=pipewire.service wireplumber.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/python3 /usr/local/bin/bt-autoconnect.py
-StandardOutput=journal
-StandardError=journal
-RemainAfterExit=yes
-
-[Install]
-WantedBy=default.target
-EOF
-
-systemctl --user daemon-reload
-systemctl --user enable bt-autoconnect.service
-log "bt-autoconnect.service installed and enabled."
+# BT audio setup: run setup_for_bt_audio.sh separately after setup completes.
 
 # -- 13. Create WirePlumber BT A2DP rule --------------------------------------
 log "Creating WirePlumber A2DP auto-connect rule..."
