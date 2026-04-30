@@ -1,0 +1,6 @@
+name: home-hub
+description: "Smart home hub - YouTube display + gas cylinder monitor"
+ports: [7000]
+bricks:
+  - arduino:web_ui: {}
+network_mode: "host"

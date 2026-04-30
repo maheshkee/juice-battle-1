@@ -1,4 +1,4 @@
-from arduino.app_utils import App
+from arduino.app_utils import App, Bridge
 from arduino.app_bricks.web_ui import WebUI
 import os
 import sys
@@ -25,7 +25,9 @@ from queue_engine import QueueEngine
 from local_engine import LocalEngine
 
 ui = WebUI()
-LAUNCHER_SCRIPT = "/home/arduino/launcher.sh"
+import pathlib
+_APP_ROOT = pathlib.Path(__file__).resolve().parent.parent  # /app/ inside Docker
+LAUNCHER_SCRIPT = str(_APP_ROOT / "launcher.sh")
 
 
 def write_cmd(cmd):
@@ -289,4 +291,17 @@ ui.on_message("control",      on_control)
 ui.on_message("admin",        on_admin)
 ui.on_message("video_ended",  on_video_ended)
 
+import threading, time
+
+def weight_loop():
+    time.sleep(10)  # wait for bridge to be ready
+    while True:
+        try:
+            w = float(Bridge.call("get_weight"))
+            ui.send_message("weight_update", {"value": w})
+        except Exception as e:
+            print(f"[WEIGHT] {e}", flush=True)
+        time.sleep(1)
+
+threading.Thread(target=weight_loop, daemon=True).start()
 App.run()
