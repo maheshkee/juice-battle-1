@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>YouTube Display</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f0f0f; color: #fff;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 40px 20px;
+  }
+  h1 { font-size: 22px; font-weight: 500; margin-bottom: 8px; }
+  .subtitle { font-size: 13px; color: #888; margin-bottom: 32px; }
+  .card {
+    background: #1a1a1a; border-radius: 16px;
+    padding: 24px; width: 100%; max-width: 420px; margin-bottom: 16px;
+  }
+  .card-label { font-size: 11px; color: #666; letter-spacing: 0.06em; margin-bottom: 10px; }
+  input[type="text"] {
+    width: 100%; background: #0f0f0f; border: 1px solid #333;
+    border-radius: 10px; padding: 14px 16px; color: #fff;
+    font-size: 14px; outline: none;
+  }
+  input[type="text"]:focus { border-color: #555; }
+  input::placeholder { color: #444; }
+  .btn-play {
+    width: 100%; margin-top: 14px; padding: 16px;
+    background: #ff0000; border: none; border-radius: 10px;
+    color: #fff; font-size: 16px; font-weight: 500;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .btn-play:hover { background: #cc0000; }
+  .btn-play:disabled { background: #444; cursor: default; }
+  .controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .btn-ctrl {
+    padding: 16px 8px; background: #222; border: 1px solid #333;
+    border-radius: 10px; color: #fff; font-size: 13px;
+    cursor: pointer; transition: background 0.15s; text-align: center;
+  }
+  .btn-ctrl:hover { background: #333; }
+  .btn-ctrl.stop { border-color: #ff4444; color: #ff4444; }
+  .btn-ctrl:disabled { opacity: 0.35; cursor: default; }
+  .vol-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .status {
+    font-size: 12px; text-align: center; padding: 10px;
+    border-radius: 8px; background: #1a1a1a; color: #888;
+  }
+  .status.playing { color: #4caf50; background: #1a2a1a; }
+  .status.error   { color: #ff4444; background: #2a1a1a; }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #444; display: inline-block;
+    margin-right: 6px; transition: background 0.3s;
+  }
+  .dot.on { background: #4caf50; }
+  .admin-link {
+    margin-top: 32px; font-size: 11px; color: #1a1a1a;
+    text-decoration: none; letter-spacing: 0.05em;
+  }
+  .admin-link:hover { color: #333; }
+</style>
+</head>
+<body>
+
+<h1>YouTube Display</h1>
+<p class="subtitle"><span class="dot" id="dot"></span><span id="connstate">Connecting...</span></p>
+
+<div class="card">
+  <div class="card-label">YOUTUBE URL</div>
+  <input type="text" id="urlinput" placeholder="https://youtube.com/watch?v=..." />
+  <button class="btn-play" id="btnplay" onclick="sendPlay()" disabled>Play on Display</button>
+</div>
+
+<div class="card">
+  <div class="card-label">PLAYBACK</div>
+  <div class="controls">
+    <button class="btn-ctrl" id="btnpause"  onclick="sendControl('pause')"  disabled>⏸ Pause</button>
+    <button class="btn-ctrl" id="btnresume" onclick="sendControl('resume')" disabled>▶ Resume</button>
+    <button class="btn-ctrl stop" id="btnstop" onclick="sendControl('stop')" disabled>⏹ Stop</button>
+  </div>
+  <div class="vol-row">
+    <button class="btn-ctrl" id="btnvold" onclick="sendControl('vol_down')" disabled>🔉 Vol −</button>
+    <button class="btn-ctrl" id="btnvolu" onclick="sendControl('vol_up')"   disabled>🔊 Vol +</button>
+  </div>
+</div>
+
+<div class="status" id="status">Waiting for connection...</div>
+
+<a class="admin-link" href="/admin.html">·</a>
+
+<script src="/socket.io.min.js"></script>
+<script>
+const socket = io();
+const $ = id => document.getElementById(id);
+
+socket.on('connect', () => {
+  $('dot').classList.add('on');
+  $('connstate').textContent = 'Connected to board';
+  $('btnplay').disabled = false;
+});
+
+socket.on('disconnect', () => {
+  $('dot').classList.remove('on');
+  $('connstate').textContent = 'Disconnected — reload page';
+  ['btnplay','btnpause','btnresume','btnstop','btnvold','btnvolu']
+    .forEach(id => $(id).disabled = true);
+});
+
+socket.on('status', (data) => {
+  const el = $('status');
+  if (data.state === 'playing') {
+    el.textContent = 'Playing: ' + data.video_id;
+    el.className = 'status playing';
+    ['btnpause','btnresume','btnstop','btnvold','btnvolu']
+      .forEach(id => $(id).disabled = false);
+  } else if (data.state === 'stopped') {
+    el.textContent = 'Stopped';
+    el.className = 'status';
+    ['btnpause','btnresume','btnstop','btnvold','btnvolu']
+      .forEach(id => $(id).disabled = true);
+  }
+});
+
+socket.on('error', (data) => {
+  $('status').textContent = 'Error: ' + data.message;
+  $('status').className = 'status error';
+});
+
+function sendPlay() {
+  const url = $('urlinput').value.trim();
+  if (!url) return;
+  $('status').textContent = 'Sending to board...';
+  $('status').className = 'status';
+  socket.emit('play_video', { url });
+}
+
+function sendControl(action) {
+  socket.emit('control', { action });
+}
+
+$('urlinput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') sendPlay();
+});
+</script>
+</body>
+</html>

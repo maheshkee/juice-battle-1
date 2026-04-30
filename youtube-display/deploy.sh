@@ -1,11 +1,14 @@
 #!/bin/bash
 # =============================================================================
-# youtube-display — Deploy script
+# youtube-display -- Deploy script
 # Run this to start, restart, or update the app.
 # Usage: bash deploy.sh [--logs]
 # =============================================================================
 
-APP_NAME="youtube-display"
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+APP_NAME="$(basename "$PROJECT_DIR")"
+SERVICE_NAME="dbus-bridge-${APP_NAME}.service"
+
 GREEN='\033[0;32m'
 AMBER='\033[0;33m'
 RED='\033[0;31m'
@@ -22,45 +25,45 @@ fi
 
 echo ""
 echo "========================================================"
-echo "  youtube-display — Deploy"
+echo "  youtube-display -- Deploy"
 echo "========================================================"
 echo ""
 
-# ── Stop app ──────────────────────────────────────────────────────────────────
+# -- Stop app ------------------------------------------------------------------
 log "Stopping $APP_NAME..."
 arduino-app-cli app stop user:$APP_NAME 2>/dev/null || true
 sleep 2
 
-# ── Clear cache ───────────────────────────────────────────────────────────────
+# -- Clear cache ---------------------------------------------------------------
 log "Clearing cache..."
-rm -rf "$HOME/ArduinoApps/$APP_NAME/.cache"
+rm -rf "$PROJECT_DIR/.cache"
 
-# ── Ensure dbus-bridge is running ─────────────────────────────────────────────
-log "Checking dbus-bridge..."
-if ! systemctl is-active --quiet dbus-bridge.service; then
-    warn "dbus-bridge not running — starting it..."
-    sudo systemctl start dbus-bridge.service
+# -- Ensure dbus-bridge is running ---------------------------------------------
+log "Checking $SERVICE_NAME..."
+if ! systemctl is-active --quiet "$SERVICE_NAME"; then
+    warn "$SERVICE_NAME not running -- starting it..."
+    sudo systemctl start "$SERVICE_NAME"
 fi
 
-# ── Start app ─────────────────────────────────────────────────────────────────
+# -- Start app -----------------------------------------------------------------
 log "Starting $APP_NAME..."
 arduino-app-cli app start user:$APP_NAME
 
 log "Waiting for app to be ready..."
 sleep 20
 
-# ── Show logs ─────────────────────────────────────────────────────────────────
+# -- Show logs -----------------------------------------------------------------
 echo ""
 log "Recent logs:"
-echo "────────────────────────────────────────"
+echo "----------------------------------------"
 arduino-app-cli app logs user:$APP_NAME 2>/dev/null | tail -20
-echo "────────────────────────────────────────"
+echo "----------------------------------------"
 echo ""
 
-# ── Check status ──────────────────────────────────────────────────────────────
+# -- Check status --------------------------------------------------------------
 STATUS=$(arduino-app-cli app list 2>/dev/null | grep "user:$APP_NAME" | awk '{print $3}')
 if echo "$STATUS" | grep -q "running\|started"; then
-    echo -e "${GREEN}✓ App is running${NC}"
+    echo -e "${GREEN}[OK] App is running${NC}"
     echo ""
     echo "  Phone UI:    http://$(hostname -I | awk '{print $1}'):7000"
     echo "  Admin panel: http://$(hostname -I | awk '{print $1}'):7000/admin.html"
@@ -71,7 +74,7 @@ fi
 
 echo ""
 
-# ── Optional: follow logs ─────────────────────────────────────────────────────
+# -- Optional: follow logs -----------------------------------------------------
 if [ "$1" = "--logs" ]; then
     log "Following logs (Ctrl+C to stop)..."
     arduino-app-cli app logs user:$APP_NAME 2>/dev/null --follow

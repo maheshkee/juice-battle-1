@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Developer Panel</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0a0a0a; color: #ccc;
+    min-height: 100vh; padding: 40px 20px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  h1 { font-size: 16px; font-weight: 500; color: #ff4444; margin-bottom: 4px; letter-spacing: 0.1em; }
+  .sub { font-size: 11px; color: #333; margin-bottom: 32px; letter-spacing: 0.08em; }
+  .card { background: #111; border-radius: 12px; padding: 20px; width: 100%; max-width: 420px; margin-bottom: 14px; }
+  .card-label { font-size: 10px; color: #444; letter-spacing: 0.1em; margin-bottom: 12px; }
+  .btn {
+    width: 100%; padding: 14px; background: #1a1a1a; border: 1px solid #222;
+    border-radius: 8px; color: #ccc; font-size: 13px;
+    cursor: pointer; margin-bottom: 8px; text-align: left;
+    transition: background 0.15s;
+  }
+  .btn:hover { background: #222; }
+  .btn.danger { border-color: #ff4444; color: #ff4444; }
+  .log {
+    background: #000; border-radius: 8px; padding: 12px;
+    font-family: monospace; font-size: 11px; color: #4caf50;
+    min-height: 80px; line-height: 1.6; white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .back { margin-top: 24px; font-size: 12px; color: #333; text-decoration: none; }
+  .back:hover { color: #666; }
+</style>
+</head>
+<body>
+<h1>DEVELOPER PANEL</h1>
+<p class="sub">Internal access only — do not share this URL</p>
+
+<div class="card">
+  <div class="card-label">DISPLAY CONTROL</div>
+  <button class="btn" onclick="cmd('show_splash')">⌂ Show home screen</button>
+  <button class="btn" onclick="cmd('stop_launcher')">⏹ Stop launcher</button>
+  <button class="btn danger" onclick="cmd('reboot')">↺ Reboot board</button>
+</div>
+
+<div class="card">
+  <div class="card-label">STATUS LOG</div>
+  <div class="log" id="log">Connecting...</div>
+</div>
+
+<a class="back" href="/">← Back to controller</a>
+
+<script src="/socket.io.min.js"></script>
+<script>
+const socket = io();
+const log = document.getElementById('log');
+
+function addLog(msg) {
+  log.textContent += '\n' + new Date().toLocaleTimeString() + '  ' + msg;
+  log.scrollTop = log.scrollHeight;
+}
+
+socket.on('connect', () => { log.textContent = ''; addLog('Connected to board'); });
+socket.on('disconnect', () => addLog('Disconnected'));
+socket.on('status', d => addLog('Status: ' + JSON.stringify(d)));
+socket.on('log', d => addLog(d.message || JSON.stringify(d)));
+
+function cmd(action) {
+  socket.emit('admin', { action });
+  addLog('Sent: ' + action);
+}
+</script>
+</body>
+</html>

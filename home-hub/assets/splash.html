@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Display</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; cursor: none; }
+  body { background: #0f0f0f; width: 100vw; height: 100vh; overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+
+  #home {
+    width: 100vw; height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  #player-wrap {
+    width: 100vw; height: 100vh;
+    display: none; position: fixed;
+    top: 0; left: 0; background: #000;
+  }
+  #yt-player { width: 100%; height: 100%; }
+
+  #local-wrap {
+    width: 100vw; height: 100vh;
+    display: none; position: fixed;
+    top: 0; left: 0; background: #000;
+  }
+  #local-video {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    background: #000;
+  }
+
+  .logo {
+    width: 80px; height: 80px; background: #ff0000;
+    border-radius: 18px; display: flex; align-items: center;
+    justify-content: center; margin-bottom: 32px;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .play-icon {
+    width: 0; height: 0;
+    border-top: 22px solid transparent;
+    border-bottom: 22px solid transparent;
+    border-left: 38px solid white;
+    margin-left: 8px;
+  }
+  .clock { font-size: 120px; font-weight: 100; color: #fff;
+    letter-spacing: 0.05em; line-height: 1; margin-bottom: 8px;
+    font-variant-numeric: tabular-nums; }
+  .seconds { font-size: 48px; color: #ff0000; font-weight: 100;
+    letter-spacing: 0.1em; vertical-align: super; margin-left: 6px; }
+  .date { font-size: 16px; color: #333; letter-spacing: 0.25em;
+    text-transform: uppercase; margin-bottom: 60px; margin-top: 4px; }
+  .divider { width: 40px; height: 1px; background: #1a1a1a; margin-bottom: 52px; }
+  .tagline { color: #2a2a2a; font-size: 13px; letter-spacing: 0.2em;
+    text-transform: uppercase; margin-bottom: 10px; }
+  .ip { color: #cc0000; font-size: 14px; font-family: monospace; letter-spacing: 0.12em; }
+  .dots { display: flex; gap: 8px; margin-top: 40px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: #1a1a1a;
+    animation: dotpulse 1.4s ease-in-out infinite; }
+  .dot:nth-child(2) { animation-delay: 0.2s; }
+  .dot:nth-child(3) { animation-delay: 0.4s; }
+  .colon { animation: blink 1s step-end infinite; }
+  .ble-status {
+    margin-top: 28px; font-size: 12px; letter-spacing: 0.2em;
+    text-transform: uppercase; color: #1a1a1a; transition: color 0.5s ease;
+  }
+  .ble-status.connected { color: #cc0000; }
+  .ble-dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: #1a1a1a; margin-right: 8px; vertical-align: middle;
+    transition: background 0.5s ease;
+  }
+  .ble-status.connected .ble-dot { background: #cc0000; }
+  @keyframes pulse {
+    0%,100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,0,0,0.3); }
+    50% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(255,0,0,0); }
+  }
+  @keyframes dotpulse {
+    0%,80%,100% { background: #1a1a1a; transform: scale(1); }
+    40% { background: #ff0000; transform: scale(1.4); }
+  }
+  @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.2; } }
+</style>
+</head>
+<body>
+
+<div id="home">
+  <div class="clock">
+    <span id="hh">00</span><span class="colon">:</span><span id="mm">00</span><span class="seconds" id="ss">00</span>
+  </div>
+  <div class="date" id="date"></div>
+  <div class="divider"></div>
+  <div class="logo"><div class="play-icon"></div></div>
+  <p class="tagline">Your screen is ready to stream</p>
+  <p class="ip" id="board-ip">loading...</p>
+  <div class="dots">
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+  </div>
+  <div class="ble-status" id="ble-status">
+    <span class="ble-dot"></span><span id="ble-label">Waiting for connection</span>
+  </div>
+</div>
+
+<!-- YouTube player -->
+<div id="player-wrap">
+  <div id="yt-player"></div>
+</div>
+
+<!-- Local video player -->
+<div id="local-wrap">
+  <video id="local-video" autoplay playsinline></video>
+</div>
+
+<script src="/socket.io.min.js"></script>
+<script>
+const DAYS   = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const MONTHS = ["January","February","March","April","May","June",
+                "July","August","September","October","November","December"];
+
+function pad(n){ return String(n).padStart(2,"0"); }
+function tick(){
+  const now = new Date();
+  document.getElementById("hh").textContent = pad(now.getHours());
+  document.getElementById("mm").textContent = pad(now.getMinutes());
+  document.getElementById("ss").textContent = pad(now.getSeconds());
+  document.getElementById("date").textContent =
+    DAYS[now.getDay()] + ", " + now.getDate() + " " +
+    MONTHS[now.getMonth()] + " " + now.getFullYear();
+}
+tick();
+setInterval(tick, 1000);
+document.getElementById("board-ip").textContent = window.location.hostname + ":7000";
+
+// ── State ────────────────────────────────────────────────────────────────────
+let ytPlayer       = null;
+let currentVideoId = null;
+let ytReady        = false;
+let currentMode    = "home"; // "home" | "youtube" | "local"
+
+// ── YouTube IFrame API ───────────────────────────────────────────────────────
+const tag = document.createElement("script");
+tag.src = "https://www.youtube.com/iframe_api";
+document.head.appendChild(tag);
+
+window.onYouTubeIframeAPIReady = () => {
+  ytReady = true;
+  console.log("[YT] API ready");
+};
+
+function showHome() {
+  document.getElementById("home").style.display        = "flex";
+  document.getElementById("player-wrap").style.display = "none";
+  document.getElementById("local-wrap").style.display  = "none";
+  if (ytPlayer) ytPlayer.stopVideo();
+  const vid = document.getElementById("local-video");
+  vid.pause();
+  vid.src = "";
+  currentVideoId = null;
+  currentMode    = "home";
+}
+
+function showYoutube(videoId) {
+  currentVideoId = videoId;
+  currentMode    = "youtube";
+  document.getElementById("home").style.display        = "none";
+  document.getElementById("local-wrap").style.display  = "none";
+  document.getElementById("player-wrap").style.display = "block";
+
+  if (ytPlayer) {
+    ytPlayer.loadVideoById(videoId);
+    ytPlayer.playVideo();
+    return;
+  }
+
+  ytPlayer = new YT.Player("yt-player", {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    videoId: videoId,
+    playerVars: {
+      autoplay: 1, controls: 0, modestbranding: 1,
+      rel: 0, iv_load_policy: 3, fs: 0
+    },
+    events: {
+      onReady: e => {
+        e.target.setVolume(100);
+        e.target.playVideo();
+      },
+      onStateChange: e => {
+        if (e.data === YT.PlayerState.ENDED && currentVideoId) {
+          socket.emit("video_ended", {videoId: currentVideoId});
+          ytPlayer.loadVideoById(currentVideoId);
+          ytPlayer.playVideo();
+        }
+      }
+    }
+  });
+}
+
+function showLocal(filename) {
+  currentMode = "local";
+  document.getElementById("home").style.display        = "none";
+  document.getElementById("player-wrap").style.display = "none";
+  document.getElementById("local-wrap").style.display  = "block";
+
+  const vid = document.getElementById("local-video");
+  vid.src = "/videos/" + filename;
+  vid.load();
+  vid.play().catch(e => console.log("[LOCAL] play error:", e));
+
+  vid.onended = () => {
+    socket.emit("video_ended", {filename: filename});
+  };
+}
+
+// ── Socket.IO ────────────────────────────────────────────────────────────────
+const socket = io();
+
+socket.on("play_video_display", data => {
+  console.log("[DISPLAY] YT:", data.video_id);
+  if (ytReady) {
+    showYoutube(data.video_id);
+  } else {
+    const wait = setInterval(() => {
+      if (ytReady) { clearInterval(wait); showYoutube(data.video_id); }
+    }, 200);
+  }
+});
+
+socket.on("play_local_display", data => {
+  console.log("[DISPLAY] Local:", data.filename);
+  showLocal(data.filename);
+});
+
+socket.on("player_control", data => {
+  const action = data.action;
+  console.log("[CONTROL]", action);
+
+  if (action === "stop") { showHome(); return; }
+
+  if (currentMode === "youtube" && ytPlayer) {
+    if (action === "pause")    ytPlayer.pauseVideo();
+    if (action === "resume")   ytPlayer.playVideo();
+    if (action === "vol_up")   ytPlayer.setVolume(Math.min(100, ytPlayer.getVolume() + 10));
+    if (action === "vol_down") ytPlayer.setVolume(Math.max(0,   ytPlayer.getVolume() - 10));
+  }
+
+  if (currentMode === "local") {
+    const vid = document.getElementById("local-video");
+    if (action === "pause")    vid.pause();
+    if (action === "resume")   vid.play();
+    if (action === "vol_up")   vid.volume = Math.min(1, vid.volume + 0.1);
+    if (action === "vol_down") vid.volume = Math.max(0, vid.volume - 0.1);
+  }
+});
+
+socket.on("ble_connected", data => {
+  const el = document.getElementById("ble-status");
+  const lb = document.getElementById("ble-label");
+  el.classList.add("connected");
+  lb.textContent = (data.device || "Phone") + " connected";
+});
+
+socket.on("ble_disconnected", () => {
+  const el = document.getElementById("ble-status");
+  const lb = document.getElementById("ble-label");
+  el.classList.remove("connected");
+  lb.textContent = "Waiting for connection";
+});
+</script>
+</body>
+</html>
