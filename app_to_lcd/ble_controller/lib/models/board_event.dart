@@ -1,67 +1,79 @@
 import 'dart:convert';
 
-class BoardEvent {
-  final String event;
-  final Map<String, dynamic> payload;
+class QueueItem {
+  final String videoId;
+  final String title;
+  final String url;
 
-  BoardEvent({required this.event, required this.payload});
-
-  factory BoardEvent.fromBytes(List<int> bytes) {
-    try {
-      final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
-      final event = json['event'] as String? ?? 'unknown';
-      final payload = Map<String, dynamic>.from(json)..remove('event');
-      return BoardEvent(event: event, payload: payload);
-    } catch (_) {
-      return BoardEvent(event: 'unknown', payload: {});
-    }
-  }
-}
-
-class ScannedDevice {
-  final String mac;
-  final String name;
-  final int rssi;
-  ScannedDevice({required this.mac, required this.name, required this.rssi});
-  factory ScannedDevice.fromJson(Map<String, dynamic> j) => ScannedDevice(
-    mac: j['mac'] ?? '', name: j['name'] ?? '', rssi: j['rssi'] ?? -99);
-}
-
-class ConnectedDevice {
-  final String mac;
-  final String name;
-  final List<CharacteristicInfo> characteristics;
-  ConnectedDevice({required this.mac, required this.name, required this.characteristics});
-  factory ConnectedDevice.fromJson(Map<String, dynamic> j) => ConnectedDevice(
-    mac: j['mac'] ?? '', name: j['name'] ?? '',
-    characteristics: (j['characteristics'] as List? ?? [])
-        .map((c) => CharacteristicInfo.fromJson(c as Map<String, dynamic>)).toList());
-}
-
-class CharacteristicInfo {
-  final String uuid;
-  final String name;
-  final String value;
-  final List<String> flags;
-  CharacteristicInfo({required this.uuid, required this.name, required this.value, required this.flags});
-  factory CharacteristicInfo.fromJson(Map<String, dynamic> j) => CharacteristicInfo(
-    uuid: j['uuid'] ?? '', name: j['name'] ?? '', value: j['value'] ?? '',
-    flags: List<String>.from(j['flags'] ?? []));
+  QueueItem({required this.videoId, required this.title, required this.url});
+  Map<String, dynamic> toJson() => {'video_id': videoId, 'title': title, 'url': url};
+  factory QueueItem.fromJson(Map<String, dynamic> j) => QueueItem(
+    videoId: j['video_id'] ?? '', title: j['title'] ?? '', url: j['url'] ?? '');
 }
 
 class HistoryItem {
   final String url;
-  final String videoId;
   final String time;
-  HistoryItem({required this.url, required this.videoId, required this.time});
-  factory HistoryItem.fromJson(Map<String, dynamic> j) => HistoryItem(
-    url: j['url'] ?? '', videoId: j['video_id'] ?? '', time: j['time'] ?? '');
+  final String title;
+  HistoryItem({required this.url, required this.time, this.title = ''});
+  factory HistoryItem.fromJson(Map<String, dynamic> j) =>
+      HistoryItem(url: j['url'] ?? '', time: j['time'] ?? '', title: j['title'] ?? '');
 }
 
-class TrustedDevice {
-  final String mac;
-  final String name;
-  TrustedDevice({required this.mac, required this.name});
-  factory TrustedDevice.fromJson(Map<String, dynamic> j) => TrustedDevice(
-    mac: j['mac'] ?? '', name: j['name'] ?? '');
+class QueueStatus {
+  final bool   active;
+  final bool   paused;
+  final int    index;
+  final int    total;
+  final List<QueueItem> queue;
+  final QueueItem?      current;
+
+  QueueStatus({required this.active, required this.paused,
+    required this.index, required this.total, required this.queue, this.current});
+
+  factory QueueStatus.empty() => QueueStatus(
+    active: false, paused: false, index: -1, total: 0, queue: [], current: null);
+
+  factory QueueStatus.fromJson(Map<String, dynamic> j) => QueueStatus(
+    active:  j['active']  ?? false,
+    paused:  j['paused']  ?? false,
+    index:   j['index']   ?? -1,
+    total:   j['total']   ?? 0,
+    queue:   (j['queue'] as List? ?? []).map((e) => QueueItem.fromJson(e)).toList(),
+    current: j['current'] != null ? QueueItem.fromJson(j['current']) : null,
+  );
+}
+
+class ScheduleEntry {
+  final DateTime date;
+  final List<QueueItem> playlist;
+
+  ScheduleEntry({required this.date, required this.playlist});
+
+  Map<String, dynamic> toJson() => {
+    'date': '${date.year}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}',
+    'playlist': playlist.map((p) => p.toJson()).toList(),
+  };
+
+  factory ScheduleEntry.fromJson(Map<String, dynamic> j) => ScheduleEntry(
+    date:     DateTime.parse(j['date']),
+    playlist: (j['playlist'] as List? ?? []).map((e) => QueueItem.fromJson(e)).toList(),
+  );
+}
+
+class BoardEvent {
+  final String event;
+  final Map<String, dynamic> data;
+  BoardEvent({required this.event, required this.data});
+
+  factory BoardEvent.fromBytes(List<int> bytes) {
+    try {
+      final str  = utf8.decode(bytes, allowMalformed: true);
+      final json = jsonDecode(str) as Map<String, dynamic>;
+      return BoardEvent(event: json['event'] ?? '', data: json);
+    } catch (e) {
+      // ignore truncated/malformed BLE packets
+      return BoardEvent(event: 'unknown', data: {});
+    }
+  }
 }
