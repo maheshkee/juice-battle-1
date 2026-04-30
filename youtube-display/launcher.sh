@@ -1,7 +1,8 @@
 #!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 export DISPLAY=:0
-export XAUTHORITY="$HOME/.Xauthority"
+export XAUTHORITY=/home/arduino/.Xauthority
 
 xset s off
 xset s noblank
@@ -20,9 +21,6 @@ until curl -s http://localhost:7000 > /dev/null 2>&1; do
 done
 echo "[LAUNCHER] Ready."
 
-# Wait briefly for App Lab container to stabilize
-sleep 2
-
 pkill -f "/usr/lib/chromium/chromium" 2>/dev/null
 sleep 0.5
 rm -rf /tmp/chrome-kiosk
@@ -33,15 +31,15 @@ rm -rf /tmp/chrome-kiosk
     --user-data-dir=/tmp/chrome-kiosk \
     "http://localhost:7000/splash.html" &
 
-# BT command bridge — untouched
-BT_CMD_FILE="$SCRIPT_DIR/bt_cmd.txt"
-BT_RESULT_FILE="$SCRIPT_DIR/bt_result.txt"
+# BT command bridge -- untouched
+BT_CMD_FILE="$PROJECT_DIR/bt_cmd.txt"
+BT_RESULT_FILE="$PROJECT_DIR/bt_result.txt"
 while true; do
     if [ -f "$BT_CMD_FILE" ]; then
         BT_CMD=$(cat "$BT_CMD_FILE")
         rm -f "$BT_CMD_FILE"
         echo "[LAUNCHER] BT cmd: $BT_CMD"
-        export DBUS_SYSTEM_BUS_ADDRESS=unix:path=$SCRIPT_DIR/dbus.sock
+        export DBUS_SYSTEM_BUS_ADDRESS=unix:path=$PROJECT_DIR/dbus.sock
         case "$BT_CMD" in
             BT_LIST)
                 bluetoothctl devices Trusted > "$BT_RESULT_FILE" 2>&1
