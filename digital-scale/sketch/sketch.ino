@@ -1,12 +1,12 @@
-#include <Arduino_RouterBridge.h>
+#include "Arduino_RouterBridge.h"
 
-#define HX711_DT_PIN        7
-#define HX711_SCK_PIN       6
-#define CALIBRATION_FACTOR  100.0f
-#define SAMPLE_COUNT        5
-#define TARE_SAMPLE_COUNT   20
-#define STABILITY_THRESHOLD 5.0f
-#define PUSH_INTERVAL_MS    500
+#define HX711_DT_PIN   7
+#define HX711_SCK_PIN  6
+#define CALIBRATION_FACTOR   420.0f
+#define SAMPLE_COUNT         5
+#define TARE_SAMPLE_COUNT    20
+#define STABILITY_THRESHOLD  5.0f
+#define PUSH_INTERVAL_MS     500
 
 static long g_tare_offset = 0;
 
@@ -43,11 +43,7 @@ static long hx711_read_average(int n) {
     int  ok  = 0;
     for (int i = 0; i < n; i++) {
         long r = hx711_read_raw();
-        if (r == LONG_MIN) { delay(10); continue; }
-        if (r == -1)       { delay(10); continue; }
-        if (r == 0x7FFFFF) { delay(10); continue; }
-        sum += r;
-        ok++;
+        if (r != LONG_MIN) { sum += r; ok++; }
         delay(10);
     }
     return (ok == 0) ? LONG_MIN : (sum / ok);
@@ -64,16 +60,9 @@ void setup() {
     pinMode(HX711_SCK_PIN, OUTPUT);
     pinMode(HX711_DT_PIN,  INPUT_PULLUP);
     digitalWrite(HX711_SCK_PIN, LOW);
-
-    pinMode(LED3_R, OUTPUT);
-    pinMode(LED3_G, OUTPUT);
-    digitalWrite(LED3_R, LOW);   // red on = booting
-    digitalWrite(LED3_G, HIGH);  // green off
-
     Bridge.begin();
     Monitor.begin();
     Bridge.provide_safe("do_tare", handle_do_tare);
-
     delay(500);
     long raw = hx711_read_average(TARE_SAMPLE_COUNT);
     if (raw != LONG_MIN) {
@@ -82,9 +71,6 @@ void setup() {
     } else {
         Monitor.println("HX711 not detected");
     }
-
-    digitalWrite(LED3_R, HIGH);  // red off
-    digitalWrite(LED3_G, LOW);   // green on = ready
 }
 
 void loop() {
@@ -110,7 +96,7 @@ void loop() {
         stable = (diff < STABILITY_THRESHOLD);
     }
 
-    String j = "{\"grams\":";
+    String j = "{\"weight_g\":";
     j += String(grams, 1);
     j += ",\"weight_kg\":";
     j += String(kg, 4);
@@ -118,6 +104,5 @@ void loop() {
     j += stable ? "true" : "false";
     j += ",\"sensor_ok\":true}";
 
-    Monitor.println("RAW=" + String(raw) + " TARE=" + String(g_tare_offset));
     Bridge.notify("weight_event", j);
 }

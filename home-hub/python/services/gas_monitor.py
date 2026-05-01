@@ -1,4 +1,5 @@
 import concurrent.futures
+import json
 import os
 import sqlite3
 import time
@@ -65,7 +66,7 @@ def _read_sensor():
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(_bridge.call, "read_weight_packet")
                 result = future.result(timeout=_SENSOR_TIMEOUT_SEC)
-            return result
+            return json.loads(result)
         except Exception as e:
             print(f"[GAS_MONITOR] read_sensor attempt {attempt} error: {e}", flush=True)
             if attempt < _SENSOR_MAX_RETRIES:
