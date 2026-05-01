@@ -38,16 +38,17 @@ class BleService {
     _setState(ConnState.scanning);
     _log('[SCAN] Looking for BLE-Hub...');
     await FlutterBluePlus.startScan(
-      withServices: [BleUuids.service],
       timeout: const Duration(seconds: 15),
     );
     _scanSub = FlutterBluePlus.scanResults.listen((results) {
       for (var r in results) {
-        _log('[SCAN] Found: ${r.device.platformName}');
-        FlutterBluePlus.stopScan();
-        _scanSub?.cancel();
-        _connect(r.device);
-        return;
+        if (r.device.platformName == 'BLE-Hub') {
+          _log('[SCAN] Found: ${r.device.platformName}');
+          FlutterBluePlus.stopScan();
+          _scanSub?.cancel();
+          _connect(r.device);
+          return;
+        }
       }
     });
     FlutterBluePlus.isScanning.listen((scanning) {
@@ -90,7 +91,8 @@ class BleService {
               _log('[CHAR] Command char ready');
             } else if (c.uuid == BleUuids.evt) {
               await c.setNotifyValue(true);
-              c.onValueReceived.listen((value) => _events.add(BoardEvent.fromBytes(value)));
+              c.onValueReceived.listen((value) =>
+                _events.add(BoardEvent.fromBytes(value)));
               _log('[NOTIFY] Subscribed to board events');
             }
           }
@@ -123,6 +125,7 @@ class BleService {
   }
 
   Future<void> sendUrl(String url)          => _write('YT:$url');
+  Future<void> sendUrlWithTitle(String url, String title) => _write('YT:$url||$title');
   Future<void> sendLedToggle()              => _write('CMD:LED_TOGGLE');
   Future<void> sendLedOn()                  => _write('CMD:LED_ON');
   Future<void> sendLedOff()                 => _write('CMD:LED_OFF');
@@ -136,12 +139,33 @@ class BleService {
   Future<void> playerUnmute()               => _write('CMD:PLAYER_UNMUTE');
   Future<void> playerVolUp()                => _write('CMD:PLAYER_VOL_UP');
   Future<void> playerVolDown()              => _write('CMD:PLAYER_VOL_DOWN');
+  Future<void> playerSeekForward()          => _write('CMD:PLAYER_SEEK_FWD');
+  Future<void> playerSeekBack()             => _write('CMD:PLAYER_SEEK_BACK');
+  Future<void> playerReplay()               => _write('CMD:PLAYER_REPLAY');
+  Future<void> playerQuality(String q)      => _write('CMD:PLAYER_QUALITY:$q');
   Future<void> scanStart()                  => _write('CMD:SCAN_START');
   Future<void> scanStop()                   => _write('CMD:SCAN_STOP');
   Future<void> connectDevice(String mac)    => _write('CMD:CONNECT:$mac');
   Future<void> disconnectDevice(String mac) => _write('CMD:DISCONNECT:$mac');
   Future<void> forgetDevice(String mac)     => _write('CMD:FORGET:$mac');
   Future<void> getStatus()                  => _write('CMD:GET_STATUS');
+  Future<void> queuePlay()                  => _write('CMD:QUEUE_PLAY');
+  Future<void> queuePause()                 => _write('CMD:QUEUE_PAUSE');
+  Future<void> queueResume()                => _write('CMD:QUEUE_RESUME');
+  Future<void> queueSkip()                  => _write('CMD:QUEUE_SKIP');
+  Future<void> queueReplay()                => _write('CMD:QUEUE_REPLAY');
+  Future<void> queueStop()                  => _write('CMD:QUEUE_STOP');
+  Future<void> queueGoto(int index)         => _write('CMD:QUEUE_GOTO:$index');
+
+  Future<void> sendQueue(List<QueueItem> items) async {
+    final payload = jsonEncode(items.map((e) => e.toJson()).toList());
+    await _write('QUEUE:$payload');
+  }
+
+  Future<void> sendSchedule(List<ScheduleEntry> entries) async {
+    final payload = jsonEncode(entries.map((e) => e.toJson()).toList());
+    await _write('SCHEDULE:$payload');
+  }
 
   void dispose() {
     _scanSub?.cancel();

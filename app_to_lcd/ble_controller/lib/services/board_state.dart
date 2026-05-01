@@ -2,110 +2,108 @@ import 'package:flutter/foundation.dart';
 import '../models/board_event.dart';
 
 class BoardState extends ChangeNotifier {
-  String  mode       = 'idle';
-  bool    ledOn      = false;
-  bool    scanning   = false;
+  bool   ledOn      = false;
+  String mode       = 'idle';
   String? currentUrl;
-
-  List<ScannedDevice>   scanResults      = [];
-  List<ConnectedDevice> connectedDevices = [];
-  List<TrustedDevice>   trustedDevices   = [];
-  List<HistoryItem>     urlHistory       = [];
-  List<String>          logs             = [];
+  String? nowPlaying;
+  List<HistoryItem> urlHistory         = [];
+  List<Map<String, dynamic>> scanResults      = [];
+  List<Map<String, dynamic>> connectedDevices = [];
+  List<Map<String, dynamic>> trustedDevices   = [];
+  bool   scanning      = false;
+  List<String> logs    = [];
+  QueueStatus  queueStatus    = QueueStatus.empty();
+  List<ScheduleEntry> scheduleEntries = [];
 
   void addLog(String msg) {
     logs.insert(0, msg);
-    if (logs.length > 100) logs.removeLast();
+    if (logs.length > 200) logs.removeLast();
     notifyListeners();
   }
 
   void applyEvent(BoardEvent evt) {
-    final p = evt.payload;
+    final d = evt.data;
     switch (evt.event) {
       case 'full_status':
-        mode       = p['mode']     ?? mode;
-        ledOn      = p['led']      ?? ledOn;
-        scanning   = p['scanning'] ?? scanning;
-        currentUrl = p['current_url'];
-        if (p['scan_results'] != null)
-          scanResults = (p['scan_results'] as List).map((d) => ScannedDevice.fromJson(d)).toList();
-        if (p['connected_devices'] != null)
-          connectedDevices = (p['connected_devices'] as List).map((d) => ConnectedDevice.fromJson(d)).toList();
-        if (p['trusted'] != null)
-          trustedDevices = (p['trusted'] as List).map((d) => TrustedDevice.fromJson(d)).toList();
-        if (p['history'] != null)
-          urlHistory = (p['history'] as List).map((d) => HistoryItem.fromJson(d)).toList();
-        break;
-      case 'mode_update':
-        mode = p['mode'] ?? mode;
+        ledOn      = d['led']      ?? ledOn;
+        mode       = d['mode']     ?? mode;
+        currentUrl = d['current_url'];
+        urlHistory = (d['history'] as List? ?? [])
+            .map((e) => HistoryItem.fromJson(e)).toList();
+        scanning   = d['scanning'] ?? scanning;
+        scanResults      = List<Map<String, dynamic>>.from(
+            d['scan_results']      ?? []);
+        connectedDevices = List<Map<String, dynamic>>.from(
+            d['connected_devices'] ?? []);
+        trustedDevices   = List<Map<String, dynamic>>.from(
+            (d['trusted'] as List? ?? []).map((e) =>
+              {'mac': e['mac'], 'name': e['name']}));
+        if (d['queue_status'] != null)
+          queueStatus = QueueStatus.fromJson(d['queue_status']);
+        if (d['schedule'] != null)
+          scheduleEntries = (d['schedule'] as List? ?? [])
+              .map((e) => ScheduleEntry.fromJson(e)).toList();
+        final np = (d['now_playing'] ?? '') as String;
+        nowPlaying = np.isNotEmpty ? np : nowPlaying;
         break;
       case 'led_status':
-        ledOn = p['state'] ?? ledOn;
+        ledOn = d['state'] ?? ledOn;
         break;
-      case 'scan_status':
-        scanning = p['scanning'] ?? scanning;
-        break;
-      case 'scan_results':
-        if (p['devices'] != null) {
-          final map = {for (var d in scanResults) d.mac: d};
-          for (var d in (p['devices'] as List).map((d) => ScannedDevice.fromJson(d))) {
-            if (d.rssi >= -79 || connectedDevices.any((c) => c.mac == d.mac)) map[d.mac] = d;
-          }
-          scanResults = map.values.toList()..sort((a, b) => b.rssi.compareTo(a.rssi));
-        }
-        break;
-      case 'connected_devices':
-        if (p['devices'] != null)
-          connectedDevices = (p['devices'] as List).map((d) => ConnectedDevice.fromJson(d)).toList();
-        break;
-      case 'device_connected':
-        final mac = p['mac'] as String? ?? '';
-        final name = p['name'] as String? ?? mac;
-        if (!connectedDevices.any((d) => d.mac == mac))
-          connectedDevices.add(ConnectedDevice(mac: mac, name: name, characteristics: []));
-        addLog('[BLE] Connected: $name');
-        break;
-      case 'device_disconnected':
-        connectedDevices.removeWhere((d) => d.mac == (p['mac'] ?? ''));
-        addLog('[BLE] Disconnected: ${p['mac']}');
-        break;
-      case 'device_error':
-        addLog('[ERROR] ${p['mac']}: ${p['error']}');
-        break;
-      case 'trusted_devices':
-        if (p['devices'] != null)
-          trustedDevices = (p['devices'] as List).map((d) => TrustedDevice.fromJson(d)).toList();
-        break;
-      case 'characteristic_update':
-        final mac  = p['mac']   as String? ?? '';
-        final uuid = p['uuid']  as String? ?? '';
-        final val  = p['value'] as String? ?? '';
-        final name = p['name']  as String? ?? uuid;
-        final idx  = connectedDevices.indexWhere((d) => d.mac == mac);
-        if (idx >= 0) {
-          final chars = List<CharacteristicInfo>.from(connectedDevices[idx].characteristics);
-          final ci    = chars.indexWhere((c) => c.uuid == uuid);
-          if (ci >= 0)
-            chars[ci] = CharacteristicInfo(uuid: uuid, name: name, value: val, flags: chars[ci].flags);
-          else
-            chars.add(CharacteristicInfo(uuid: uuid, name: name, value: val, flags: []));
-          connectedDevices[idx] = ConnectedDevice(mac: mac, name: connectedDevices[idx].name, characteristics: chars);
-        }
-        addLog('[$name]: $val');
+      case 'mode_update':
+        mode = d['mode'] ?? mode;
         break;
       case 'url_update':
-        currentUrl = p['url'];
-        addLog('[URL] Playing: ${p['url']}');
+        currentUrl = d['url'];
         break;
       case 'url_history':
-        if (p['history'] != null)
-          urlHistory = (p['history'] as List).map((d) => HistoryItem.fromJson(d)).toList();
+        urlHistory = (d['history'] as List? ?? [])
+            .map((e) => HistoryItem.fromJson(e)).toList();
+        // update nowPlaying title from history if we have it
+        if (nowPlaying != null) {
+          for (final item in urlHistory) {
+            if (item.title.isNotEmpty &&
+                (nowPlaying == item.url ||
+                 nowPlaying!.length == 11)) {
+              nowPlaying = item.title;
+              break;
+            }
+          }
+        }
         break;
-      case 'url_rejected':
-        addLog('[REJECTED] ${p['reason']}: ${p['url']}');
+      case 'scan_status':
+        scanning = d['scanning'] ?? scanning;
+        break;
+      case 'scan_results':
+        scanResults = List<Map<String, dynamic>>.from(d['devices'] ?? []);
+        break;
+      case 'connected_devices':
+        connectedDevices = List<Map<String, dynamic>>.from(d['devices'] ?? []);
+        break;
+      case 'trusted_devices':
+        trustedDevices = List<Map<String, dynamic>>.from(
+            (d['devices'] as List? ?? []).map((e) =>
+              {'mac': e['mac'], 'name': e['name']}));
+        break;
+      case 'device_connected':
+        addLog('[BLE] Connected: ${d['name'] ?? d['mac']}');
+        break;
+      case 'device_disconnected':
+        addLog('[BLE] Disconnected: ${d['mac']}');
+        break;
+      case 'queue_status':
+        queueStatus = QueueStatus.fromJson(d);
+        break;
+      case 'schedule_update':
+        scheduleEntries = (d['entries'] as List? ?? [])
+            .map((e) => ScheduleEntry.fromJson(e)).toList();
+        break;
+      case 'now_playing':
+        final t = (d['title'] ?? '') as String;
+        final v = (d['video_id'] ?? '') as String;
+        nowPlaying = t.isNotEmpty ? t : (v.isNotEmpty ? v : null);
         break;
       case 'player_state':
-        addLog('[PLAYER] ${p['cmd']}');
+        if (d['cmd'] == 'stop') { mode = 'idle'; nowPlaying = null; }
         break;
     }
     notifyListeners();

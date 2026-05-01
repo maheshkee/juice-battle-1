@@ -7,12 +7,12 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_NAME="$(basename "$SCRIPT_DIR")"
-APP_DIR="$SCRIPT_DIR"
-WHEELS_DIR="$APP_DIR/wheels"
-TYPELIBS_DIR="$APP_DIR/typelibs"
-LAUNCHER="$APP_DIR/launcher.sh"
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+APP_NAME="$(basename "$PROJECT_DIR")"
+SERVICE_NAME="dbus-bridge-${APP_NAME}.service"
+WHEELS_DIR="$PROJECT_DIR/wheels"
+TYPELIBS_DIR="$PROJECT_DIR/typelibs"
+LAUNCHER="$PROJECT_DIR/launcher.sh"
 
 GREEN='\033[0;32m'
 AMBER='\033[0;33m'
@@ -26,11 +26,13 @@ fail() { echo -e "${RED}[FAIL]${NC}  $1"; exit 1; }
 echo ""
 echo "========================================================"
 echo "  youtube-display -- Board Setup"
-echo "  Arduino UNO Q (AQ2)"
+echo "  Arduino UNO Q"
+echo "  Project : $APP_NAME"
+echo "  Path    : $PROJECT_DIR"
 echo "========================================================"
 echo ""
 
-# -- 1. Verify we are on the right board --------------------------------------
+# -- 1. Verify board ----------------------------------------------------------
 log "Checking board..."
 if [ ! -f /etc/arduino-release ] && ! uname -r | grep -q "g0dd6551"; then
     warn "This doesn't look like an Arduino UNO Q board. Proceeding anyway..."
@@ -60,16 +62,16 @@ log "System packages installed."
 log "Checking Python wheels..."
 mkdir -p "$WHEELS_DIR"
 
-if [ ! -f "$WHEELS_DIR/dbus_python"*.whl ] 2>/dev/null; then
+if ls "$WHEELS_DIR"/dbus_python*.whl > /dev/null 2>&1; then
+    log "Wheels already present -- skipping build."
+else
     log "Building dbus-python wheel..."
     pip3 wheel dbus-python --wheel-dir "$WHEELS_DIR" --quiet
     pip3 wheel PyGObject --wheel-dir "$WHEELS_DIR" --quiet
     log "Wheels built."
-else
-    log "Wheels already present -- skipping build."
 fi
 
-# -- 4. Copy required shared libraries into wheels/ ---------------------------
+# -- 4. Copy required shared libraries ----------------------------------------
 log "Copying shared libraries..."
 for lib in \
     /lib/aarch64-linux-gnu/libdbus-1.so.3 \
@@ -110,26 +112,26 @@ done
 log "Typelibs copied."
 
 # -- 6. Create dbus-bridge systemd service ------------------------------------
-log "Creating dbus-bridge service..."
-sudo tee /etc/systemd/system/dbus-bridge.service > /dev/null << EOF
+log "Creating $SERVICE_NAME..."
+sudo tee /etc/systemd/system/$SERVICE_NAME > /dev/null << SVCEOF
 [Unit]
-Description=DBus Unix Bridge for youtube-display App Lab
+Description=DBus Unix Bridge for $APP_NAME App Lab
 After=network.target
 
 [Service]
 User=arduino
-ExecStartPre=/bin/rm -f $APP_DIR/dbus.sock
-ExecStart=/usr/bin/socat UNIX-LISTEN:$APP_DIR/dbus.sock,fork,reuseaddr,mode=0777,unlink-early UNIX-CONNECT:/run/dbus/system_bus_socket
+ExecStartPre=/bin/rm -f $PROJECT_DIR/dbus.sock
+ExecStart=/usr/bin/socat UNIX-LISTEN:$PROJECT_DIR/dbus.sock,fork,reuseaddr,mode=0777,unlink-early UNIX-CONNECT:/run/dbus/system_bus_socket
 Restart=always
 RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-EOF
+SVCEOF
 sudo systemctl daemon-reload
-sudo systemctl enable dbus-bridge.service
-sudo systemctl start dbus-bridge.service
-log "dbus-bridge service created and started."
+sudo systemctl enable "$SERVICE_NAME"
+sudo systemctl start "$SERVICE_NAME"
+log "$SERVICE_NAME created and started."
 
 # -- 7. Configure LightDM auto-login ------------------------------------------
 log "Configuring LightDM auto-login..."
@@ -155,7 +157,7 @@ fi
 # -- 9. Create XFCE autostart entry for launcher ------------------------------
 log "Creating XFCE autostart entry..."
 mkdir -p "$HOME/.config/autostart"
-cat > "$HOME/.config/autostart/youtube-display-launcher.desktop" << EOF
+cat > "$HOME/.config/autostart/youtube-display-launcher.desktop" << DESKEOF
 [Desktop Entry]
 Type=Application
 Name=YouTube Display Launcher
@@ -163,7 +165,7 @@ Exec=bash $LAUNCHER
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
-EOF
+DESKEOF
 log "XFCE autostart entry created."
 
 # -- 10. Set timezone ---------------------------------------------------------
@@ -173,19 +175,47 @@ sudo timedatectl set-timezone Asia/Kolkata
 log "Timezone set."
 
 # -- 11. Set youtube-display as default app -----------------------------------
-log "Setting youtube-display as default App Lab app..."
-arduino-app-cli properties set default user:youtube-display 2>/dev/null || \
+log "Setting $APP_NAME as default App Lab app..."
+arduino-app-cli properties set default user:$APP_NAME 2>/dev/null || \
     warn "Could not set default app -- set manually after reboot"
 log "Default app set."
 
-# BT audio setup: run setup_for_bt_audio.sh separately after setup completes.
+# -- 12. Install bt-autoconnect service ---------------------------------------
+log "Setting up Bluetooth auto-connect service..."
+if [ -f "$PROJECT_DIR/bt-autoconnect.py" ]; then
+    sudo cp "$PROJECT_DIR/bt-autoconnect.py" /usr/local/bin/bt-autoconnect.py
+    sudo chmod +x /usr/local/bin/bt-autoconnect.py
+    log "bt-autoconnect.py installed to /usr/local/bin/"
+else
+    warn "bt-autoconnect.py not found -- skipping BT auto-connect"
+fi
+
+mkdir -p "$HOME/.config/systemd/user"
+cat > "$HOME/.config/systemd/user/bt-autoconnect.service" << 'SVCEOF'
+[Unit]
+Description=Bluetooth Auto-Connect for trusted audio devices
+After=bluetooth.target pipewire.service wireplumber.service
+Wants=pipewire.service wireplumber.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/bt-autoconnect.py
+StandardOutput=journal
+StandardError=journal
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target
+SVCEOF
+
+systemctl --user daemon-reload
+systemctl --user enable bt-autoconnect.service
+log "bt-autoconnect.service installed and enabled."
 
 # -- 13. Create WirePlumber BT A2DP rule --------------------------------------
 log "Creating WirePlumber A2DP auto-connect rule..."
 sudo mkdir -p /etc/pipewire/wireplumber.conf.d
-sudo tee /etc/pipewire/wireplumber.conf.d/51-bt-autoconnect.conf > /dev/null << 'EOF'
-# Auto-connect Bluetooth audio devices using A2DP (high quality stereo)
-# Applies to ALL Bluetooth audio devices - no device-specific config needed
+sudo tee /etc/pipewire/wireplumber.conf.d/51-bt-autoconnect.conf > /dev/null << 'WPEOF'
 monitor.bluez.rules = [
   {
     matches = [
@@ -201,22 +231,22 @@ monitor.bluez.rules = [
     }
   }
 ]
-EOF
+WPEOF
 log "WirePlumber A2DP rule created."
 
 # -- 14. Set shell aliases ----------------------------------------------------
 log "Adding shell aliases..."
 if ! grep -q "alias debug-mode" "$HOME/.bashrc"; then
-    cat >> "$HOME/.bashrc" << EOF
+    cat >> "$HOME/.bashrc" << ALIASEOF
 
 # youtube-display developer aliases
 alias debug-mode='pkill -f /usr/lib/chromium/chromium && echo Desktop restored'
 alias kiosk-mode='bash $LAUNCHER &'
-alias yt-logs='arduino-app-cli app logs user:youtube-display 2>/dev/null | tail -30'
-alias yt-restart='arduino-app-cli app stop user:youtube-display && rm -rf ~/ArduinoApps/youtube-display/.cache && arduino-app-cli app start user:youtube-display'
-alias yt-stop='arduino-app-cli app stop user:youtube-display'
-alias yt-start='arduino-app-cli app start user:youtube-display'
-EOF
+alias yt-logs='arduino-app-cli app logs user:$APP_NAME 2>/dev/null | tail -30'
+alias yt-restart='arduino-app-cli app stop user:$APP_NAME && rm -rf $PROJECT_DIR/.cache && arduino-app-cli app start user:$APP_NAME'
+alias yt-stop='arduino-app-cli app stop user:$APP_NAME'
+alias yt-start='arduino-app-cli app start user:$APP_NAME'
+ALIASEOF
     log "Aliases added to .bashrc."
 else
     log "Aliases already in .bashrc."
@@ -241,12 +271,8 @@ echo "     trust <MAC>"
 echo "     connect <MAC>"
 echo "     exit"
 echo ""
-echo "  NOTE: The app scanner only shows BLE-capable speakers."
-echo "  Classic-BT-only earbuds must be paired via bluetoothctl."
-echo "  Once trusted they auto-connect on every reboot."
-echo ""
 echo "  3. Deploy the app:    bash deploy.sh"
-echo "  4. Install Flutter app on phone from app/yt_display_app/"
+echo "  4. Install Flutter app on phone"
 echo "  5. Open app, tap SCAN, connect to YT-Display"
 echo ""
 echo "  Developer commands (via SSH after reboot):"
