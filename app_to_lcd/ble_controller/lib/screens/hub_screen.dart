@@ -8,11 +8,14 @@ import '../models/board_event.dart';
 import '../widgets/connection_bar.dart';
 import '../widgets/youtube_section.dart';
 import '../widgets/player_controls.dart';
-import '../widgets/ble_devices_panel.dart';
 import '../widgets/log_console.dart';
 import '../widgets/led_mode_bar.dart';
 import '../widgets/queue_section.dart';
 import '../screens/schedule_screen.dart';
+import '../screens/watch_later_screen.dart';
+import '../services/watch_later_service.dart';
+import '../services/bt_audio_service.dart';
+import '../screens/bt_devices_screen.dart';
 import '../main.dart' show startKeepAlive, stopKeepAlive;
 
 class HubScreen extends StatefulWidget {
@@ -35,14 +38,50 @@ class _HubScreenState extends State<HubScreen> {
       final board = context.read<BoardState>();
       _subs.add(ble.connState.listen((s) {
         setState(() {});
-        if (s == ConnState.connected)
-          { board.addLog('[APP] Connected to board'); startKeepAlive(); }
+        if (s == ConnState.connected) {
+          board.addLog('[APP] Connected to board');
+          startKeepAlive();
+          Future.delayed(const Duration(milliseconds: 500), () {
+            ble.getStatus();
+          });
+          final wl      = context.read<WatchLaterService>();
+          final pending = wl.flushPending();
+          for (final item in pending) {
+            ble.watchLaterAdd(item.url, item.title, item.videoId);
+          }
+          ble.watchLaterGet();
+        }
         if (s == ConnState.disconnected)
           { board.addLog('[APP] Disconnected'); stopKeepAlive(); }
       }));
       _subs.add(ble.devName.listen((_) => setState(() {})));
       _subs.add(ble.logs.listen((msg) => board.addLog(msg)));
-      _subs.add(ble.events.listen((evt) => board.applyEvent(evt)));
+      _subs.add(ble.events.listen((evt) {
+        board.applyEvent(evt);
+        final btAudio = context.read<BtAudioService>();
+        if (evt.event == 'bt_audio_connected') {
+          final mac  = evt.data['mac'] as String? ?? '';
+          final name = evt.data['name'] as String? ?? mac;
+          btAudio.setConnected(mac, name);
+        } else if (evt.event == 'bt_audio_disconnected') {
+          btAudio.setDisconnected();
+        } else if (evt.event == 'bt_audio_error') {
+          final mac = evt.data['mac'] as String? ?? '';
+          btAudio.setError(mac);
+        } else if (evt.event == 'bt_paired_devices') {
+          final devices = List<Map<String, dynamic>>.from(
+            (evt.data['devices'] as List? ?? []).map((e) =>
+              {'mac': e['mac'] as String, 'name': e['name'] as String}));
+          btAudio.setPairedDevices(devices);
+        } else if (evt.event == 'bt_forgotten') {
+          final mac = evt.data['mac'] as String? ?? '';
+          if (mac.isNotEmpty) btAudio.setForgotten(mac);
+        }
+        if (evt.event == 'watchlater_update') {
+          final wl = context.read<WatchLaterService>();
+          wl.syncFromBoard(board.watchLaterItems);
+        }
+      }));
       ble.startScan();
     });
   }
@@ -83,7 +122,6 @@ class _HubScreenState extends State<HubScreen> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: const Color(0xFF080C14),
-      endDrawer: _buildBleDrawer(ble, board),
       body: SafeArea(
         child: Column(children: [
           _buildHeader(ble),
@@ -114,7 +152,7 @@ class _HubScreenState extends State<HubScreen> {
                     context.read<BoardState>().mode = 'clock';
                     context.read<BoardState>().notifyListeners();
                   },
-                  onSchedule:  _openSchedule,
+                  onSchedule: _openSchedule,
                 ),
                 const SizedBox(height: 12),
                 _buildTodayCard(board, ble),
@@ -127,9 +165,8 @@ class _HubScreenState extends State<HubScreen> {
                     ble.sendUrlWithTitle(url, title);
                     context.read<BoardState>().nowPlaying = title.isNotEmpty ? title : url;
                     context.read<BoardState>().notifyListeners();
-                    // add to history immediately
                     context.read<BoardState>().urlHistory.insert(0,
-                      HistoryItem(url: url, time: TimeOfDay.now().format(context), title: title));
+                      HistoryItem(url: url, time: DateTime.now().toString().substring(11, 16), title: title));
                     context.read<BoardState>().notifyListeners();
                   },
                 ),
@@ -180,18 +217,13 @@ class _HubScreenState extends State<HubScreen> {
         e.date.year == now.year &&
         e.date.month == now.month &&
         e.date.day   == now.day).firstOrNull;
-
     final upcoming = board.scheduleEntries
-        .where((e) => e.date.isAfter(
-            DateTime(now.year, now.month, now.day)))
+        .where((e) => e.date.isAfter(DateTime(now.year, now.month, now.day)))
         .toList()..sort((a, b) => a.date.compareTo(b.date));
-
     if (today == null && upcoming.isEmpty) return const SizedBox.shrink();
-
     final connected = ble.state == ConnState.connected;
     final mnShort   = ['Jan','Feb','Mar','Apr','May','Jun',
                        'Jul','Aug','Sep','Oct','Nov','Dec'];
-
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF0D1520),
@@ -221,11 +253,10 @@ class _HubScreenState extends State<HubScreen> {
             const Spacer(),
             GestureDetector(
               onTap: _openSchedule,
-              child: const Text('Manage →', style: TextStyle(
-                fontSize: 10, color: Color(0xFF3D5068)))),
+              child: const Text('Manage →',
+                style: TextStyle(fontSize: 10, color: Color(0xFF3D5068)))),
           ]),
         ),
-
         if (today != null)
           ...today.playlist.asMap().entries.map((e) =>
             _todayTile(e.value, e.key, connected, ble))
@@ -253,7 +284,6 @@ class _HubScreenState extends State<HubScreen> {
                 style: const TextStyle(fontSize: 12, color: Color(0xFF5A7A9A))),
             ]),
           )),
-
         const SizedBox(height: 4),
       ]),
     );
@@ -335,57 +365,9 @@ class _HubScreenState extends State<HubScreen> {
     );
   }
 
-  Widget _buildBleDrawer(BleService ble, BoardState board) {
-    final connected = ble.state == ConnState.connected;
-    return Drawer(
-      backgroundColor: const Color(0xFF060B14),
-      width: MediaQuery.of(context).size.width * 0.85,
-      child: SafeArea(
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
-            child: Row(children: [
-              const Icon(Icons.bluetooth, color: Color(0xFF00D4FF), size: 20),
-              const SizedBox(width: 10),
-              const Text('Bluetooth Devices', style: TextStyle(
-                fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.refresh,
-                  color: Color(0xFF00D4FF), size: 20),
-                onPressed: connected ? () => ble.scanStart() : null),
-              IconButton(
-                icon: const Icon(Icons.close,
-                  color: Color(0xFF3D5068), size: 20),
-                onPressed: () => Navigator.of(context).pop()),
-            ]),
-          ),
-          if (board.scanning)
-            const LinearProgressIndicator(
-              color: Color(0xFF00D4FF),
-              backgroundColor: Color(0xFF1A2840)),
-          Expanded(
-            child: BleDevicesPanel(
-              scanning:         board.scanning,
-              scanResults:      board.scanResults,
-              connectedDevices: board.connectedDevices,
-              trustedDevices:   board.trustedDevices,
-              enabled:          connected,
-              onScanStart:      () => ble.scanStart(),
-              onScanStop:       () => ble.scanStop(),
-              onConnect:        (mac) => ble.connectDevice(mac),
-              onDisconnect:     (mac) => ble.disconnectDevice(mac),
-              onForget:         (mac) => ble.forgetDevice(mac),
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
-
   Widget _buildHeader(BleService ble) {
-    final live = ble.state == ConnState.connected;
-    final c    = live ? const Color(0xFF00D4FF) : const Color(0xFF3D5068);
+    final live  = ble.state == ConnState.connected;
+    final c     = live ? const Color(0xFF00D4FF) : const Color(0xFF3D5068);
     final cGlow = live ? const Color(0xFF00D4FF) : Colors.transparent;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 16, 6),
@@ -428,7 +410,6 @@ class _HubScreenState extends State<HubScreen> {
               color: c, letterSpacing: 1)),
           ])),
         const SizedBox(width: 8),
-        // history icon
         Builder(builder: (ctx) {
           final board = ctx.watch<BoardState>();
           final ble   = ctx.watch<BleService>();
@@ -442,21 +423,49 @@ class _HubScreenState extends State<HubScreen> {
                 border: Border.all(
                   color: const Color(0xFFFF3D71).withOpacity(0.15))),
               child: Stack(alignment: Alignment.center, children: [
-                const Icon(Icons.history,
-                  color: Color(0xFFFF3D71), size: 18),
+                const Icon(Icons.history, color: Color(0xFFFF3D71), size: 18),
                 if (board.urlHistory.isNotEmpty)
                   Positioned(top: 6, right: 6,
-                    child: Container(
-                      width: 6, height: 6,
+                    child: Container(width: 6, height: 6,
                       decoration: const BoxDecoration(
                         shape: BoxShape.circle,
                         color: Color(0xFFFF3D71)))),
-              ])),
-          );
+              ])));
+        }),
+        const SizedBox(width: 8),
+        Builder(builder: (ctx) {
+          final wl = ctx.watch<WatchLaterService>();
+          return GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const WatchLaterScreen())),
+            child: Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0A84FF).withOpacity(0.07),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(
+                  color: const Color(0xFF0A84FF).withOpacity(0.15))),
+              child: Stack(alignment: Alignment.center, children: [
+                const Icon(Icons.bookmark_outline_rounded,
+                  color: Color(0xFF0A84FF), size: 18),
+                if (wl.items.isNotEmpty)
+                  Positioned(top: 6, right: 6,
+                    child: Container(width: 6, height: 6,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFF0A84FF)))),
+                if (wl.pendingCount > 0)
+                  Positioned(top: 5, right: 5,
+                    child: Container(width: 8, height: 8,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFFFF9F0A)))),
+              ])));
         }),
         const SizedBox(width: 8),
         GestureDetector(
-          onTap: () => _scaffoldKey.currentState?.openEndDrawer(),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const BtDevicesScreen())),
           child: Container(
             width: 38, height: 38,
             decoration: BoxDecoration(
@@ -467,14 +476,13 @@ class _HubScreenState extends State<HubScreen> {
             child: Stack(alignment: Alignment.center, children: [
               const Icon(Icons.bluetooth_rounded,
                 color: Color(0xFF00D4FF), size: 18),
-              if (context.watch<BoardState>().connectedDevices.isNotEmpty)
+              if (context.watch<BoardState>().btAudioStatus == 'connected')
                 Positioned(top: 7, right: 7,
                   child: Container(width: 6, height: 6,
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Color(0xFF00D4FF)))),
-            ])),
-        ),
+                      color: Color(0xFF34C759)))),
+            ]))),
       ]),
     );
   }

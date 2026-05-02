@@ -296,11 +296,18 @@ ui.on_message("video_ended",  on_video_ended)
 
 import threading
 
-def gas_monitor_loop():
-    time.sleep(10)  # wait for bridge to be ready
-    while True:
-        gas_monitor._on_measurement_cycle()
-        time.sleep(21600)  # 6 hours in seconds
+def on_weight_event(data):
+    import json
+    try:
+        if isinstance(data, str):
+            data = json.loads(data)
+        if not data.get('sensor_ok', False):
+            return
+        ui.send_message('weight_update', data)
+        print(f"[WEIGHT] {data.get('grams',0):.1f}g / {data.get('weight_kg',0):.4f}kg stable={data.get('stable')}", flush=True)
+    except Exception as e:
+        print(f"[WEIGHT] parse error: {e}", flush=True)
 
-threading.Thread(target=gas_monitor_loop, daemon=True).start()
+Bridge.provide('weight_event', on_weight_event)
+
 App.run()

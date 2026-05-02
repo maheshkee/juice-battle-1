@@ -61,6 +61,34 @@ class ScheduleEntry {
   );
 }
 
+class WatchLaterItem {
+  final String url;
+  final String title;
+  final String videoId;
+  final String addedAt;
+
+  WatchLaterItem({
+    required this.url,
+    required this.title,
+    required this.videoId,
+    required this.addedAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'url':      url,
+    'title':    title,
+    'video_id': videoId,
+    'added_at': addedAt,
+  };
+
+  factory WatchLaterItem.fromJson(Map<String, dynamic> j) => WatchLaterItem(
+    url:      j['url']      ?? '',
+    title:    j['title']    ?? '',
+    videoId:  j['video_id'] ?? '',
+    addedAt:  j['added_at'] ?? '',
+  );
+}
+
 class BoardEvent {
   final String event;
   final Map<String, dynamic> data;
