@@ -1,0 +1,24 @@
+[BT] Scanning to rediscover 5F:56:4B:10:33:10...
+Attempting to pair with 5F:56:4B:10:33:10
+[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 Connected: yes
+[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 Bonded: yes
+[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 Modalias: bluetooth:v05D6p000Ad0240
+[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 UUIDs: 00001101-0000-1000-8000-00805f9b34fb
+[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 UUIDs: 0000110b-0000-1000-8000-00805f9b34fb
+[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 UUIDs: 0000110c-0000-1000-8000-00805f9b34fb
+[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 UUIDs: 0000110e-0000-1000-8000-00805f9b34fb
+[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 UUIDs: 0000111e-0000-1000-8000-00805f9b34fb
+[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 UUIDs: 00001200-0000-1000-8000-00805f9b34fb
+[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 ServicesResolved: yes
+[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 Paired: yes
+Pairing successful
+[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 Trusted: yes
+Changing 5F:56:4B:10:33:10 trust succeeded
+Attempting to connect to 5F:56:4B:10:33:10
+[[0;92mNEW[0m] Endpoint /org/bluez/hci0/dev_5F_56_4B_10_33_10/sep1 
+[[0;92mNEW[0m] Endpoint /org/bluez/hci0/dev_5F_56_4B_10_33_10/sep2 
+Connection successful
+[[0;91mDEL[0m] Endpoint /org/bluez/hci0/dev_5F_56_4B_10_33_10/sep1 
+[[0;91mDEL[0m] Endpoint /org/bluez/hci0/dev_5F_56_4B_10_33_10/sep2 
+[BT] Set default sink to 0
+connected:5F:56:4B:10:33:10

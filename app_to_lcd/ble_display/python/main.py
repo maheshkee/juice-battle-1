@@ -47,6 +47,9 @@ TRUSTED_FILE    = '/app/trusted_devices.json'
 SCHEDULE_FILE   = '/app/schedule.json'
 WATCHLATER_FILE = '/app/watchlater.json'
 
+BT_CMD_FILE    = '/app/bt_cmd.txt'
+BT_RESULT_FILE = '/app/bt_result.txt'
+
 PHONE_SVC_UUID = 'a00b0000-0000-0000-0000-000000000000'
 PHONE_CMD_UUID = 'a00b0002-0000-0000-0000-000000000000'
 PHONE_EVT_UUID = 'a00b0003-0000-0000-0000-000000000000'
@@ -213,9 +216,13 @@ def launcher_send(cmd: str) -> str:
         s.settimeout(5)
         s.connect(LAUNCHER_SOCK)
         s.sendall((cmd + '\n').encode('utf-8'))
-        response = s.recv(256).decode('utf-8').strip()
+        chunks = []
+        while True:
+            chunk = s.recv(4096)
+            if not chunk: break
+            chunks.append(chunk)
         s.close()
-        return response
+        return b''.join(chunks).decode('utf-8').strip()
     except Exception as e:
         log(f'[LAUNCHER] Send failed ({cmd}): {e}')
         return 'error'
@@ -363,6 +370,75 @@ def on_video_ended():
         GLib.idle_add(queue_skip)
 
 
+def _bt_write_cmd(cmd: str):
+    try:
+        with open(BT_CMD_FILE, 'w') as f:
+            f.write(cmd)
+    except Exception as e:
+        log(f'[BT] Write cmd failed: {e}')
+
+def _bt_wait_result(keyword: str, timeout: int = 20) -> str:
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with open(BT_RESULT_FILE, 'r') as f:
+                content = f.read()
+            if keyword in content:
+                return content
+        except Exception: pass
+        time.sleep(0.5)
+    return ''
+
+def _bt_connect(mac: str):
+    log(f'[BT] Connecting {mac}...')
+    _bt_write_cmd(f'BT_CONNECT:{mac}')
+    result = _bt_wait_result(f'connected:{mac}', timeout=25)
+    if result:
+        name = mac
+        try:
+            for line in result.split('\n'):
+                if line.startswith('Device ') and mac in line:
+                    parts = line.split(' ', 2)
+                    if len(parts) >= 3:
+                        n = parts[2].strip()
+                        is_mac = all(ch in '0123456789ABCDEFabcdef-: ' for ch in n)
+                        if not is_mac and len(n) > 3:
+                            name = n
+                            break
+        except Exception: pass
+        push_to_phone('bt_audio_connected', {'mac': mac, 'name': name, 'time': now_str()})
+        log(f'[BT] Connected: {mac} ({name})')
+        # Resend current video so PipeWire routes new audio stream to BT sink
+        if current_url:
+            video_id = extract_video_id(current_url)
+            if video_id:
+                time.sleep(2)
+                log(f'[BT] Resuming video on BT sink: {video_id}')
+                GLib.idle_add(set_mode, 'youtube')
+                ui.send_message('display_cmd', {'cmd': 'play', 'video_id': video_id})
+    else:
+        push_to_phone('bt_audio_error', {'mac': mac, 'time': now_str()})
+        log(f'[BT] Connect failed: {mac}')
+
+def _bt_disconnect(mac: str):
+    log(f'[BT] Disconnecting {mac}...')
+    _bt_write_cmd(f'BT_DISCONNECT:{mac}')
+    _bt_wait_result(f'disconnected:{mac}', timeout=10)
+    push_to_phone('bt_audio_disconnected', {'mac': mac, 'time': now_str()})
+
+def _bt_pair(mac: str):
+    log(f'[BT] Pairing {mac}...')
+    _bt_write_cmd(f'BT_PAIR:{mac}')
+    _bt_wait_result(f'paired:{mac}', timeout=30)
+    push_to_phone('bt_paired', {'mac': mac, 'time': now_str()})
+    log(f'[BT] Paired: {mac}')
+
+def _bt_forget(mac: str):
+    log(f'[BT] Forgetting {mac}...')
+    _bt_write_cmd(f'BT_FORGET:{mac}')
+    _bt_wait_result(f'forgotten:{mac}', timeout=10)
+    push_to_phone('bt_forgotten', {'mac': mac, 'time': now_str()})
+
 def handle_phone_command(text: str):
     global led_state, schedule
     text = text.strip()
@@ -464,6 +540,33 @@ def handle_phone_command(text: str):
             mac = cmd[7:].strip()
             if mac: GLib.idle_add(forget_device, mac)
         elif cmd == 'GET_STATUS': _push_full_status_to_phone()
+        elif cmd.startswith('BT_CONNECT:'):
+            mac = cmd[11:].strip()
+            threading.Thread(target=_bt_connect, args=(mac,), daemon=True).start()
+        elif cmd.startswith('BT_DISCONNECT:'):
+            mac = cmd[14:].strip()
+            threading.Thread(target=_bt_disconnect, args=(mac,), daemon=True).start()
+        elif cmd.startswith('BT_PAIR:'):
+            mac = cmd[8:].strip()
+            threading.Thread(target=_bt_pair, args=(mac,), daemon=True).start()
+        elif cmd.startswith('BT_FORGET:'):
+            mac = cmd[10:].strip()
+            threading.Thread(target=_bt_forget, args=(mac,), daemon=True).start()
+        elif cmd == 'BT_STATUS':
+            result = launcher_send('BT_STATUS')
+            push_to_phone('bt_status', {'result': result, 'time': now_str()})
+        elif cmd == 'BT_LIST':
+            raw = launcher_send('BT_LIST')
+            devices = []
+            for line in raw.strip().split('\n'):
+                if line.startswith('Device '):
+                    parts = line.split(' ', 2)
+                    if len(parts) >= 3:
+                        mac  = parts[1].strip()
+                        name = parts[2].strip()
+                        if name and name != mac:
+                            devices.append({'mac': mac, 'name': name})
+            push_to_phone('bt_paired_devices', {'devices': devices, 'time': now_str()})
         else: log(f'[CMD] Unknown: {cmd}')
 
 def _push_full_status_to_phone():
