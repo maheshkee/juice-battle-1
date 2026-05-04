@@ -37,9 +37,7 @@ class BleService {
     if (_state == ConnState.scanning) return;
     _setState(ConnState.scanning);
     _log('[SCAN] Looking for BLE-Hub...');
-    await FlutterBluePlus.startScan(
-      timeout: const Duration(seconds: 15),
-    );
+    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
     _scanSub = FlutterBluePlus.scanResults.listen((results) {
       for (var r in results) {
         if (r.device.platformName == 'BLE-Hub') {
@@ -91,8 +89,12 @@ class BleService {
               _log('[CHAR] Command char ready');
             } else if (c.uuid == BleUuids.evt) {
               await c.setNotifyValue(true);
-              c.onValueReceived.listen((value) =>
-                _events.add(BoardEvent.fromBytes(value)));
+              c.onValueReceived.listen((value) {
+                final evt = BoardEvent.tryFromBytes(value);
+                if (evt != null && evt.event != 'unknown') {
+                  _events.add(evt);
+                }
+              });
               _log('[NOTIFY] Subscribed to board events');
             }
           }
@@ -124,38 +126,51 @@ class BleService {
     } catch (e) { _log('[ERROR] Write: $e'); }
   }
 
-  Future<void> sendUrl(String url)          => _write('YT:$url');
+  Future<void> sendUrl(String url)                        => _write('YT:$url');
   Future<void> sendUrlWithTitle(String url, String title) => _write('YT:$url||$title');
-  Future<void> sendLedToggle()              => _write('CMD:LED_TOGGLE');
-  Future<void> sendLedOn()                  => _write('CMD:LED_ON');
-  Future<void> sendLedOff()                 => _write('CMD:LED_OFF');
-  Future<void> setModeIdle()                => _write('CMD:MODE_IDLE');
-  Future<void> setModeYouTube()             => _write('CMD:MODE_YOUTUBE');
-  Future<void> setModeClock()               => _write('CMD:MODE_CLOCK');
-  Future<void> playerPause()                => _write('CMD:PLAYER_PAUSE');
-  Future<void> playerResume()               => _write('CMD:PLAYER_RESUME');
-  Future<void> playerStop()                 => _write('CMD:PLAYER_STOP');
-  Future<void> playerMute()                 => _write('CMD:PLAYER_MUTE');
-  Future<void> playerUnmute()               => _write('CMD:PLAYER_UNMUTE');
-  Future<void> playerVolUp()                => _write('CMD:PLAYER_VOL_UP');
-  Future<void> playerVolDown()              => _write('CMD:PLAYER_VOL_DOWN');
-  Future<void> playerSeekForward()          => _write('CMD:PLAYER_SEEK_FWD');
-  Future<void> playerSeekBack()             => _write('CMD:PLAYER_SEEK_BACK');
-  Future<void> playerReplay()               => _write('CMD:PLAYER_REPLAY');
-  Future<void> playerQuality(String q)      => _write('CMD:PLAYER_QUALITY:$q');
-  Future<void> scanStart()                  => _write('CMD:SCAN_START');
-  Future<void> scanStop()                   => _write('CMD:SCAN_STOP');
-  Future<void> connectDevice(String mac)    => _write('CMD:CONNECT:$mac');
-  Future<void> disconnectDevice(String mac) => _write('CMD:DISCONNECT:$mac');
-  Future<void> forgetDevice(String mac)     => _write('CMD:FORGET:$mac');
-  Future<void> getStatus()                  => _write('CMD:GET_STATUS');
-  Future<void> queuePlay()                  => _write('CMD:QUEUE_PLAY');
-  Future<void> queuePause()                 => _write('CMD:QUEUE_PAUSE');
-  Future<void> queueResume()                => _write('CMD:QUEUE_RESUME');
-  Future<void> queueSkip()                  => _write('CMD:QUEUE_SKIP');
-  Future<void> queueReplay()                => _write('CMD:QUEUE_REPLAY');
-  Future<void> queueStop()                  => _write('CMD:QUEUE_STOP');
-  Future<void> queueGoto(int index)         => _write('CMD:QUEUE_GOTO:$index');
+  Future<void> sendLedToggle()                            => _write('CMD:LED_TOGGLE');
+  Future<void> sendLedOn()                                => _write('CMD:LED_ON');
+  Future<void> sendLedOff()                               => _write('CMD:LED_OFF');
+  Future<void> setModeIdle()                              => _write('CMD:MODE_IDLE');
+  Future<void> setModeYouTube()                           => _write('CMD:MODE_YOUTUBE');
+  Future<void> setModeClock()                             => _write('CMD:MODE_CLOCK');
+  Future<void> playerPause()                              => _write('CMD:PLAYER_PAUSE');
+  Future<void> playerResume()                             => _write('CMD:PLAYER_RESUME');
+  Future<void> playerStop()                               => _write('CMD:PLAYER_STOP');
+  Future<void> playerMute()                               => _write('CMD:PLAYER_MUTE');
+  Future<void> playerUnmute()                             => _write('CMD:PLAYER_UNMUTE');
+  Future<void> playerVolUp()                              => _write('CMD:PLAYER_VOL_UP');
+  Future<void> playerVolDown()                            => _write('CMD:PLAYER_VOL_DOWN');
+  Future<void> playerSeekForward()                        => _write('CMD:PLAYER_SEEK_FWD');
+  Future<void> playerSeekBack()                           => _write('CMD:PLAYER_SEEK_BACK');
+  Future<void> playerReplay()                             => _write('CMD:PLAYER_REPLAY');
+  Future<void> playerQuality(String q)                    => _write('CMD:PLAYER_QUALITY:$q');
+  Future<void> scanStart()                                => _write('CMD:SCAN_START');
+  Future<void> scanStop()                                 => _write('CMD:SCAN_STOP');
+  Future<void> connectDevice(String mac)                  => _write('CMD:CONNECT:$mac');
+  Future<void> disconnectDevice(String mac)               => _write('CMD:DISCONNECT:$mac');
+  Future<void> forgetDevice(String mac)                   => _write('CMD:FORGET:$mac');
+  Future<void> getStatus()                                => _write('CMD:GET_STATUS');
+  Future<void> queuePlay()                                => _write('CMD:QUEUE_PLAY');
+  Future<void> queuePause()                               => _write('CMD:QUEUE_PAUSE');
+  Future<void> queueResume()                              => _write('CMD:QUEUE_RESUME');
+  Future<void> queueSkip()                                => _write('CMD:QUEUE_SKIP');
+  Future<void> queueReplay()                              => _write('CMD:QUEUE_REPLAY');
+  Future<void> queueStop()                                => _write('CMD:QUEUE_STOP');
+  Future<void> queueGoto(int index)                       => _write('CMD:QUEUE_GOTO:$index');
+  Future<void> watchLaterGet()                            => _write('CMD:WATCHLATER_GET');
+  Future<void> btScanStart()                              => _write('CMD:BT_SCAN_START');
+  Future<void> btScanStop()                               => _write('CMD:BT_SCAN_STOP');
+  Future<void> btPair(String mac)                         => _write('CMD:BT_PAIR:$mac');
+  Future<void> btConnect(String mac)                      => _write('CMD:BT_CONNECT:$mac');
+  Future<void> btDisconnect(String mac)                   => _write('CMD:BT_DISCONNECT:$mac');
+  Future<void> btForget(String mac)                       => _write('CMD:BT_FORGET:$mac');
+  Future<void> btStatus()                                 => _write('CMD:BT_STATUS');
+  Future<void> btList()                                   => _write('CMD:BT_LIST');
+  Future<void> btGetConnected()                           => _write('CMD:BT_GET_CONNECTED');
+  Future<void> watchLaterRemove(String url)               => _write('WATCHLATER_REMOVE:$url');
+  Future<void> watchLaterAdd(String url, String title, String videoId) =>
+      _write('WATCHLATER_ADD:$url||$title||$videoId');
 
   Future<void> sendQueue(List<QueueItem> items) async {
     final payload = jsonEncode(items.map((e) => e.toJson()).toList());

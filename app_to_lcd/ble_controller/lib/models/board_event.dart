@@ -61,19 +61,106 @@ class ScheduleEntry {
   );
 }
 
+class WatchLaterItem {
+  final String url;
+  final String title;
+  final String videoId;
+  final String addedAt;
+
+  WatchLaterItem({
+    required this.url,
+    required this.title,
+    required this.videoId,
+    required this.addedAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'url':      url,
+    'title':    title,
+    'video_id': videoId,
+    'added_at': addedAt,
+  };
+
+  factory WatchLaterItem.fromJson(Map<String, dynamic> j) => WatchLaterItem(
+    url:      j['url']      ?? '',
+    title:    j['title']    ?? '',
+    videoId:  j['video_id'] ?? '',
+    addedAt:  j['added_at'] ?? '',
+  );
+}
+
+// reassembly buffer — keyed by first chunk index to handle concurrent events
+final Map<int, _ChunkBuffer> _buffers = {};
+
+class _ChunkBuffer {
+  final int total;
+  final Map<int, List<int>> chunks = {};
+  final DateTime created = DateTime.now();
+
+  _ChunkBuffer(this.total);
+
+  bool get isComplete => chunks.length == total;
+
+  List<int> assemble() {
+    final result = <int>[];
+    for (int i = 0; i < total; i++) {
+      result.addAll(chunks[i] ?? []);
+    }
+    return result;
+  }
+}
+
 class BoardEvent {
   final String event;
   final Map<String, dynamic> data;
   BoardEvent({required this.event, required this.data});
 
-  factory BoardEvent.fromBytes(List<int> bytes) {
+  static BoardEvent? tryFromBytes(List<int> bytes) {
+    if (bytes.length < 3) return null;
     try {
-      final str  = utf8.decode(bytes, allowMalformed: true);
-      final json = jsonDecode(str) as Map<String, dynamic>;
-      return BoardEvent(event: json['event'] ?? '', data: json);
-    } catch (e) {
-      // ignore truncated/malformed BLE packets
-      return BoardEvent(event: 'unknown', data: {});
+      final idx   = bytes[0];
+      final total = bytes[1];
+      final chunk = bytes.sublist(2);
+
+      if (total == 1) {
+        // single chunk — parse directly
+        final str  = utf8.decode(chunk, allowMalformed: true);
+        final json = jsonDecode(str) as Map<String, dynamic>;
+        return BoardEvent(event: json['event'] ?? '', data: json);
+      }
+
+      // multi-chunk — buffer
+      _buffers[idx == 0 ? DateTime.now().millisecondsSinceEpoch : idx] ??=
+          _ChunkBuffer(total);
+
+      // find the right buffer for this total
+      _ChunkBuffer? buf;
+      for (final b in _buffers.values) {
+        if (b.total == total && !b.chunks.containsKey(idx)) {
+          buf = b;
+          break;
+        }
+      }
+      buf ??= _ChunkBuffer(total);
+      buf.chunks[idx] = chunk;
+
+      if (buf.isComplete) {
+        final assembled = buf.assemble();
+        // clean up old buffers
+        _buffers.removeWhere((k, v) =>
+          v == buf ||
+          DateTime.now().difference(v.created).inSeconds > 10);
+        final str  = utf8.decode(assembled, allowMalformed: true);
+        final json = jsonDecode(str) as Map<String, dynamic>;
+        return BoardEvent(event: json['event'] ?? '', data: json);
+      }
+      return null; // not complete yet
+    } catch (_) {
+      return null;
     }
+  }
+
+  factory BoardEvent.fromBytes(List<int> bytes) {
+    return tryFromBytes(bytes) ?? BoardEvent(event: 'unknown', data: {});
   }
 }

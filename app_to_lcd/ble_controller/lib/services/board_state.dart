@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/board_event.dart';
 
 class BoardState extends ChangeNotifier {
@@ -14,6 +15,45 @@ class BoardState extends ChangeNotifier {
   List<String> logs    = [];
   QueueStatus  queueStatus    = QueueStatus.empty();
   List<ScheduleEntry> scheduleEntries = [];
+  List<WatchLaterItem> watchLaterItems  = [];
+  String btAudioStatus  = 'disconnected';
+  String btAudioDevice  = '';
+  String btAudioName    = '';
+  List<Map<String, dynamic>> btPairedDevices = [];
+
+  BoardState() {
+    _loadBtConnected();
+  }
+
+  Future<void> _loadBtConnected() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final mac  = prefs.getString('bt_connected_mac')  ?? '';
+      final name = prefs.getString('bt_connected_name') ?? '';
+      if (mac.isNotEmpty) {
+        btAudioStatus = 'connected';
+        btAudioDevice = mac;
+        btAudioName   = name;
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveBtConnected(String mac, String name) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('bt_connected_mac',  mac);
+      await prefs.setString('bt_connected_name', name);
+    } catch (_) {}
+  }
+
+  Future<void> _clearBtConnected() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('bt_connected_mac');
+      await prefs.remove('bt_connected_name');
+    } catch (_) {}
+  }
 
   void addLog(String msg) {
     logs.insert(0, msg);
@@ -31,10 +71,8 @@ class BoardState extends ChangeNotifier {
         urlHistory = (d['history'] as List? ?? [])
             .map((e) => HistoryItem.fromJson(e)).toList();
         scanning   = d['scanning'] ?? scanning;
-        scanResults      = List<Map<String, dynamic>>.from(
-            d['scan_results']      ?? []);
-        connectedDevices = List<Map<String, dynamic>>.from(
-            d['connected_devices'] ?? []);
+        scanResults      = List<Map<String, dynamic>>.from(d['scan_results'] ?? []);
+        connectedDevices = List<Map<String, dynamic>>.from(d['connected_devices'] ?? []);
         trustedDevices   = List<Map<String, dynamic>>.from(
             (d['trusted'] as List? ?? []).map((e) =>
               {'mac': e['mac'], 'name': e['name']}));
@@ -58,12 +96,10 @@ class BoardState extends ChangeNotifier {
       case 'url_history':
         urlHistory = (d['history'] as List? ?? [])
             .map((e) => HistoryItem.fromJson(e)).toList();
-        // update nowPlaying title from history if we have it
         if (nowPlaying != null) {
           for (final item in urlHistory) {
             if (item.title.isNotEmpty &&
-                (nowPlaying == item.url ||
-                 nowPlaying!.length == 11)) {
+                (nowPlaying == item.url || nowPlaying!.length == 11)) {
               nowPlaying = item.title;
               break;
             }
@@ -97,6 +133,10 @@ class BoardState extends ChangeNotifier {
         scheduleEntries = (d['entries'] as List? ?? [])
             .map((e) => ScheduleEntry.fromJson(e)).toList();
         break;
+      case 'watchlater_update':
+        watchLaterItems = (d['items'] as List? ?? [])
+            .map((e) => WatchLaterItem.fromJson(e)).toList();
+        break;
       case 'now_playing':
         final t = (d['title'] ?? '') as String;
         final v = (d['video_id'] ?? '') as String;
@@ -104,6 +144,23 @@ class BoardState extends ChangeNotifier {
         break;
       case 'player_state':
         if (d['cmd'] == 'stop') { mode = 'idle'; nowPlaying = null; }
+        break;
+      case 'bt_audio_connected':
+        btAudioStatus = 'connected';
+        btAudioDevice = d['mac']  ?? '';
+        btAudioName   = d['name'] ?? d['mac'] ?? '';
+        _saveBtConnected(btAudioDevice, btAudioName);
+        break;
+      case 'bt_audio_disconnected':
+        btAudioStatus = 'disconnected';
+        btAudioDevice = '';
+        btAudioName   = '';
+        _clearBtConnected();
+        break;
+      case 'bt_paired_devices':
+        btPairedDevices = List<Map<String, dynamic>>.from(
+            (d['devices'] as List? ?? []).map((e) =>
+              {'mac': e['mac'], 'name': e['name']}));
         break;
     }
     notifyListeners();

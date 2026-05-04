@@ -1,0 +1,21 @@
+[BT] Disconnecting old speaker 5A:7C:48:FD:B2:CA...
+Attempting to disconnect from 5A:7C:48:FD:B2:CA
+[[0;91mDEL[0m] Transport /org/bluez/hci0/dev_5A_7C_48_FD_B2_CA/fd2 
+[[0;91mDEL[0m] Endpoint /org/bluez/hci0/dev_5A_7C_48_FD_B2_CA/sep1 
+[[0;91mDEL[0m] Endpoint /org/bluez/hci0/dev_5A_7C_48_FD_B2_CA/sep2 
+[[0;93mCHG[0m] Device 5A:7C:48:FD:B2:CA ServicesResolved: no
+[[0;93mCHG[0m] Device 5A:7C:48:FD:B2:CA Connected: no
+Disconnection successful
+[BT] Scanning to populate cache...
+SetDiscoveryFilter success
+Attempting to pair with 1F:10:00:9D:63:E2
+Failed to pair: org.bluez.Error.AlreadyExists
+Changing 1F:10:00:9D:63:E2 trust succeeded
+Attempting to connect to 1F:10:00:9D:63:E2
+[[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 Connected: yes
+[[0;92mNEW[0m] Endpoint /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep1 
+[[0;92mNEW[0m] Endpoint /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep2 
+[[0;92mNEW[0m] Transport /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep1/fd3 
+Connection successful
+[BT] Set default sink to 57
+connected:1F:10:00:9D:63:E2|HBTS001
