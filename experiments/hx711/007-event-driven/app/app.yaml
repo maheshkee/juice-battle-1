@@ -1,0 +1,7 @@
+name: hx711-007-event-driven
+description: Experiment 007 — continuous event-driven weight detection with WebUI
+version: "1.0"
+ports: [7000]
+bricks:
+  - arduino:web_ui: {}
+network_mode: "host"

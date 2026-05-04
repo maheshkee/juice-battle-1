@@ -74,9 +74,10 @@ void loop() {
 
 ```python
 # In Python main.py — listen, don't poll
-@Bridge.on('weight_event')
 def on_weight(data):
     ui.send_message('weight_update', data)
+
+Bridge.provide('weight_event', on_weight)
 ```
 
 ---
@@ -87,7 +88,7 @@ def on_weight(data):
 ~/ArduinoApps/digital-scale/
 ├── sketch/sketch.ino      ← THE reference. DT=7, SCK=6, Bridge.notify()
 ├── sketch/sketch.yaml     ← Arduino_RouterBridge only
-├── python/main.py         ← Bridge.on('weight_event') listener
+├── python/main.py         ← Bridge.provide("weight_event", handler) listener
 ├── assets/index.html      ← WebUI: kg, g, STABLE, TARE button
 └── assets/socket.io.min.js
 ```
@@ -190,7 +191,7 @@ cylinder_templates (id, brand TEXT, tare_kg REAL)
 ├── CLAUDE.md                    ← this file
 ├── deploy.sh                    ← always use this
 ├── python/
-│   ├── main.py                  ← weight_poll_loop here (NEEDS UPDATE to Bridge.on)
+│   ├── main.py                  ← weight_poll_loop here (NEEDS UPDATE to Bridge.provide("weight_event", handler))
 │   ├── config.py                ← REFILL_THRESHOLD_KG=8.0, GAS_DB_PATH
 │   ├── bt_manager.py            ← STUB — do not delete
 │   ├── ble_gatt_serve.py        ← DO NOT TOUCH
@@ -204,6 +205,53 @@ cylinder_templates (id, brand TEXT, tare_kg REAL)
 └── assets/
     └── splash.html              ← weight widget in #home div
 ```
+
+---
+
+## HX711 Calibration & Tare — Locked Strategy (2026-05-04)
+
+### Tare — self-validating, no hardcoded range
+TARE_SAMPLES     = 5
+TARE_STABILITY   = 600 raw  (max spread across 5 samples)
+TARE_MAX_RETRIES = 3
+TARE_RETRY_MS    = 2000ms (managed by state machine, never blocking)
+
+Collect 5 valid samples. spread = max - min.
+If spread < 600: accept average as tare.
+If spread >= 600: discard, wait via state machine, retry.
+After 3 failures: LONG_MIN = hardware fault, halt and log.
+Always log: "TARE OK = <value>, spread=<spread>"
+Never hardcode expected tare range — it changes with mounting and session.
+
+### Cal factor — derive fresh, never hardcode
+CAL_FACTOR = (weight_raw - tare) / known_grams
+Use state machine approach — never blocking delay() during calibration sequence.
+Acceptance range for this hardware: 94–112 raw/g
+Verified cal_factor for this load cell + HX711 + current mounting: 106.7 raw/g
+Re-derive whenever load cell is remounted or wiring changes.
+
+### Corrupt value filters — always use all three
+Filter these in hx711_read_average() — copy from home-hub, not digital-scale:
+  raw == LONG_MIN   (wait_ready timeout)
+  raw == -1         (0xFFFFFF — all bits HIGH, not ready)
+  raw == 0x7FFFFF   (positive saturation — pin/timer conflict)
+
+### Debugging order — most issues are timing/code, not hardware
+When readings are wrong, check in this order:
+1. Is setup() using blocking delay()? — move all reads to loop() state machine
+2. Is hx711_read_average() missing the -1 and 0x7FFFFF guards?
+3. Is the bit-bang missing delayMicroseconds(1) on any edge?
+4. Is DT=D7 and SCK=D6? — D2/D3/D4/D5 have timer conflicts
+5. Only after all above confirmed — suspect physical wiring
+
+Hardware wiring is the LAST thing to check, not the first.
+Most bad readings in this project have been caused by:
+- Blocking delay() in setup() starving Bridge/HX711 timing
+- Missing corrupt value filters
+- Wrong pin assignments
+Physical wiring faults produce: values jumping in exact multiples,
+readings lower than tare, or zero readings across all apps including
+golden reference (digital-scale, home-hub).
 
 ---
 
@@ -255,7 +303,7 @@ sudo docker logs $(sudo docker ps | grep home-hub | awk '{print $1}') 2>&1 | tai
 ### Phase 1 — Hardware baseline (do first)
 1. Calibrate digital-scale with known weight → real CALIBRATION_FACTOR (not 420.0f estimate)
 2. Migrate home-hub sketch: DT=7, SCK=6 + Bridge.notify() copied from digital-scale verbatim
-3. Update home-hub main.py: remove weight_poll_loop, add Bridge.on('weight_event') listener
+3. Update home-hub main.py: remove weight_poll_loop, add Bridge.provide("weight_event", handler) listener  # Bridge.on() does not exist — confirmed 2026-05-02
 4. Tare persistence: skip auto-tare on boot if weight > 2kg (cylinder already on scale)
 
 ### Phase 2 — Gas monitor smart features
@@ -277,7 +325,6 @@ sudo docker logs $(sudo docker ps | grep home-hub | awk '{print $1}') 2>&1 | tai
 | File | Current | Should be |
 |------|---------|-----------|
 | home-hub python/main.py | time.sleep(30) gas cycle | time.sleep(21600) |
-| home-hub sketch/sketch.ino | DT=4, SCK=3 (old) | DT=7, SCK=6 |
 
 ---
 
@@ -344,3 +391,77 @@ git push
 ### Working Reference
 sketch/sketch_working_reference.ino — DO NOT MODIFY
 digital-scale app at ~/ArduinoApps/digital-scale/ — DO NOT MODIFY
+
+---
+
+## Weight Measurement Architecture (verified 2026-05-02)
+
+### Calibration model
+
+```
+grams = (raw_value - tare) / cal_factor
+```
+
+tare:       fresh every boot, never stored
+cal_factor: stored in config.json, loaded every boot
+
+### Config file location
+
+`~/ArduinoApps/home-hub/config.json`
+
+```json
+{
+  "cal_factor": 103.02,
+  "cal_date": "2026-05-02",
+  "topology": "single_cell_gain128",
+  "threshold_g": 8.0
+}
+```
+
+### Event-driven MCU loop (production target)
+
+MCU reads at 10Hz continuously.
+When |current - last| > threshold_raw:
+    Bridge.notify("weight_event", grams_string)
+Python receives and logs with timestamp.
+No triggers, no polling files, no human interaction.
+
+### Threshold
+
+Mechanical noise floor = ±4g.
+threshold_g = 8.0 (from config).
+threshold_raw = threshold_g * cal_factor = ~824 raw units.
+
+### Wiring note for 4-cell upgrade
+
+4 cells full bridge → same cal_factor ~103
+1 of 4 cells wired → cal_factor ~412
+Always re-derive cal_factor after any wiring change.
+
+---
+
+## Per-unit calibration rule
+
+Every physical machine must be calibrated independently.
+NEVER copy cal_factor from one machine to another, even if:
+  - Same load cell model
+  - Same wiring topology  
+  - Same HX711 chip model
+  - Same code
+
+Why: manufacturing tolerance between cells (±0.5%), mounting
+geometry differences, HX711 reference voltage variation between
+chips — all cause 1-3% cal_factor difference between units.
+
+For gas cylinder monitoring:
+  - Relative changes (delta W) are accurate even with wrong cal_factor
+  - Absolute weight readings will be systematically off by error %
+  - Each deployed unit needs first-boot calibration with a known weight
+  - Each unit stores its own config.json with its own cal_factor
+
+Production deployment checklist (per unit):
+  1. Install hardware
+  2. Run first-boot calibration with verified known weight
+  3. Confirm cal_factor is within 80-130 raw/g (sane range)
+  4. Store to config.json on that unit
+  5. Never overwrite with cal_factor from another unit

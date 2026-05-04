@@ -1,0 +1,3 @@
+name: hx711-hardware-test
+description: HX711 + MCU LED health check — reusable for any session
+version: "1.0"
