@@ -53,7 +53,8 @@ class BtAudioService extends ChangeNotifier {
       if (idx >= 0) {
         _devices[idx] = _devices[idx].copyWith(paired: true);
       } else {
-        _devices = [..._devices, BtAudioDevice(mac: mac, name: name, paired: true)];
+        _devices = [..._devices,
+          BtAudioDevice(mac: mac, name: name, paired: true)];
       }
     }
     notifyListeners();
@@ -95,6 +96,19 @@ class BtAudioService extends ChangeNotifier {
     notifyListeners();
   }
 
+  // clears scan results but keeps currently connected device in list
+  void clearDevicesKeepConnected(String connectedMac, String connectedName) {
+    if (connectedMac.isNotEmpty) {
+      _devices = [
+        BtAudioDevice(mac: connectedMac, name: connectedName,
+          paired: true, connecting: false, connected: true),
+      ];
+    } else {
+      _devices = [];
+    }
+    notifyListeners();
+  }
+
   void setConnecting(String mac, bool value) {
     _devices = _devices.map((d) =>
       d.mac == mac ? d.copyWith(connecting: value) : d).toList();
@@ -104,10 +118,19 @@ class BtAudioService extends ChangeNotifier {
   void setConnected(String mac, String name) {
     _connectedMac  = mac;
     _connectedName = name;
-    _devices = _devices.map((d) =>
-      d.mac == mac
-        ? d.copyWith(connecting: false, connected: true, paired: true)
-        : d.copyWith(connected: false)).toList();
+    final idx = _devices.indexWhere((d) => d.mac == mac);
+    if (idx >= 0) {
+      _devices = _devices.map((d) =>
+        d.mac == mac
+          ? d.copyWith(connecting: false, connected: true, paired: true)
+          : d.copyWith(connected: false)).toList();
+    } else {
+      _devices = [
+        BtAudioDevice(mac: mac, name: name,
+          paired: true, connecting: false, connected: true),
+        ..._devices.map((d) => d.copyWith(connected: false)),
+      ];
+    }
     notifyListeners();
   }
 
@@ -125,12 +148,18 @@ class BtAudioService extends ChangeNotifier {
 
   void setError(String mac) {
     _devices = _devices.map((d) =>
-      d.mac == mac ? d.copyWith(connecting: false, connected: false) : d).toList();
+      d.mac == mac
+        ? d.copyWith(connecting: false, connected: false)
+        : d).toList();
     notifyListeners();
   }
 
   void setForgotten(String mac) {
     _devices = _devices.where((d) => d.mac != mac).toList();
+    if (_connectedMac == mac) {
+      _connectedMac  = null;
+      _connectedName = null;
+    }
     notifyListeners();
   }
 

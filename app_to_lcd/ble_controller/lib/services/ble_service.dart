@@ -37,9 +37,7 @@ class BleService {
     if (_state == ConnState.scanning) return;
     _setState(ConnState.scanning);
     _log('[SCAN] Looking for BLE-Hub...');
-    await FlutterBluePlus.startScan(
-      timeout: const Duration(seconds: 15),
-    );
+    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
     _scanSub = FlutterBluePlus.scanResults.listen((results) {
       for (var r in results) {
         if (r.device.platformName == 'BLE-Hub') {
@@ -91,8 +89,12 @@ class BleService {
               _log('[CHAR] Command char ready');
             } else if (c.uuid == BleUuids.evt) {
               await c.setNotifyValue(true);
-              c.onValueReceived.listen((value) =>
-                _events.add(BoardEvent.fromBytes(value)));
+              c.onValueReceived.listen((value) {
+                final evt = BoardEvent.tryFromBytes(value);
+                if (evt != null && evt.event != 'unknown') {
+                  _events.add(evt);
+                }
+              });
               _log('[NOTIFY] Subscribed to board events');
             }
           }
@@ -165,6 +167,7 @@ class BleService {
   Future<void> btForget(String mac)                       => _write('CMD:BT_FORGET:$mac');
   Future<void> btStatus()                                 => _write('CMD:BT_STATUS');
   Future<void> btList()                                   => _write('CMD:BT_LIST');
+  Future<void> btGetConnected()                           => _write('CMD:BT_GET_CONNECTED');
   Future<void> watchLaterRemove(String url)               => _write('WATCHLATER_REMOVE:$url');
   Future<void> watchLaterAdd(String url, String title, String videoId) =>
       _write('WATCHLATER_ADD:$url||$title||$videoId');

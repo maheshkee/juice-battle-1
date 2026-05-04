@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/board_event.dart';
 
 class BoardState extends ChangeNotifier {
@@ -19,6 +20,40 @@ class BoardState extends ChangeNotifier {
   String btAudioDevice  = '';
   String btAudioName    = '';
   List<Map<String, dynamic>> btPairedDevices = [];
+
+  BoardState() {
+    _loadBtConnected();
+  }
+
+  Future<void> _loadBtConnected() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final mac  = prefs.getString('bt_connected_mac')  ?? '';
+      final name = prefs.getString('bt_connected_name') ?? '';
+      if (mac.isNotEmpty) {
+        btAudioStatus = 'connected';
+        btAudioDevice = mac;
+        btAudioName   = name;
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveBtConnected(String mac, String name) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('bt_connected_mac',  mac);
+      await prefs.setString('bt_connected_name', name);
+    } catch (_) {}
+  }
+
+  Future<void> _clearBtConnected() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('bt_connected_mac');
+      await prefs.remove('bt_connected_name');
+    } catch (_) {}
+  }
 
   void addLog(String msg) {
     logs.insert(0, msg);
@@ -114,11 +149,13 @@ class BoardState extends ChangeNotifier {
         btAudioStatus = 'connected';
         btAudioDevice = d['mac']  ?? '';
         btAudioName   = d['name'] ?? d['mac'] ?? '';
+        _saveBtConnected(btAudioDevice, btAudioName);
         break;
       case 'bt_audio_disconnected':
         btAudioStatus = 'disconnected';
         btAudioDevice = '';
         btAudioName   = '';
+        _clearBtConnected();
         break;
       case 'bt_paired_devices':
         btPairedDevices = List<Map<String, dynamic>>.from(

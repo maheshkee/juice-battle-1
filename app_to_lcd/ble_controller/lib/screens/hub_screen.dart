@@ -448,18 +448,18 @@ class _HubScreenState extends State<HubScreen> {
               child: Stack(alignment: Alignment.center, children: [
                 const Icon(Icons.bookmark_outline_rounded,
                   color: Color(0xFF0A84FF), size: 18),
-                if (wl.items.isNotEmpty)
+                if (wl.pendingCount > 0)
+                  Positioned(top: 6, right: 6,
+                    child: Container(width: 7, height: 7,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFFFF9F0A))))
+                else if (wl.items.isNotEmpty)
                   Positioned(top: 6, right: 6,
                     child: Container(width: 6, height: 6,
                       decoration: const BoxDecoration(
                         shape: BoxShape.circle,
                         color: Color(0xFF0A84FF)))),
-                if (wl.pendingCount > 0)
-                  Positioned(top: 5, right: 5,
-                    child: Container(width: 8, height: 8,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFFFF9F0A)))),
               ])));
         }),
         const SizedBox(width: 8),
