@@ -7,6 +7,7 @@ export XDG_RUNTIME_DIR=/run/user/1000
 export PIPEWIRE_RUNTIME_DIR=/run/user/1000
 BT_CMD_FILE="$PROJECT_DIR/bt_cmd.txt"
 BT_RESULT_FILE="$PROJECT_DIR/bt_result.txt"
+BT_CONNECTED_FILE="$PROJECT_DIR/bt_connected.txt"
 
 xset s off
 xset s noblank
@@ -47,28 +48,38 @@ while true; do
             BT_CONNECT:*)
                 MAC="${BT_CMD#BT_CONNECT:}"
                 > "$BT_RESULT_FILE"
-                echo "[BT] Scanning to rediscover $MAC..." >> "$BT_RESULT_FILE"
-                bluetoothctl scan on &
-                SCAN_PID=$!
-                sleep 6
-                kill $SCAN_PID 2>/dev/null
+                if [ -f "$BT_CONNECTED_FILE" ]; then
+                    OLD_ENTRY=$(cat "$BT_CONNECTED_FILE")
+                    OLD_MAC="${OLD_ENTRY%%|*}"
+                    if [ -n "$OLD_MAC" ] && [ "$OLD_MAC" != "$MAC" ]; then
+                        echo "[BT] Disconnecting old speaker $OLD_MAC..." >> "$BT_RESULT_FILE"
+                        bluetoothctl disconnect "$OLD_MAC" >> "$BT_RESULT_FILE" 2>&1
+                        sleep 1
+                    fi
+                fi
+                echo "[BT] Scanning to populate cache..." >> "$BT_RESULT_FILE"
+                timeout 8 bluetoothctl scan on >> "$BT_RESULT_FILE" 2>&1
                 bluetoothctl scan off 2>/dev/null
                 sleep 1
                 bluetoothctl pair "$MAC" >> "$BT_RESULT_FILE" 2>&1
                 bluetoothctl trust "$MAC" >> "$BT_RESULT_FILE" 2>&1
                 bluetoothctl connect "$MAC" >> "$BT_RESULT_FILE" 2>&1
                 sleep 2
-                SINK_ID=$(wpctl status 2>/dev/null | grep -E 'bluez_output|Dubstep|FUZO|HBTS' | grep -v Source | grep -v capture | grep -o '^\s*[0-9]*\.' | tr -d ' .' | head -1)
+                NAME=$(bluetoothctl info "$MAC" 2>/dev/null | grep '^\s*Name:' | sed 's/.*Name: //' | xargs)
+                [ -z "$NAME" ] && NAME="$MAC"
+                SINK_ID=$(wpctl status 2>/dev/null | grep -E '^\s*[0-9]+\.' | grep -iv 'hdmi\|built-in\|source\|capture' | grep -i 'bluez\|pop\|fuzo\|hbts\|dubstep' | grep -o '^\s*[0-9]*\.' | tr -d ' .' | head -1)
                 if [ -n "$SINK_ID" ]; then
                     wpctl set-default "$SINK_ID" 2>/dev/null
                     echo "[BT] Set default sink to $SINK_ID" >> "$BT_RESULT_FILE"
                 fi
-                echo "connected:$MAC" >> "$BT_RESULT_FILE"
+                echo "$MAC|$NAME" > "$BT_CONNECTED_FILE"
+                echo "connected:$MAC|$NAME" >> "$BT_RESULT_FILE"
                 ;;
             BT_DISCONNECT:*)
                 MAC="${BT_CMD#BT_DISCONNECT:}"
                 > "$BT_RESULT_FILE"
                 bluetoothctl disconnect "$MAC" >> "$BT_RESULT_FILE" 2>&1
+                rm -f "$BT_CONNECTED_FILE"
                 echo "disconnected:$MAC" >> "$BT_RESULT_FILE"
                 ;;
             BT_PAIR:*)
@@ -83,6 +94,7 @@ while true; do
                 > "$BT_RESULT_FILE"
                 bluetoothctl untrust "$MAC" >> "$BT_RESULT_FILE" 2>&1
                 bluetoothctl remove "$MAC" >> "$BT_RESULT_FILE" 2>&1
+                rm -f "$BT_CONNECTED_FILE"
                 echo "forgotten:$MAC" >> "$BT_RESULT_FILE"
                 ;;
         esac

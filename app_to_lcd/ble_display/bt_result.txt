@@ -1,24 +1,21 @@
-[BT] Scanning to rediscover 5F:56:4B:10:33:10...
-Attempting to pair with 5F:56:4B:10:33:10
-[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 Connected: yes
-[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 Bonded: yes
-[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 Modalias: bluetooth:v05D6p000Ad0240
-[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 UUIDs: 00001101-0000-1000-8000-00805f9b34fb
-[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 UUIDs: 0000110b-0000-1000-8000-00805f9b34fb
-[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 UUIDs: 0000110c-0000-1000-8000-00805f9b34fb
-[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 UUIDs: 0000110e-0000-1000-8000-00805f9b34fb
-[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 UUIDs: 0000111e-0000-1000-8000-00805f9b34fb
-[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 UUIDs: 00001200-0000-1000-8000-00805f9b34fb
-[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 ServicesResolved: yes
-[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 Paired: yes
-Pairing successful
-[[0;93mCHG[0m] Device 5F:56:4B:10:33:10 Trusted: yes
-Changing 5F:56:4B:10:33:10 trust succeeded
-Attempting to connect to 5F:56:4B:10:33:10
-[[0;92mNEW[0m] Endpoint /org/bluez/hci0/dev_5F_56_4B_10_33_10/sep1 
-[[0;92mNEW[0m] Endpoint /org/bluez/hci0/dev_5F_56_4B_10_33_10/sep2 
+[BT] Disconnecting old speaker 5A:7C:48:FD:B2:CA...
+Attempting to disconnect from 5A:7C:48:FD:B2:CA
+[[0;91mDEL[0m] Transport /org/bluez/hci0/dev_5A_7C_48_FD_B2_CA/fd2 
+[[0;91mDEL[0m] Endpoint /org/bluez/hci0/dev_5A_7C_48_FD_B2_CA/sep1 
+[[0;91mDEL[0m] Endpoint /org/bluez/hci0/dev_5A_7C_48_FD_B2_CA/sep2 
+[[0;93mCHG[0m] Device 5A:7C:48:FD:B2:CA ServicesResolved: no
+[[0;93mCHG[0m] Device 5A:7C:48:FD:B2:CA Connected: no
+Disconnection successful
+[BT] Scanning to populate cache...
+SetDiscoveryFilter success
+Attempting to pair with 1F:10:00:9D:63:E2
+Failed to pair: org.bluez.Error.AlreadyExists
+Changing 1F:10:00:9D:63:E2 trust succeeded
+Attempting to connect to 1F:10:00:9D:63:E2
+[[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 Connected: yes
+[[0;92mNEW[0m] Endpoint /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep1 
+[[0;92mNEW[0m] Endpoint /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep2 
+[[0;92mNEW[0m] Transport /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep1/fd3 
 Connection successful
-[[0;91mDEL[0m] Endpoint /org/bluez/hci0/dev_5F_56_4B_10_33_10/sep1 
-[[0;91mDEL[0m] Endpoint /org/bluez/hci0/dev_5F_56_4B_10_33_10/sep2 
-[BT] Set default sink to 0
-connected:5F:56:4B:10:33:10
+[BT] Set default sink to 57
+connected:1F:10:00:9D:63:E2|HBTS001

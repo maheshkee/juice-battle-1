@@ -93,8 +93,14 @@ def log(message):
 def push_to_phone(event: str, payload: dict):
     global evt_char_global
     if evt_char_global and evt_char_global.notifying:
-        msg = json.dumps({'event': event, **payload})
-        evt_char_global.update_value(list(msg.encode('utf-8')))
+        msg   = json.dumps({'event': event, **payload})
+        data  = msg.encode('utf-8')
+        size  = 18
+        chunks = [data[i:i+size] for i in range(0, len(data), size)]
+        total  = len(chunks)
+        for idx, chunk in enumerate(chunks):
+            packet = bytes([idx, total]) + chunk
+            evt_char_global.update_value(list(packet))
 
 def extract_video_id(url: str):
     for p in [r'(?:v=)([A-Za-z0-9_-]{11})', r'(?:youtu\.be/)([A-Za-z0-9_-]{11})',
@@ -397,14 +403,11 @@ def _bt_connect(mac: str):
         name = mac
         try:
             for line in result.split('\n'):
-                if line.startswith('Device ') and mac in line:
-                    parts = line.split(' ', 2)
-                    if len(parts) >= 3:
-                        n = parts[2].strip()
-                        is_mac = all(ch in '0123456789ABCDEFabcdef-: ' for ch in n)
-                        if not is_mac and len(n) > 3:
-                            name = n
-                            break
+                if f'connected:{mac}|' in line:
+                    parts = line.strip().split(f'connected:{mac}|', 1)
+                    if len(parts) == 2 and parts[1].strip():
+                        name = parts[1].strip()
+                        break
         except Exception: pass
         push_to_phone('bt_audio_connected', {'mac': mac, 'name': name, 'time': now_str()})
         log(f'[BT] Connected: {mac} ({name})')
@@ -555,6 +558,13 @@ def handle_phone_command(text: str):
         elif cmd == 'BT_STATUS':
             result = launcher_send('BT_STATUS')
             push_to_phone('bt_status', {'result': result, 'time': now_str()})
+        elif cmd == 'BT_GET_CONNECTED':
+            bt_mac, bt_name = _get_bt_connected()
+            if bt_mac:
+                push_to_phone('bt_audio_connected',
+                    {'mac': bt_mac, 'name': bt_name, 'time': now_str()})
+            else:
+                push_to_phone('bt_audio_disconnected', {'time': now_str()})
         elif cmd == 'BT_LIST':
             raw = launcher_send('BT_LIST')
             devices = []
@@ -568,6 +578,19 @@ def handle_phone_command(text: str):
                             devices.append({'mac': mac, 'name': name})
             push_to_phone('bt_paired_devices', {'devices': devices, 'time': now_str()})
         else: log(f'[CMD] Unknown: {cmd}')
+
+def _get_bt_connected():
+    try:
+        if os.path.exists('/app/bt_connected.txt'):
+            with open('/app/bt_connected.txt', 'r') as f:
+                entry = f.read().strip()
+            if '|' in entry:
+                mac, name = entry.split('|', 1)
+                return mac.strip(), name.strip()
+            elif entry:
+                return entry.strip(), entry.strip()
+    except Exception: pass
+    return None, None
 
 def _push_full_status_to_phone():
     push_to_phone('mode_update',  {'mode': current_mode, 'time': now_str()})
@@ -586,6 +609,11 @@ def _push_full_status_to_phone():
         for mac, d in scan_results.items()]})
     push_to_phone('trusted_devices', {'devices': [
         {'mac': mac, 'name': name} for mac, name in trusted.items()]})
+    bt_mac, bt_name = _get_bt_connected()
+    if bt_mac:
+        def _push_bt():
+            push_to_phone('bt_audio_connected', {'mac': bt_mac, 'name': bt_name, 'time': now_str()})
+        GLib.timeout_add(1500, lambda: (_push_bt(), False)[1])
 
 
 def push_scan_results():
