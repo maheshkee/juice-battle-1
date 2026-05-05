@@ -465,3 +465,196 @@ Production deployment checklist (per unit):
   3. Confirm cal_factor is within 80-130 raw/g (sane range)
   4. Store to config.json on that unit
   5. Never overwrite with cal_factor from another unit
+
+---
+## WORKING MODE — CRITICAL RULE
+
+This project follows a strict separation between planning and implementation.
+
+PLANNING / RESEARCH / BRAINSTORMING / LEARNING → happens in Claude.ai chat only.
+CODE WRITING / IMPLEMENTATION / FILE EDITING → happens here in Claude Code CLI only.
+
+Claude.ai chat produces:
+- Architecture decisions
+- Experiment designs
+- Prompts for CLI
+
+CLI receives those prompts and:
+- Writes all code
+- Creates all files
+- Edits all configs
+- Runs all commands on the board
+
+NEVER write code speculatively in chat.
+NEVER implement anything in CLI without a design prompt from chat.
+Every CLI session starts by reading CLAUDE.md and relevant SKILL.md files.
+Every CLI session ends by updating CLAUDE.md with what was done and what changed.
+
+---
+## WORKING MODE (added 2026-05-05)
+
+PLANNING / RESEARCH / BRAINSTORMING → Claude.ai chat only.
+CODE WRITING / IMPLEMENTATION → Claude Code CLI only.
+
+Every CLI session must:
+1. Read CLAUDE.md completely
+2. Read relevant SKILL.md
+3. Read docs/SENSOR_CHARACTERISATION.md if touching HX711
+4. Read docs/LEARNINGS_AND_INSIGHTS.md for known bugs
+5. Execute the design prompt — nothing more, nothing less
+6. Update CLAUDE.md at end: what changed, current state
+
+---
+## DEBUGGING RULES (added 2026-05-05)
+
+1. Read all relevant files before suggesting any fix
+2. Reproduce symptom exactly before diagnosing
+3. Think from atomic level — what instruction, what value, what register
+4. One diagnostic at a time — print intermediate values
+5. One fix at a time — verify before next fix
+6. Never patch without understanding root cause
+7. Document open questions in docs/LEARNINGS_AND_INSIGHTS.md
+
+---
+## NEVER DO (each caused a real bug — see docs/LEARNINGS_AND_INSIGHTS.md)
+
+- while(count<N) inside state case → Bridge interrupt accumulation
+- double accumulator in for loop → sum=0 on STM32U585
+- double array on stack in loop() → stack corruption, hang
+- Tare with weight on scale → cal_factor ≈ 0
+- @Bridge.on() in Python → AttributeError
+- Bridge.notify before Python ready → message lost silently
+- Hardcode threshold_g or cal_factor → wrong for every environment
+- millis() guard inside state case → stale reads
+- Monitor.begin() → hangs MCU
+- D2-D5 for HX711 → timer conflicts
+---
+
+## WORKING MODE (CRITICAL — read first)
+
+PLANNING / RESEARCH / BRAINSTORMING / LEARNING → Claude.ai chat only.
+CODE WRITING / IMPLEMENTATION / FILE EDITING → Claude Code CLI only.
+
+Chat produces architecture decisions, experiment designs, CLI prompts.
+CLI receives those prompts and executes them — nothing more, nothing less.
+
+Every CLI session:
+1. Read CLAUDE.md completely
+2. Read relevant SKILL.md
+3. Read SENSOR_CHARACTERISATION.md if touching HX711 or weight
+4. Read LEARNINGS_AND_INSIGHTS.md for known bugs and fixes
+5. Execute the design prompt from chat
+6. Update CLAUDE.md with what changed and current state
+
+---
+
+## HOW TO APPROACH ANY PROBLEM — THINKING RULES
+
+### Planning and design (chat phase)
+
+Before designing anything:
+1. Understand the real-world requirement first — not the technical requirement
+   Example: don't ask "how many samples?" — ask "what is the smallest gas
+   change we need to detect?" Then derive the sample count from that.
+
+2. Derive from first principles — never accept a number without a source
+   Every constant must come from measurement or calculation, not intuition.
+   "It worked before" is not a reason. "Derived from 3.15g/min burn rate" is.
+
+3. Challenge every assumption — especially inherited ones
+   Ask: where did this number come from? What breaks if it's wrong?
+   If the answer is "I don't know" — that's what needs to be fixed first.
+
+4. Design modularly — one verified unit before the next
+   Never design a 500-line sketch. Design hx711.cpp, verify it works,
+   then add tare.cpp, verify, then add noise.cpp, verify. Layer by layer.
+
+---
+
+### Debugging (when something goes wrong)
+
+**Step 1 — reproduce exactly**
+Before diagnosing, confirm the symptom is consistent and reproducible.
+A flaky bug is harder to fix than a consistent one. Make it consistent first.
+
+**Step 2 — read before touching**
+Read the full file. Read LEARNINGS_AND_INSIGHTS.md. Read this CLAUDE.md.
+The bug may already be documented. Patch-without-reading wastes everyone's time.
+
+**Step 3 — think from atomic level**
+Every bug is ultimately an instruction doing the wrong thing.
+The processor fetches an instruction, decodes it, executes it.
+One of those steps is wrong. Find which one.
+
+Ask: at the moment the wrong value appears, what exactly is in memory?
+Not "what should be there" — what IS there?
+
+Example from 2026-05-05:
+- Symptom: sum=0.000000 despite real array values
+- Wrong diagnosis: "double is broken" (not proven)
+- Correct approach: print sum after loop, print individual array values
+- Result: array had real values, loop produced zero — isolated to the loop
+- Then: tried float instead — worked → double accumulator is the issue
+
+**Step 4 — one diagnostic at a time**
+Add one print statement. Deploy. Read the output. Form a new hypothesis.
+Don't add 10 print statements at once — you won't know which one told you what.
+
+**Step 5 — distinguish symptoms from root causes**
+sum=0 is a symptom. "double arithmetic broken" might be the cause.
+Fix the root cause, not the symptom. Unless the root cause is unknown
+and fixing the symptom unblocks progress — in which case document the
+open question in LEARNINGS_AND_INSIGHTS.md and move forward.
+
+**Step 6 — never patch what you don't understand**
+If you don't know why a fix works, write it down as an open question.
+Patches without understanding become the next session's mystery bug.
+
+---
+
+### When to stop debugging and move forward
+
+- If the symptom is fixed and the root cause is documented as an open question
+- If 3 different diagnostic approaches all point to the same cause
+- If the fix is correct regardless of the exact root cause
+
+When to NOT stop:
+- When the fix makes the symptom disappear but could mask a deeper problem
+- When the root cause affects other parts of the system
+
+---
+
+## HX711 RULES (hardware-verified, never override)
+
+DT=D7, SCK=D6 — never change
+noInterrupts() wraps 24-bit read — never remove
+delayMicroseconds(1) after every GPIO edge — never remove
+All four corrupt filters on every read:
+  if (r == LONG_MIN) — wait_ready timeout
+  if (r == -1)       — all bits HIGH
+  if (r == 0x7FFFFF) — positive saturation
+  if (r < -5000000L || r > 5000000L) — out of physical range
+
+One sample per loop() iteration — never use blocking while loops
+millis() pacing at TOP of loop() — never inside state cases
+float only — never use double in MCU sketch
+Bridge.provide() not Bridge.on() in Python
+App.run() is last line of main.py
+
+---
+
+## NEVER DO THESE (each caused a real bug)
+
+| Never do | Why | Bug date |
+|----------|-----|----------|
+| while(count < N) inside state case | Bridge interrupt accumulation → timeouts | 2026-05-05 |
+| double accumulator in for loop | sum=0 on STM32U585 | 2026-05-05 |
+| double array on stack in loop() | Stack corruption → hang | 2026-05-05 |
+| Tare with weight on scale | cal_factor ≈ 0 → CAL_FAIL | 2026-05-05 |
+| @Bridge.on() in Python | AttributeError — doesn't exist | 2026-05-02 |
+| Bridge.notify before Python ready | Message lost silently | 2026-05-05 |
+| Hardcode threshold_g | Wrong for every environment except bench | 2026-05-05 |
+| Hardcode cal_factor | Wrong for every load cell mounting | 2026-05-04 |
+| millis() guard inside state case | Stale reads, std=4224g | 2026-05-04 |
+| Monitor.begin() | Hangs MCU if Python handler missing | 2026-05-02 |
+| D2-D5 for HX711 | Timer conflicts → 0x7FFFFF constant output | 2026-05-02 |

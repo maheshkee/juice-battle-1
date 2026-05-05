@@ -273,3 +273,18 @@ Production deployment checklist (per unit):
   3. Confirm cal_factor is within 80-130 raw/g (sane range)
   4. Store to config.json on that unit
   5. Never overwrite with cal_factor from another unit
+
+---
+## WORKING MODE — CRITICAL RULE
+
+Same rule applies to all experiments:
+
+PLANNING / RESEARCH / BRAINSTORMING → Claude.ai chat only.
+CODE WRITING / IMPLEMENTATION → Claude Code CLI only.
+
+Chat produces the experiment design and a CLI prompt.
+CLI receives that prompt and builds the experiment.
+
+Never start building an experiment without a design prompt from chat.
+Never write experiment code speculatively.
+---
