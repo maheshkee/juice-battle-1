@@ -49,6 +49,7 @@ WATCHLATER_FILE = '/app/watchlater.json'
 
 BT_CMD_FILE    = '/app/bt_cmd.txt'
 BT_RESULT_FILE = '/app/bt_result.txt'
+HISTORY_FILE   = '/app/history.json'
 
 PHONE_SVC_UUID = 'a00b0000-0000-0000-0000-000000000000'
 PHONE_CMD_UUID = 'a00b0002-0000-0000-0000-000000000000'
@@ -216,6 +217,25 @@ def push_watch_later():
     push_to_phone('watchlater_update', {'items': watch_later})
 
 
+def load_history():
+    global url_history
+    try:
+        if os.path.exists(HISTORY_FILE):
+            with open(HISTORY_FILE, 'r') as f:
+                raw = json.load(f)
+            cutoff = (datetime.datetime.now() - datetime.timedelta(days=30)).isoformat()
+            url_history = [h for h in raw if h.get('time', '') >= cutoff or len(h.get('time','')) <= 8]
+            log(f'[HISTORY] Loaded {len(url_history)} entries')
+    except Exception as e:
+        log(f'[HISTORY] Load failed: {e}')
+
+def save_history():
+    try:
+        with open(HISTORY_FILE, 'w') as f:
+            json.dump(url_history, f)
+    except Exception: pass
+
+
 def launcher_send(cmd: str) -> str:
     try:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -276,6 +296,7 @@ def handle_url(url: str, title: str = ''):
     if len(url_history) > MAX_HISTORY: url_history.pop()
     push_to_phone('url_update', {'url': url, 'video_id': video_id, 'title': title, 'time': now_str()})
     push_to_phone('url_history', {'history': url_history})
+    save_history()
     threading.Thread(target=_play, args=(video_id, title), daemon=True).start()
 
 def _play(video_id: str, title: str = ''):
@@ -398,7 +419,13 @@ def _bt_wait_result(keyword: str, timeout: int = 20) -> str:
 def _bt_connect(mac: str):
     log(f'[BT] Connecting {mac}...')
     _bt_write_cmd(f'BT_CONNECT:{mac}')
-    result = _bt_wait_result(f'connected:{mac}', timeout=25)
+    result = _bt_wait_result(f'connected:{mac}', timeout=30)
+    if not result:
+        result = _bt_wait_result(f'error:{mac}', timeout=5)
+        if result:
+            push_to_phone('bt_audio_error', {'mac': mac, 'time': now_str()})
+            log(f'[BT] Connect failed: {mac}')
+            return
     if result:
         name = mac
         try:
@@ -938,7 +965,7 @@ def ble_main():
         print(f'[BLE] SystemBus failed: {e}'); return
 
     BLEObjectWatcher(bus)
-    load_trusted(); load_schedule(); load_watch_later()
+    load_trusted(); load_schedule(); load_watch_later(); load_history()
     GLib.idle_add(_autoconnect_existing)
     GLib.idle_add(start_scan)
 
