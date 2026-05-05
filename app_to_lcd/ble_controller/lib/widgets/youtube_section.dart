@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/board_event.dart';
+import '../screens/history_screen.dart';
 
 class YouTubeSection extends StatefulWidget {
   final String? currentUrl;
@@ -59,43 +60,8 @@ class _YouTubeSectionState extends State<YouTubeSection> {
 
   void _showHistory() {
     if (widget.history.isEmpty) return;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF0D1520),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 36, height: 4,
-          margin: const EdgeInsets.only(top: 12, bottom: 16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E3048),
-            borderRadius: BorderRadius.circular(2))),
-        const Padding(
-          padding: EdgeInsets.only(bottom: 12),
-          child: Text('Recent Videos', style: TextStyle(
-            fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white))),
-        Flexible(child: ListView(shrinkWrap: true, children: [
-          ...widget.history.take(15).map((item) {
-            final display = item.title.isNotEmpty ? item.title : item.url;
-            return ListTile(
-              leading: const Icon(Icons.play_circle_outline,
-                color: Color(0xFFFF3D71), size: 20),
-              title: Text(display, style: const TextStyle(
-                fontSize: 13, color: Colors.white),
-                overflow: TextOverflow.ellipsis),
-              subtitle: Text(item.time, style: const TextStyle(
-                fontSize: 10, color: Color(0xFF4B6070))),
-              onTap: widget.enabled ? () {
-                widget.onSend(item.url, item.title);
-                Navigator.pop(context);
-              } : null,
-            );
-          }),
-        ])),
-        const SizedBox(height: 16),
-      ]),
-    );
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const HistoryScreen()));
   }
 
   @override

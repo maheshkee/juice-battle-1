@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/board_event.dart';
+import '../services/watch_later_service.dart';
 
 class ScheduleScreen extends StatefulWidget {
   final List<ScheduleEntry> initialEntries;
@@ -522,13 +524,47 @@ class _ScheduleScreenState extends State<ScheduleScreen>
     ]);
   }
 
+  void _addFromWatchLater() {
+    final wl = context.read<WatchLaterService>();
+    if (wl.items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No Watch Later items saved')));
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => _WatchLaterPickerScreen(
+        items: wl.items.toList(),
+        onPick: (item) {
+          final entry = _entryForSelectedDate();
+          setState(() {
+            entry.playlist.add(QueueItem(
+              videoId: item.videoId,
+              title:   item.title.isNotEmpty ? item.title : item.videoId,
+              url:     item.url));
+            _addingVideo = false;
+          });
+          widget.onSave(List.from(_entries));
+        },
+      ),
+    ));
+  }
+
+  ScheduleEntry _entryForSelectedDate() {
+    final existing = _entries.where((e) => _isSameDay(e.date, _selectedDate))
+      .firstOrNull;
+    if (existing != null) return existing;
+    final newEntry = ScheduleEntry(date: _selectedDate, playlist: []);
+    _entries.add(newEntry);
+    return newEntry;
+  }
+
   Widget _addForm() => Container(
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
       color: _card,
       borderRadius: BorderRadius.circular(12)),
     child: Column(children: [
-      _field(_urlCtrl, 'YouTube URL', autofocus: true),
+      _field(_urlCtrl, 'YouTube URL'),
       const SizedBox(height: 1),
       _field(_titleCtrl, 'Title  (leave blank to auto-fetch)'),
       const SizedBox(height: 16),
@@ -560,6 +596,27 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                   style: TextStyle(fontSize: 15, color: Colors.white,
                     fontWeight: FontWeight.w600))))),
       ]),
+      const SizedBox(height: 8),
+      GestureDetector(
+        onTap: _addFromWatchLater,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFF9F0A).withOpacity(0.10),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: const Color(0xFFFF9F0A).withOpacity(0.3))),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Icon(Icons.bookmark_outline_rounded,
+              size: 16, color: Color(0xFFFF9F0A)),
+            const SizedBox(width: 8),
+            const Text('Add from Watch Later',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14,
+                color: Color(0xFFFF9F0A),
+                fontWeight: FontWeight.w600)),
+          ]))),
     ]),
   );
 
@@ -627,4 +684,75 @@ class _ScheduleScreenState extends State<ScheduleScreen>
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 14, vertical: 12))));
+}
+
+class _WatchLaterPickerScreen extends StatelessWidget {
+  final List<WatchLaterItem> items;
+  final Function(WatchLaterItem) onPick;
+
+  const _WatchLaterPickerScreen({
+    required this.items,
+    required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF000000),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF000000),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new,
+            size: 17, color: Color(0xFFFF9F0A)),
+          onPressed: () => Navigator.pop(context)),
+        title: const Text('Add from Watch Later', style: TextStyle(
+          color: Colors.white, fontSize: 17,
+          fontWeight: FontWeight.w700)),
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+        itemCount: items.length,
+        itemBuilder: (_, i) {
+          final item = items[i];
+          return GestureDetector(
+            onTap: () {
+              Navigator.pop(context);
+              onPick(item);
+            },
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1C1C1E),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF3A3A3C))),
+              child: Row(children: [
+                Container(
+                  width: 42, height: 42,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF3D71).withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(10)),
+                  child: const Icon(Icons.play_circle_outline,
+                    color: Color(0xFFFF3D71), size: 22)),
+                const SizedBox(width: 12),
+                Expanded(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                  Text(item.title.isNotEmpty ? item.title : item.videoId,
+                    style: const TextStyle(fontSize: 14,
+                      fontWeight: FontWeight.w600, color: Colors.white),
+                    overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 3),
+                  Text(item.addedAt, style: const TextStyle(
+                    fontSize: 11, color: Color(0xFF8E8E93))),
+                ])),
+                const Icon(Icons.add_circle_outline_rounded,
+                  color: Color(0xFFFF9F0A), size: 22),
+              ]),
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
