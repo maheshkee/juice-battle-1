@@ -57,23 +57,36 @@ while true; do
                         sleep 1
                     fi
                 fi
-                echo "[BT] Scanning to populate cache..." >> "$BT_RESULT_FILE"
-                timeout 8 bluetoothctl scan on >> "$BT_RESULT_FILE" 2>&1
-                bluetoothctl scan off 2>/dev/null
-                sleep 1
+                echo "[BT] Scanning for $MAC..." >> "$BT_RESULT_FILE"
+                bluetoothctl scan on >> "$BT_RESULT_FILE" 2>&1 &
+                SCAN_PID=$!
+                # wait until device seen OR max 8s
+                for i in $(seq 1 16); do
+                    sleep 0.5
+                    bluetoothctl devices | grep -q "$MAC" && break
+                done
+                echo "[BT] Device found, connecting..." >> "$BT_RESULT_FILE"
                 bluetoothctl pair "$MAC" >> "$BT_RESULT_FILE" 2>&1
                 bluetoothctl trust "$MAC" >> "$BT_RESULT_FILE" 2>&1
-                bluetoothctl connect "$MAC" >> "$BT_RESULT_FILE" 2>&1
-                sleep 2
-                NAME=$(bluetoothctl info "$MAC" 2>/dev/null | grep '^\s*Name:' | sed 's/.*Name: //' | xargs)
-                [ -z "$NAME" ] && NAME="$MAC"
-                SINK_ID=$(wpctl status 2>/dev/null | grep -E '^\s*[0-9]+\.' | grep -iv 'hdmi\|built-in\|source\|capture' | grep -i 'bluez\|pop\|fuzo\|hbts\|dubstep' | grep -o '^\s*[0-9]*\.' | tr -d ' .' | head -1)
-                if [ -n "$SINK_ID" ]; then
-                    wpctl set-default "$SINK_ID" 2>/dev/null
-                    echo "[BT] Set default sink to $SINK_ID" >> "$BT_RESULT_FILE"
+                CONNECT_OUT=$(bluetoothctl connect "$MAC" 2>&1)
+                echo "$CONNECT_OUT" >> "$BT_RESULT_FILE"
+                kill $SCAN_PID 2>/dev/null
+                bluetoothctl scan off 2>/dev/null
+                if echo "$CONNECT_OUT" | grep -q "Connection successful"; then
+                    sleep 2
+                    NAME=$(bluetoothctl info "$MAC" 2>/dev/null | grep '^\s*Name:' | sed 's/.*Name: //' | xargs)
+                    [ -z "$NAME" ] && NAME="$MAC"
+                    SINK_ID=$(wpctl status 2>/dev/null | grep -E '^\s*[0-9]+\.' | grep -iv 'hdmi\|built-in\|source\|capture' | grep -i 'bluez\|pop\|fuzo\|hbts\|dubstep' | grep -o '^\s*[0-9]*\.' | tr -d ' .' | head -1)
+                    if [ -n "$SINK_ID" ]; then
+                        wpctl set-default "$SINK_ID" 2>/dev/null
+                        echo "[BT] Set default sink to $SINK_ID" >> "$BT_RESULT_FILE"
+                    fi
+                    echo "$MAC|$NAME" > "$BT_CONNECTED_FILE"
+                    echo "connected:$MAC|$NAME" >> "$BT_RESULT_FILE"
+                else
+                    echo "[BT] Connection failed for $MAC" >> "$BT_RESULT_FILE"
+                    echo "error:$MAC" >> "$BT_RESULT_FILE"
                 fi
-                echo "$MAC|$NAME" > "$BT_CONNECTED_FILE"
-                echo "connected:$MAC|$NAME" >> "$BT_RESULT_FILE"
                 ;;
             BT_DISCONNECT:*)
                 MAC="${BT_CMD#BT_DISCONNECT:}"

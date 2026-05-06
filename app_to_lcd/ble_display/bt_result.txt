@@ -1,13 +1,14 @@
-[BT] Disconnecting old speaker 5A:7C:48:FD:B2:CA...
-Attempting to disconnect from 5A:7C:48:FD:B2:CA
-[[0;91mDEL[0m] Transport /org/bluez/hci0/dev_5A_7C_48_FD_B2_CA/fd2 
-[[0;91mDEL[0m] Endpoint /org/bluez/hci0/dev_5A_7C_48_FD_B2_CA/sep1 
-[[0;91mDEL[0m] Endpoint /org/bluez/hci0/dev_5A_7C_48_FD_B2_CA/sep2 
-[[0;93mCHG[0m] Device 5A:7C:48:FD:B2:CA ServicesResolved: no
-[[0;93mCHG[0m] Device 5A:7C:48:FD:B2:CA Connected: no
+[BT] Disconnecting old speaker 41:42:5B:F4:65:27...
+Attempting to disconnect from 41:42:5B:F4:65:27
+[[0;91mDEL[0m] Transport /org/bluez/hci0/dev_41_42_5B_F4_65_27/sep1/fd5 
+[[0;91mDEL[0m] Endpoint /org/bluez/hci0/dev_41_42_5B_F4_65_27/sep1 
+[[0;93mCHG[0m] Device 41:42:5B:F4:65:27 ServicesResolved: no
+[[0;93mCHG[0m] Device 41:42:5B:F4:65:27 Connected: no
 Disconnection successful
-[BT] Scanning to populate cache...
+[BT] Scanning for 1F:10:00:9D:63:E2...
 SetDiscoveryFilter success
+Discovery started
+[BT] Device found, connecting...
 Attempting to pair with 1F:10:00:9D:63:E2
 Failed to pair: org.bluez.Error.AlreadyExists
 Changing 1F:10:00:9D:63:E2 trust succeeded
@@ -15,7 +16,7 @@ Attempting to connect to 1F:10:00:9D:63:E2
 [[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 Connected: yes
 [[0;92mNEW[0m] Endpoint /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep1 
 [[0;92mNEW[0m] Endpoint /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep2 
-[[0;92mNEW[0m] Transport /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep1/fd3 
+[[0;92mNEW[0m] Transport /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep1/fd6 
 Connection successful
-[BT] Set default sink to 57
+[BT] Set default sink to 55
 connected:1F:10:00:9D:63:E2|HBTS001

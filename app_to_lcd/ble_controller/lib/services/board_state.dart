@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/board_event.dart';
@@ -23,6 +24,7 @@ class BoardState extends ChangeNotifier {
 
   BoardState() {
     _loadBtConnected();
+    _loadSchedule();
   }
 
   Future<void> _loadBtConnected() async {
@@ -52,6 +54,27 @@ class BoardState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('bt_connected_mac');
       await prefs.remove('bt_connected_name');
+    } catch (_) {}
+  }
+
+  Future<void> _loadSchedule() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw   = prefs.getString('schedule_entries') ?? '[]';
+      final list  = jsonDecode(raw) as List;
+      if (list.isNotEmpty) {
+        scheduleEntries = list.map((e) =>
+          ScheduleEntry.fromJson(e as Map<String, dynamic>)).toList();
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> saveSchedule() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('schedule_entries',
+        jsonEncode(scheduleEntries.map((e) => e.toJson()).toList()));
     } catch (_) {}
   }
 
@@ -132,6 +155,7 @@ class BoardState extends ChangeNotifier {
       case 'schedule_update':
         scheduleEntries = (d['entries'] as List? ?? [])
             .map((e) => ScheduleEntry.fromJson(e)).toList();
+        saveSchedule();
         break;
       case 'watchlater_update':
         watchLaterItems = (d['items'] as List? ?? [])

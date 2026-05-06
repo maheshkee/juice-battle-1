@@ -16,6 +16,7 @@ import '../screens/watch_later_screen.dart';
 import '../services/watch_later_service.dart';
 import '../services/bt_audio_service.dart';
 import '../screens/bt_devices_screen.dart';
+import '../screens/history_screen.dart';
 import '../main.dart' show startKeepAlive, stopKeepAlive;
 
 class HubScreen extends StatefulWidget {
@@ -106,8 +107,10 @@ class _HubScreenState extends State<HubScreen> {
         enabled:        ble.state == ConnState.connected,
         onSave: (entries) {
           ble.sendSchedule(entries);
-          context.read<BoardState>().scheduleEntries = List.from(entries);
-          context.read<BoardState>().notifyListeners();
+          final b = context.read<BoardState>();
+          b.scheduleEntries = List.from(entries);
+          b.saveSchedule();
+          b.notifyListeners();
         },
       ),
     ));
@@ -394,27 +397,20 @@ class _HubScreenState extends State<HubScreen> {
         ]),
         const Spacer(),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          width: 10, height: 10,
           decoration: BoxDecoration(
-            color: c.withOpacity(0.10),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: c.withOpacity(0.3))),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Container(width: 6, height: 6,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: c,
-                boxShadow: [BoxShadow(color: cGlow.withOpacity(0.8),
-                  blurRadius: 6)])),
-            const SizedBox(width: 6),
-            Text(live ? 'LIVE' : 'OFFLINE', style: TextStyle(
-              fontSize: 10, fontWeight: FontWeight.w700,
-              color: c, letterSpacing: 1)),
-          ])),
+            shape: BoxShape.circle,
+            color: c,
+            boxShadow: [BoxShadow(
+              color: cGlow.withOpacity(0.8), blurRadius: 8)]),
+        ),
         const SizedBox(width: 8),
         Builder(builder: (ctx) {
           final board = ctx.watch<BoardState>();
           final ble   = ctx.watch<BleService>();
           return GestureDetector(
-            onTap: () => _showHistory(board, ble),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HistoryScreen())),
             child: Container(
               width: 38, height: 38,
               decoration: BoxDecoration(
@@ -449,7 +445,7 @@ class _HubScreenState extends State<HubScreen> {
                 const Icon(Icons.bookmark_outline_rounded,
                   color: Color(0xFF0A84FF), size: 18),
                 if (wl.pendingCount > 0)
-                  Positioned(top: 6, right: 6,
+                  Positioned(top: 5, right: 5,
                     child: Container(width: 7, height: 7,
                       decoration: const BoxDecoration(
                         shape: BoxShape.circle,
