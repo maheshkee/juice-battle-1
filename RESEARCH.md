@@ -416,7 +416,67 @@ The model gets better with every cylinder cycle.
 
 ---
 
-## 12. Open Questions — Pending Research
+## 12. Noise Sample Count — Statistical Derivation (2026-05-06)
+
+### Finding
+
+200 samples used in experiments. 50 samples sufficient for production boot.
+This is not a guess — derived from statistics.
+
+### HX711 hardware rate is the bottleneck
+
+```
+HX711 RATE pin LOW = 10 SPS (fixed in hardware)
+Per sample cost    = ~100ms HX711 ready + ~120ms loop pace = ~220ms
+N=200 → 44 seconds boot characterisation
+N=50  → ~11 seconds boot characterisation
+```
+
+Corrupt sample filtering adds negligible time (~0.5s extra).
+The hardware rate dominates — not filtering.
+
+### STD estimation error formula
+
+```
+Standard Error of STD = STD / sqrt(2 × N)
+
+N=200 : ±5%  error on threshold
+N=100 : ±7%  error on threshold
+N=50  : ±10% error on threshold
+N=20  : ±16% error on threshold — rejected, too high
+N=10  : ±22% error on threshold — rejected, far too high
+```
+
+### Why 10% is acceptable but 16% is not
+
+```
+Worst case measured threshold : 7.03g (run 2, session 2026-05-06)
+Minimum event to detect       : 16g (tea/coffee)
+
+At N=50  (10% error): worst threshold = 7.03 × 1.10 = 7.73g
+                       detection margin = 16 / 7.73 = 2.07× safe
+
+At N=20  (16% error): worst threshold = 7.03 × 1.16 = 8.15g
+                       detection margin = 16 / 8.15 = 1.96× too tight
+```
+
+2× margin is the minimum acceptable. N=50 passes. N=20 fails.
+
+### Decision locked
+
+```
+N=200 : experiments only — lab reference, maximum accuracy
+N=50  : production boot — sufficient accuracy, acceptable boot time
+```
+
+### Implementation note
+
+noise_reset(int n_samples) — N passed as parameter, never hardcoded.
+sketch.ino decides N based on context (experiment vs production).
+
+---
+
+## 13. Open Questions — Pending Research
 
 | # | Question | Raised | Status |
 |---|----------|--------|--------|

@@ -24,15 +24,15 @@ gas monitor experiments conclude.
 ```
 003 noise characterisation ✅ COMPLETE
     ↓
-003 cleanup (remove DBG lines)
+003 cleanup ✅ COMPLETE (2026-05-06)
     ↓
-004 modular sketch refactor
+004 modular sketch refactor ✅ COMPLETE (2026-05-06)
     ↓
-005 calibration linearity
+005 calibration linearity ← NEXT SESSION
     ↓
-006B measured removal ← POSTPONED (no measuring cup)
+006B measured removal ← POSTPONED (bring measuring cup)
     ↓
-007B threshold stress test ← PROVES false positive rate (currently theoretical)
+007B threshold stress test
     ↓
 008 temperature drift
     ↓
@@ -53,15 +53,19 @@ gas-cylinder-monitor v0.1
 
 ## What We Know vs What We Don't
 
-### ✅ PROVEN on hardware (AQ3, 2026-05-05)
+### ✅ PROVEN on hardware (AQ3, 2026-05-05 and 2026-05-06)
 
 ```
-Noise STD range     : 1.33–2.36g (same board, same day, two runs)
-Self-computed threshold works : 2.38–4.23g, adapts correctly per session
+Noise STD range     : 1.33–3.93g (multiple runs, multiple sessions)
+Self-computed threshold works : 2.38–7.03g, adapts correctly per session
 Detector validated  : TRIGGERED=0 on stable weight, TRIGGERED=1 on weight change
-Self-characterise essential : 2× STD variation proves hardcoding is wrong
+Self-characterise essential : 3× STD variation proves hardcoding is wrong
 double = broken on STM32U585 : float only in all MCU sketches
 wait_ready = 400ms  : tuned for AQ3 under Bridge load
+cal_factor range    : 103.6–105.7 raw/g (two runs, 2026-05-06)
+Modular architecture: hx711/tare/noise/cal/delta modules verified working
+Physical WAIT detection: stable empty scale + weight presence detection working
+AVG tracking accurate: delta averages track actual placed weights correctly
 ```
 
 ### 📐 DERIVED (calculated from documented sources, not yet measured)
@@ -535,6 +539,99 @@ Bridge.provide("weight_snapshot", on_weight_snapshot)
 
 ---
 
+## Noise Characterisation — Sample Count Decision — LOCKED (2026-05-06)
+
+### Why N=200 in experiments but N=50 in production
+
+This decision is based on statistics, not guesswork. Full reasoning below.
+
+### The hardware constraint — HX711 at 10 SPS
+
+HX711 RATE pin LOW = 10 samples per second. This is fixed in hardware.
+Each sample takes ~100ms. Loop pace adds ~120ms overhead per iteration.
+So each noise sample costs roughly 220ms of real time.
+
+```
+N=200 samples × 220ms = ~44 seconds boot time
+N=50  samples × 220ms = ~11 seconds boot time
+```
+
+Corrupt sample rejection (outside -50g to +50g) adds maybe 2-4 extra samples
+on an empty scale. Negligible — maybe 0.5 seconds extra. Not the bottleneck.
+The HX711 hardware rate is the dominant factor, not filtering.
+
+### How many samples do you actually need?
+
+STD estimation accuracy follows this formula:
+
+```
+Standard Error of STD = STD / sqrt(2 × N)
+Expressed as percentage error = 1 / sqrt(2 × N) × 100%
+```
+
+Calculated for each N:
+
+```
+N=200 : error = 1/sqrt(400) = 5%  of true STD  → threshold error ±5%
+N=100 : error = 1/sqrt(200) = 7%  of true STD  → threshold error ±7%
+N=50  : error = 1/sqrt(100) = 10% of true STD  → threshold error ±10%
+N=20  : error = 1/sqrt(40)  = 16% of true STD  → threshold error ±16%
+N=10  : error = 1/sqrt(20)  = 22% of true STD  → threshold error ±22%
+```
+
+### Is 10% threshold error safe for production?
+
+Our measured STD range: 1.33g to 3.93g across all runs.
+Worst case threshold (run 2, session 2): 7.03g
+Minimum event we must detect: 16g (tea/coffee, 5 min cooking)
+
+```
+Detection margin at N=200 (5% error):
+    threshold worst case = 7.03 × 1.05 = 7.38g
+    margin = 16 / 7.38 = 2.17×  ← safe
+
+Detection margin at N=50 (10% error):
+    threshold worst case = 7.03 × 1.10 = 7.73g
+    margin = 16 / 7.73 = 2.07×  ← still safe
+
+Detection margin at N=20 (16% error):
+    threshold worst case = 7.03 × 1.16 = 8.15g
+    margin = 16 / 8.15 = 1.96×  ← borderline, too tight
+```
+
+N=50 maintains safe detection margin with 2× headroom over minimum event.
+N=20 cuts margin too close — rejected.
+
+### Final decision
+
+```
+N=200 : experiments ONLY
+        Maximum accuracy. Building reference data.
+        44 second characterisation acceptable in lab.
+
+N=50  : production boot (home-hub)
+        Sufficient accuracy — 10% threshold error, 2× detection margin.
+        ~11 second boot time acceptable for a kitchen appliance.
+        Device reboots maybe once a week — user waits 11 seconds.
+
+N=20  : rejected
+        16% error cuts detection margin below 2× — too risky.
+```
+
+### Implementation requirement for noise module
+
+noise.cpp must accept N as a parameter — never hardcode 200 or 50.
+
+```cpp
+void noise_reset(int n_samples);   // pass 200 for experiments, 50 for production
+```
+
+sketch.ino decides which N to use based on context.
+This is already consistent with the module contract — modules receive their
+parameters, they never hardcode environment-specific constants.
+
+---
+
 ## Change Log
 
 | Date | Change |
@@ -542,3 +639,4 @@ Bridge.provide("weight_snapshot", on_weight_snapshot)
 | 2026-05-05 | Created — experiment 003 complete, full queue, product roadmap |
 | 2026-05-05 | Corrected — distinguished proven vs derived vs pending throughout |
 | 2026-05-06 | Major update — full calibration architecture locked: tare lifecycle, adaptive retry, brand bootstrap, 30-day self-derived cal_factor, trend extrapolation, modular sketch contracts, data intelligence roadmap v0.3→v3.0 |
+| 2026-05-06 | Added noise sample count decision — N=50 production, N=200 experiments, full statistical reasoning locked |
