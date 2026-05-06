@@ -270,8 +270,6 @@ void loop() {
         long r = hx711_read_raw();
         if (r == LONG_MIN || r == -1 || r == 0x7FFFFF) break;
         if (r < -5000000L || r > 5000000L) break;
-        delay(1);  // yield to Bridge/Zephyr scheduler
-
         float g = (float)(r - g_tare_raw) / g_cal_factor;
         if (g < -50.0f || g > 50.0f) break;  // outside physical range for empty scale
         g_noise_samples[g_noise_count] = g;
@@ -285,11 +283,6 @@ void loop() {
         if (g_noise_count < 200) break;  // keep accumulating
 
         // All 200 samples collected — compute stats
-        // Platform diagnostic: print 3 sample values
-        Bridge.notify("log", "DBG s0=" + String(g_noise_samples[0], 4)
-            + " s100=" + String(g_noise_samples[100], 4)
-            + " s199=" + String(g_noise_samples[199], 4));
-
         // Pass 1: mean — float accumulator only
         float pass1_sum = 0.0f;
         for (int i = 0; i < 200; i++) pass1_sum += g_noise_samples[i];
@@ -358,7 +351,6 @@ void loop() {
         long r = hx711_read_raw();
         if (r == LONG_MIN || r == -1 || r == 0x7FFFFF) break;
         if (r < -5000000L || r > 5000000L) break;
-        delay(1);  // yield to Bridge/Zephyr scheduler
 
         g_window[g_window_idx % 20] = r;
         g_window_idx++;
