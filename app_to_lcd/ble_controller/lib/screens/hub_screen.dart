@@ -17,6 +17,8 @@ import '../services/watch_later_service.dart';
 import '../services/bt_audio_service.dart';
 import '../screens/bt_devices_screen.dart';
 import '../screens/history_screen.dart';
+import '../screens/playlists_screen.dart';
+import '../services/playlist_service.dart';
 import '../main.dart' show startKeepAlive, stopKeepAlive;
 
 Route<T> _opaqueRoute<T>(Widget page) => PageRouteBuilder<T>(
@@ -220,6 +222,8 @@ class _HubScreenState extends State<HubScreen> {
                   onStop:      () => ble.queueStop(),
                   onGoto:      (i) => ble.queueGoto(i),
                 ),
+                const SizedBox(height: 12),
+                _PlaylistsSection(connected: connected),
                 const SizedBox(height: 12),
                 LogConsole(
                   logs:    board.logs,
@@ -490,6 +494,97 @@ class _HubScreenState extends State<HubScreen> {
                       shape: BoxShape.circle,
                       color: Color(0xFF34C759)))),
             ]))),
+      ]),
+    );
+  }
+}
+
+class _PlaylistsSection extends StatelessWidget {
+  final bool connected;
+  const _PlaylistsSection({required this.connected});
+
+  @override
+  Widget build(BuildContext context) {
+    final ps      = context.watch<PlaylistService>();
+    final preview = ps.playlists.take(3).toList();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111827),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF1E2A3A))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.queue_music, color: Color(0xFF30D158), size: 16),
+          const SizedBox(width: 8),
+          const Text('PLAYLISTS', style: TextStyle(
+            fontSize: 10, fontWeight: FontWeight.w700,
+            color: Color(0xFF30D158), letterSpacing: 1.5)),
+          const Spacer(),
+          GestureDetector(
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const PlaylistsScreen())),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E2A3A),
+                borderRadius: BorderRadius.circular(8)),
+              child: const Text('See All', style: TextStyle(
+                fontSize: 10, color: Color(0xFF30D158))))),
+        ]),
+        if (ps.playlists.isEmpty) ...[
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const PlaylistsScreen())),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF30D158).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: const Color(0xFF30D158).withOpacity(0.2))),
+              child: const Row(mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                Icon(Icons.add, color: Color(0xFF30D158), size: 16),
+                SizedBox(width: 6),
+                Text('Create Playlist', style: TextStyle(
+                  fontSize: 13, color: Color(0xFF30D158))),
+              ]))),
+        ] else ...[
+          const SizedBox(height: 10),
+          ...preview.map((p) => GestureDetector(
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => PlaylistDetailScreen(playlistId: p.id))),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A2236),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF1E2A3A))),
+              child: Row(children: [
+                Container(
+                  width: 32, height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF30D158).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.queue_music,
+                    color: Color(0xFF30D158), size: 16)),
+                const SizedBox(width: 10),
+                Expanded(child: Text(p.name, style: const TextStyle(
+                  fontSize: 13, color: Colors.white,
+                  fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis)),
+                Text('${p.videos.length}', style: const TextStyle(
+                  fontSize: 11, color: Color(0xFF4A5568))),
+
+              ]),
+            ),
+          )),
+        ],
       ]),
     );
   }

@@ -8,6 +8,7 @@ import 'services/ble_service.dart';
 import 'services/board_state.dart';
 import 'services/watch_later_service.dart';
 import 'services/bt_audio_service.dart';
+import 'services/playlist_service.dart';
 import 'screens/hub_screen.dart';
 import 'models/board_event.dart';
 
@@ -18,8 +19,10 @@ void stopKeepAlive()  => _platform.invokeMethod('stopKeepAlive').catchError((_) 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final wlService = WatchLaterService();
+  final wlService  = WatchLaterService();
+  final plService  = PlaylistService();
   await wlService.load();
+  await plService.load();
   runApp(
     MultiProvider(
       providers: [
@@ -27,6 +30,7 @@ void main() async {
         Provider(create: (_) => BleService()),
         ChangeNotifierProvider(create: (_) => BtAudioService()),
         ChangeNotifierProvider.value(value: wlService),
+        ChangeNotifierProvider.value(value: plService),
       ],
       child: const BleHubApp(),
     ),
