@@ -178,23 +178,8 @@ def get_next_entry() -> dict:
 
 def schedule_tick():
     global schedule_playing
-    in_window = is_in_schedule_window()
-    entry     = get_todays_entry()
-    if in_window and not schedule_playing and entry and not queue_active:
-        playlist = entry.get('playlist', [])
-        if playlist:
-            log(f'[SCHEDULE] Today has {len(playlist)} videos')
-            schedule_playing = True
-            GLib.idle_add(queue_set, list(playlist))
-            GLib.idle_add(queue_play)
-    elif not in_window and schedule_playing:
+    if not is_in_schedule_window() and schedule_playing:
         schedule_playing = False
-    next_e = get_next_entry()
-    push_to_phone('schedule_tick', {
-        'in_window':   in_window,
-        'next_window': next_e,
-        'time':        now_str(),
-    })
 
 
 def load_watch_later():
