@@ -67,6 +67,7 @@ class WatchLaterScreen extends StatelessWidget {
         : ListView.builder(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
             itemCount: wl.items.length,
+            physics: const ClampingScrollPhysics(),
             itemBuilder: (_, i) {
               final item      = wl.items[i];
               final isPending = wl.pending.any((p) => p.url == item.url);
@@ -81,7 +82,13 @@ class WatchLaterScreen extends StatelessWidget {
                   context.read<BoardState>().notifyListeners();
                   Navigator.pop(context);
                 },
-                onDelete: () => context.read<WatchLaterService>().removeItem(item.url),
+                onDelete: () {
+                  final ble       = context.read<BleService>();
+                  final connected = ble.state == ConnState.connected;
+                  context.read<WatchLaterService>().removeItem(
+                    item.url, boardConnected: connected);
+                  if (connected) ble.watchLaterRemove(item.url);
+                },
                 onAddToSchedule: () => _addToSchedule(context, item),
               );
             },

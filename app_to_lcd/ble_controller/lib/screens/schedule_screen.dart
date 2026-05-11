@@ -137,8 +137,9 @@ class _ScheduleScreenState extends State<ScheduleScreen>
     });
   }
 
-  void _deleteDay(DateTime d) =>
-      setState(() => _entries.removeWhere((e) => _isSameDay(e.date, d)));
+  void _deleteDay(DateTime d) {
+    setState(() => _entries.removeWhere((e) => _isSameDay(e.date, d)));
+  }
 
   Future<String> _fetchTitle(String videoId) async {
     try {
@@ -188,7 +189,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
         QueueItem(videoId: id, title: title, url: url)],
     ));
     _urlCtrl.clear(); _titleCtrl.clear();
-    if (mounted) setState(() => _addingVideo = false);
+    if (mounted) setState(() {});
   }
 
   DateTime get _visibleMonth {
@@ -223,9 +224,20 @@ class _ScheduleScreenState extends State<ScheduleScreen>
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: GestureDetector(
-              onTap: () { widget.onSave(_entries); Navigator.pop(context); },
-              child: Text('Save', style: TextStyle(
-                fontSize: 17, color: _blue, fontWeight: FontWeight.w400)),
+              onTap: () {
+                setState(() {
+                  _addingVideo = false;
+                  _urlCtrl.clear();
+                  _titleCtrl.clear();
+                });
+                widget.onSave(List.from(_entries));
+                Navigator.pop(context);
+              },
+              child: const Text('Save',
+                style: TextStyle(
+                  fontSize: 17,
+                  color: _blue,
+                  fontWeight: FontWeight.w600)),
             ),
           ),
         ],
@@ -534,16 +546,17 @@ class _ScheduleScreenState extends State<ScheduleScreen>
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => _WatchLaterPickerScreen(
         items: wl.items.toList(),
-        onPick: (item) {
+        onPickMultiple: (items) {
+          if (items.isEmpty) return;
           final entry = _entryForSelectedDate();
           setState(() {
-            entry.playlist.add(QueueItem(
-              videoId: item.videoId,
-              title:   item.title.isNotEmpty ? item.title : item.videoId,
-              url:     item.url));
-            _addingVideo = false;
+            for (final item in items) {
+              entry.playlist.add(QueueItem(
+                videoId: item.videoId,
+                title:   item.title.isNotEmpty ? item.title : item.videoId,
+                url:     item.url));
+            }
           });
-          widget.onSave(List.from(_entries));
         },
       ),
     ));
@@ -686,13 +699,20 @@ class _ScheduleScreenState extends State<ScheduleScreen>
             horizontal: 14, vertical: 12))));
 }
 
-class _WatchLaterPickerScreen extends StatelessWidget {
+class _WatchLaterPickerScreen extends StatefulWidget {
   final List<WatchLaterItem> items;
-  final Function(WatchLaterItem) onPick;
+  final Function(List<WatchLaterItem>) onPickMultiple;
 
   const _WatchLaterPickerScreen({
     required this.items,
-    required this.onPick});
+    required this.onPickMultiple});
+
+  @override
+  State<_WatchLaterPickerScreen> createState() => _WatchLaterPickerScreenState();
+}
+
+class _WatchLaterPickerScreenState extends State<_WatchLaterPickerScreen> {
+  final Set<String> _selected = {};
 
   @override
   Widget build(BuildContext context) {
@@ -705,35 +725,69 @@ class _WatchLaterPickerScreen extends StatelessWidget {
           icon: const Icon(Icons.arrow_back_ios_new,
             size: 17, color: Color(0xFFFF9F0A)),
           onPressed: () => Navigator.pop(context)),
-        title: const Text('Add from Watch Later', style: TextStyle(
-          color: Colors.white, fontSize: 17,
-          fontWeight: FontWeight.w700)),
+        title: Text(
+          _selected.isEmpty
+            ? 'Add from Watch Later'
+            : '${_selected.length} selected',
+          style: const TextStyle(
+            color: Colors.white, fontSize: 17,
+            fontWeight: FontWeight.w700)),
+        actions: [
+          if (_selected.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                final picked = widget.items
+                  .where((i) => _selected.contains(i.url))
+                  .toList();
+                Navigator.pop(context);
+                widget.onPickMultiple(picked);
+              },
+              child: const Text('Add', style: TextStyle(
+                fontSize: 17, color: Color(0xFFFF9F0A),
+                fontWeight: FontWeight.w600))),
+        ],
       ),
       body: ListView.builder(
+        physics: const ClampingScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-        itemCount: items.length,
+        itemCount: widget.items.length,
         itemBuilder: (_, i) {
-          final item = items[i];
+          final item     = widget.items[i];
+          final selected = _selected.contains(item.url);
           return GestureDetector(
-            onTap: () {
-              Navigator.pop(context);
-              onPick(item);
-            },
+            onTap: () => setState(() {
+              if (selected) _selected.remove(item.url);
+              else          _selected.add(item.url);
+            }),
             child: Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFF1C1C1E),
+                color: selected
+                  ? const Color(0xFFFF9F0A).withOpacity(0.10)
+                  : const Color(0xFF1C1C1E),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF3A3A3C))),
+                border: Border.all(
+                  color: selected
+                    ? const Color(0xFFFF9F0A).withOpacity(0.5)
+                    : const Color(0xFF3A3A3C))),
               child: Row(children: [
                 Container(
-                  width: 42, height: 42,
+                  width: 24, height: 24,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFF3D71).withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Icons.play_circle_outline,
-                    color: Color(0xFFFF3D71), size: 22)),
+                    shape: BoxShape.circle,
+                    color: selected
+                      ? const Color(0xFFFF9F0A)
+                      : Colors.transparent,
+                    border: Border.all(
+                      color: selected
+                        ? const Color(0xFFFF9F0A)
+                        : const Color(0xFF4A5568),
+                      width: 2)),
+                  child: selected
+                    ? const Icon(Icons.check_rounded,
+                        size: 14, color: Colors.black)
+                    : null),
                 const SizedBox(width: 12),
                 Expanded(child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -746,8 +800,6 @@ class _WatchLaterPickerScreen extends StatelessWidget {
                   Text(item.addedAt, style: const TextStyle(
                     fontSize: 11, color: Color(0xFF8E8E93))),
                 ])),
-                const Icon(Icons.add_circle_outline_rounded,
-                  color: Color(0xFFFF9F0A), size: 22),
               ]),
             ),
           );

@@ -56,6 +56,7 @@ class HistoryScreen extends StatelessWidget {
         : ListView.builder(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
             itemCount: board.urlHistory.length,
+            physics: const ClampingScrollPhysics(),
             itemBuilder: (_, i) {
               final item = board.urlHistory[i];
               return _HistoryTile(
@@ -97,8 +98,11 @@ class HistoryScreen extends StatelessWidget {
           const SizedBox(height: 20),
           GestureDetector(
             onTap: () {
-              board.urlHistory.clear();
-              board.notifyListeners();
+              board.clearHistoryLocally();
+              final ble = context.read<BleService>();
+              if (ble.state == ConnState.connected) {
+                ble.historyClear();
+              }
               Navigator.pop(context);
             },
             child: Container(
@@ -144,14 +148,15 @@ class _HistoryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final display = item.title.isNotEmpty ? item.title : item.url;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF3A3A3C))),
-      child: Column(children: [
-        Padding(
+    return GestureDetector(
+      onTap: connected ? onPlay : null,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1C1C1E),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFF3A3A3C))),
+        child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(children: [
             Container(
@@ -159,8 +164,11 @@ class _HistoryTile extends StatelessWidget {
               decoration: BoxDecoration(
                 color: const Color(0xFFFF3D71).withOpacity(0.10),
                 borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.play_circle_outline,
-                color: Color(0xFFFF3D71), size: 22)),
+              child: Icon(Icons.play_circle_outline,
+                color: connected
+                  ? const Color(0xFFFF3D71)
+                  : const Color(0xFF4A5568),
+                size: 22)),
             const SizedBox(width: 12),
             Expanded(child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -173,27 +181,12 @@ class _HistoryTile extends StatelessWidget {
               Text(item.time, style: const TextStyle(
                 fontSize: 11, color: Color(0xFF8E8E93))),
             ])),
+            if (connected)
+              const Icon(Icons.play_arrow_rounded,
+                color: Color(0xFF0A84FF), size: 20),
           ]),
         ),
-        if (connected) ...[
-          Container(height: 0.5, color: const Color(0xFF3A3A3C)),
-          GestureDetector(
-            onTap: onPlay,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                Icon(Icons.play_arrow_rounded,
-                  size: 18, color: Color(0xFF0A84FF)),
-                SizedBox(width: 6),
-                Text('Play Now', style: TextStyle(
-                  fontSize: 12, color: Color(0xFF0A84FF),
-                  fontWeight: FontWeight.w600)),
-              ]),
-            ),
-          ),
-        ],
-      ]),
+      ),
     );
   }
 }

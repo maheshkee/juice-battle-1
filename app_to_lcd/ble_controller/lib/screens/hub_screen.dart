@@ -19,6 +19,15 @@ import '../screens/bt_devices_screen.dart';
 import '../screens/history_screen.dart';
 import '../main.dart' show startKeepAlive, stopKeepAlive;
 
+Route<T> _opaqueRoute<T>(Widget page) => PageRouteBuilder<T>(
+  pageBuilder: (_, __, ___) => page,
+  opaque: true,
+  barrierColor: Colors.transparent,
+  transitionDuration: const Duration(milliseconds: 250),
+  transitionsBuilder: (_, anim, __, child) =>
+    FadeTransition(opacity: anim, child: child),
+);
+
 class HubScreen extends StatefulWidget {
   const HubScreen({super.key});
   @override
@@ -46,6 +55,10 @@ class _HubScreenState extends State<HubScreen> {
             ble.getStatus();
           });
           final wl      = context.read<WatchLaterService>();
+          final removals = wl.flushPendingRemovals();
+          for (final url in removals) {
+            ble.watchLaterRemove(url);
+          }
           final pending = wl.flushPending();
           for (final item in pending) {
             ble.watchLaterAdd(item.url, item.title, item.videoId);
@@ -101,8 +114,12 @@ class _HubScreenState extends State<HubScreen> {
   void _openSchedule() {
     final ble   = context.read<BleService>();
     final board = context.read<BoardState>();
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ScheduleScreen(
+    Navigator.of(context).push(PageRouteBuilder(
+      opaque: true,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 250),
+      transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+      pageBuilder: (_, __, ___) => ScheduleScreen(
         initialEntries: board.scheduleEntries,
         enabled:        ble.state == ConnState.connected,
         onSave: (entries) {
@@ -134,6 +151,7 @@ class _HubScreenState extends State<HubScreen> {
             onDisconnect: () => ble.disconnect()),
           Expanded(
             child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               child: Column(children: [
                 LedModeBar(
@@ -396,21 +414,14 @@ class _HubScreenState extends State<HubScreen> {
             fontSize: 10, color: Color(0xFF3D5068), letterSpacing: 0.5)),
         ]),
         const Spacer(),
-        Container(
-          width: 10, height: 10,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: c,
-            boxShadow: [BoxShadow(
-              color: cGlow.withOpacity(0.8), blurRadius: 8)]),
-        ),
+
         const SizedBox(width: 8),
         Builder(builder: (ctx) {
           final board = ctx.watch<BoardState>();
           final ble   = ctx.watch<BleService>();
           return GestureDetector(
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const HistoryScreen())),
+              _opaqueRoute(const HistoryScreen())),
             child: Container(
               width: 38, height: 38,
               decoration: BoxDecoration(
@@ -433,7 +444,7 @@ class _HubScreenState extends State<HubScreen> {
           final wl = ctx.watch<WatchLaterService>();
           return GestureDetector(
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const WatchLaterScreen())),
+              _opaqueRoute(const WatchLaterScreen())),
             child: Container(
               width: 38, height: 38,
               decoration: BoxDecoration(
@@ -461,7 +472,7 @@ class _HubScreenState extends State<HubScreen> {
         const SizedBox(width: 8),
         GestureDetector(
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const BtDevicesScreen())),
+            _opaqueRoute(const BtDevicesScreen())),
           child: Container(
             width: 38, height: 38,
             decoration: BoxDecoration(

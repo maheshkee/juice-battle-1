@@ -168,6 +168,7 @@ class BleService {
   Future<void> btStatus()                                 => _write('CMD:BT_STATUS');
   Future<void> btList()                                   => _write('CMD:BT_LIST');
   Future<void> btGetConnected()                           => _write('CMD:BT_GET_CONNECTED');
+  Future<void> historyClear()                             => _write('CMD:HISTORY_CLEAR');
   Future<void> watchLaterRemove(String url)               => _write('WATCHLATER_REMOVE:$url');
   Future<void> watchLaterAdd(String url, String title, String videoId) =>
       _write('WATCHLATER_ADD:$url||$title||$videoId');

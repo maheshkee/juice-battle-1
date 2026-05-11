@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -95,6 +96,12 @@ class _BleHubAppState extends State<BleHubApp> {
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0A0F1E),
         colorScheme: const ColorScheme.dark(primary: Color(0xFF00E5FF)),
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.iOS:     CupertinoPageTransitionsBuilder(),
+          },
+        ),
       ),
       home: const HubScreen(),
     );

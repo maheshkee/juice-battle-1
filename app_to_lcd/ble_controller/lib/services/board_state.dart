@@ -21,6 +21,7 @@ class BoardState extends ChangeNotifier {
   String btAudioDevice  = '';
   String btAudioName    = '';
   List<Map<String, dynamic>> btPairedDevices = [];
+  bool _historyClearedLocally = false;
 
   BoardState() {
     _loadBtConnected();
@@ -78,6 +79,12 @@ class BoardState extends ChangeNotifier {
     } catch (_) {}
   }
 
+  void clearHistoryLocally() {
+    urlHistory.clear();
+    _historyClearedLocally = true;
+    notifyListeners();
+  }
+
   void addLog(String msg) {
     logs.insert(0, msg);
     if (logs.length > 200) logs.removeLast();
@@ -117,14 +124,16 @@ class BoardState extends ChangeNotifier {
         currentUrl = d['url'];
         break;
       case 'url_history':
-        urlHistory = (d['history'] as List? ?? [])
-            .map((e) => HistoryItem.fromJson(e)).toList();
-        if (nowPlaying != null) {
-          for (final item in urlHistory) {
-            if (item.title.isNotEmpty &&
-                (nowPlaying == item.url || nowPlaying!.length == 11)) {
-              nowPlaying = item.title;
-              break;
+        if (!_historyClearedLocally) {
+          urlHistory = (d['history'] as List? ?? [])
+              .map((e) => HistoryItem.fromJson(e)).toList();
+          if (nowPlaying != null) {
+            for (final item in urlHistory) {
+              if (item.title.isNotEmpty &&
+                  (nowPlaying == item.url || nowPlaying!.length == 11)) {
+                nowPlaying = item.title;
+                break;
+              }
             }
           }
         }
@@ -153,9 +162,13 @@ class BoardState extends ChangeNotifier {
         queueStatus = QueueStatus.fromJson(d);
         break;
       case 'schedule_update':
-        scheduleEntries = (d['entries'] as List? ?? [])
+        final incoming = (d['entries'] as List? ?? [])
             .map((e) => ScheduleEntry.fromJson(e)).toList();
-        saveSchedule();
+        // only overwrite local if board has more entries, or local is empty
+        if (incoming.length >= scheduleEntries.length) {
+          scheduleEntries = incoming;
+          saveSchedule();
+        }
         break;
       case 'watchlater_update':
         watchLaterItems = (d['items'] as List? ?? [])

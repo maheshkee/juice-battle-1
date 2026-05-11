@@ -4,23 +4,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/board_event.dart';
 
 class WatchLaterService extends ChangeNotifier {
-  List<WatchLaterItem> _items   = [];
-  List<WatchLaterItem> _pending = [];
+  List<WatchLaterItem> _items           = [];
+  List<WatchLaterItem> _pending         = [];
+  List<String>         _pendingRemovals = [];
 
-  List<WatchLaterItem> get items   => List.unmodifiable(_items);
-  List<WatchLaterItem> get pending => List.unmodifiable(_pending);
-  int get pendingCount => _pending.length;
+  List<WatchLaterItem> get items           => List.unmodifiable(_items);
+  List<WatchLaterItem> get pending         => List.unmodifiable(_pending);
+  int                  get pendingCount    => _pending.length;
+  List<String>         get pendingRemovals => List.unmodifiable(_pendingRemovals);
 
   Future<void> load() async {
-    print('[WL] Loading watch later...');
     final prefs = await SharedPreferences.getInstance();
-    final raw   = prefs.getString('watch_later') ?? '[]';
-    final praw  = prefs.getString('watch_later_pending') ?? '[]';
+    final raw   = prefs.getString('watch_later')          ?? '[]';
+    final praw  = prefs.getString('watch_later_pending')  ?? '[]';
+    final rraw  = prefs.getString('watch_later_removals') ?? '[]';
     try {
-      _items   = (jsonDecode(raw)  as List).map((e) => WatchLaterItem.fromJson(e)).toList();
-      _pending = (jsonDecode(praw) as List).map((e) => WatchLaterItem.fromJson(e)).toList();
+      _items           = (jsonDecode(raw)  as List).map((e) => WatchLaterItem.fromJson(e)).toList();
+      _pending         = (jsonDecode(praw) as List).map((e) => WatchLaterItem.fromJson(e)).toList();
+      _pendingRemovals = (jsonDecode(rraw) as List).cast<String>();
     } catch (_) {}
-    print('[WL] Loaded \${_items.length} items, \${_pending.length} pending');
     notifyListeners();
   }
 
@@ -30,13 +32,14 @@ class WatchLaterService extends ChangeNotifier {
         jsonEncode(_items.map((e) => e.toJson()).toList()));
     await prefs.setString('watch_later_pending',
         jsonEncode(_pending.map((e) => e.toJson()).toList()));
+    await prefs.setString('watch_later_removals',
+        jsonEncode(_pendingRemovals));
   }
 
-  // called from share sheet or manually
   Future<void> addItem(WatchLaterItem item, {bool boardConnected = false}) async {
-    // avoid duplicates
     _items.removeWhere((e) => e.url == item.url);
     _items.insert(0, item);
+    _pendingRemovals.remove(item.url);
     if (!boardConnected) {
       _pending.removeWhere((e) => e.url == item.url);
       _pending.add(item);
@@ -45,14 +48,18 @@ class WatchLaterService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> removeItem(String url) async {
+  Future<void> removeItem(String url, {bool boardConnected = false}) async {
     _items.removeWhere((e) => e.url == url);
     _pending.removeWhere((e) => e.url == url);
+    if (!boardConnected) {
+      if (!_pendingRemovals.contains(url)) {
+        _pendingRemovals.add(url);
+      }
+    }
     await _save();
     notifyListeners();
   }
 
-  // called when board connects — returns pending items to flush
   List<WatchLaterItem> flushPending() {
     final items = List<WatchLaterItem>.from(_pending);
     _pending.clear();
@@ -61,17 +68,28 @@ class WatchLaterService extends ChangeNotifier {
     return items;
   }
 
-  // called when board pushes updated list
-  void syncFromBoard(List<WatchLaterItem> boardItems) {
-    // merge — board is source of truth, but keep pending
-    _items = boardItems;
-    // re-add pending items not yet on board
-    for (final p in _pending) {
-      if (!_items.any((e) => e.url == p.url)) {
-        _items.insert(0, p);
-      }
-    }
+  List<String> flushPendingRemovals() {
+    final removals = List<String>.from(_pendingRemovals);
+    _pendingRemovals.clear();
     _save();
     notifyListeners();
+    return removals;
+  }
+
+  // phone is source of truth — only add new items from board,
+  // skip anything in pending removals
+  void syncFromBoard(List<WatchLaterItem> boardItems) {
+    bool changed = false;
+    for (final b in boardItems) {
+      if (_pendingRemovals.contains(b.url)) continue;
+      if (!_items.any((e) => e.url == b.url)) {
+        _items.add(b);
+        changed = true;
+      }
+    }
+    if (changed) {
+      _save();
+      notifyListeners();
+    }
   }
 }
