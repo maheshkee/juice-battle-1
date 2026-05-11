@@ -38,6 +38,73 @@ echo "[LAUNCHER] Launching Chromium -> http://localhost:7000/display.html"
 
 echo "[LAUNCHER] Chromium started"
 
+bt_connect() {
+    local MAC="$1"
+    > "$BT_RESULT_FILE"
+
+    if [ -f "$BT_CONNECTED_FILE" ]; then
+        OLD_ENTRY=$(cat "$BT_CONNECTED_FILE")
+        OLD_MAC="${OLD_ENTRY%%|*}"
+        if [ -n "$OLD_MAC" ] && [ "$OLD_MAC" != "$MAC" ]; then
+            echo "[BT] Disconnecting old: $OLD_MAC" >> "$BT_RESULT_FILE"
+            bluetoothctl disconnect "$OLD_MAC" >> "$BT_RESULT_FILE" 2>&1
+            sleep 1
+        fi
+    fi
+
+    echo "[BT] Scanning for $MAC..." >> "$BT_RESULT_FILE"
+
+    # start scan in background using a fifo to keep bluetoothctl alive
+    FIFO=$(mktemp -u /tmp/btfifo.XXXXXX)
+    mkfifo "$FIFO"
+    bluetoothctl < "$FIFO" >> "$BT_RESULT_FILE" 2>&1 &
+    BT_PID=$!
+    exec 3>"$FIFO"
+    echo "scan on" >&3
+
+    # poll until device seen in fresh scan output OR 10s
+    FOUND=0
+    for i in $(seq 1 20); do
+        sleep 0.5
+        if grep -q "$MAC" "$BT_RESULT_FILE" 2>/dev/null; then
+            FOUND=1
+            break
+        fi
+    done
+
+    echo "scan off" >&3
+    sleep 0.5
+    exec 3>&-
+    wait $BT_PID 2>/dev/null
+    rm -f "$FIFO"
+
+    if [ $FOUND -eq 0 ]; then
+        echo "[BT] Device $MAC not found in scan" >> "$BT_RESULT_FILE"
+    fi
+
+    echo "[BT] Connecting $MAC..." >> "$BT_RESULT_FILE"
+    bluetoothctl pair    "$MAC" >> "$BT_RESULT_FILE" 2>&1
+    bluetoothctl trust   "$MAC" >> "$BT_RESULT_FILE" 2>&1
+    CONNECT_OUT=$(bluetoothctl connect "$MAC" 2>&1)
+    echo "$CONNECT_OUT" >> "$BT_RESULT_FILE"
+
+    if echo "$CONNECT_OUT" | grep -q "Connection successful"; then
+        sleep 2
+        NAME=$(bluetoothctl info "$MAC" 2>/dev/null | grep '^\s*Name:' | sed 's/.*Name: //' | xargs)
+        [ -z "$NAME" ] && NAME="$MAC"
+        SINK_ID=$(wpctl status 2>/dev/null | grep -E '^\s*[0-9]+\.' | grep -iv 'hdmi\|built-in\|source\|capture' | grep -i 'bluez\|pop\|fuzo\|hbts\|dubstep' | grep -o '^\s*[0-9]*\.' | tr -d ' .' | head -1)
+        if [ -n "$SINK_ID" ]; then
+            wpctl set-default "$SINK_ID" 2>/dev/null
+            echo "[BT] Set default sink to $SINK_ID" >> "$BT_RESULT_FILE"
+        fi
+        echo "$MAC|$NAME" > "$BT_CONNECTED_FILE"
+        echo "connected:$MAC|$NAME" >> "$BT_RESULT_FILE"
+    else
+        echo "[BT] Connection failed for $MAC" >> "$BT_RESULT_FILE"
+        echo "error:$MAC" >> "$BT_RESULT_FILE"
+    fi
+}
+
 while true; do
     if [ -f "$BT_CMD_FILE" ]; then
         BT_CMD=$(cat "$BT_CMD_FILE")
@@ -47,46 +114,7 @@ while true; do
         case "$BT_CMD" in
             BT_CONNECT:*)
                 MAC="${BT_CMD#BT_CONNECT:}"
-                > "$BT_RESULT_FILE"
-                if [ -f "$BT_CONNECTED_FILE" ]; then
-                    OLD_ENTRY=$(cat "$BT_CONNECTED_FILE")
-                    OLD_MAC="${OLD_ENTRY%%|*}"
-                    if [ -n "$OLD_MAC" ] && [ "$OLD_MAC" != "$MAC" ]; then
-                        echo "[BT] Disconnecting old speaker $OLD_MAC..." >> "$BT_RESULT_FILE"
-                        bluetoothctl disconnect "$OLD_MAC" >> "$BT_RESULT_FILE" 2>&1
-                        sleep 1
-                    fi
-                fi
-                echo "[BT] Scanning for $MAC..." >> "$BT_RESULT_FILE"
-                bluetoothctl scan on >> "$BT_RESULT_FILE" 2>&1 &
-                SCAN_PID=$!
-                # wait until device seen OR max 8s
-                for i in $(seq 1 16); do
-                    sleep 0.5
-                    bluetoothctl devices | grep -q "$MAC" && break
-                done
-                echo "[BT] Device found, connecting..." >> "$BT_RESULT_FILE"
-                bluetoothctl pair "$MAC" >> "$BT_RESULT_FILE" 2>&1
-                bluetoothctl trust "$MAC" >> "$BT_RESULT_FILE" 2>&1
-                CONNECT_OUT=$(bluetoothctl connect "$MAC" 2>&1)
-                echo "$CONNECT_OUT" >> "$BT_RESULT_FILE"
-                kill $SCAN_PID 2>/dev/null
-                bluetoothctl scan off 2>/dev/null
-                if echo "$CONNECT_OUT" | grep -q "Connection successful"; then
-                    sleep 2
-                    NAME=$(bluetoothctl info "$MAC" 2>/dev/null | grep '^\s*Name:' | sed 's/.*Name: //' | xargs)
-                    [ -z "$NAME" ] && NAME="$MAC"
-                    SINK_ID=$(wpctl status 2>/dev/null | grep -E '^\s*[0-9]+\.' | grep -iv 'hdmi\|built-in\|source\|capture' | grep -i 'bluez\|pop\|fuzo\|hbts\|dubstep' | grep -o '^\s*[0-9]*\.' | tr -d ' .' | head -1)
-                    if [ -n "$SINK_ID" ]; then
-                        wpctl set-default "$SINK_ID" 2>/dev/null
-                        echo "[BT] Set default sink to $SINK_ID" >> "$BT_RESULT_FILE"
-                    fi
-                    echo "$MAC|$NAME" > "$BT_CONNECTED_FILE"
-                    echo "connected:$MAC|$NAME" >> "$BT_RESULT_FILE"
-                else
-                    echo "[BT] Connection failed for $MAC" >> "$BT_RESULT_FILE"
-                    echo "error:$MAC" >> "$BT_RESULT_FILE"
-                fi
+                bt_connect "$MAC"
                 ;;
             BT_DISCONNECT:*)
                 MAC="${BT_CMD#BT_DISCONNECT:}"
@@ -98,7 +126,7 @@ while true; do
             BT_PAIR:*)
                 MAC="${BT_CMD#BT_PAIR:}"
                 > "$BT_RESULT_FILE"
-                bluetoothctl pair "$MAC" >> "$BT_RESULT_FILE" 2>&1
+                bluetoothctl pair  "$MAC" >> "$BT_RESULT_FILE" 2>&1
                 bluetoothctl trust "$MAC" >> "$BT_RESULT_FILE" 2>&1
                 echo "paired:$MAC" >> "$BT_RESULT_FILE"
                 ;;
@@ -106,7 +134,7 @@ while true; do
                 MAC="${BT_CMD#BT_FORGET:}"
                 > "$BT_RESULT_FILE"
                 bluetoothctl untrust "$MAC" >> "$BT_RESULT_FILE" 2>&1
-                bluetoothctl remove "$MAC" >> "$BT_RESULT_FILE" 2>&1
+                bluetoothctl remove  "$MAC" >> "$BT_RESULT_FILE" 2>&1
                 rm -f "$BT_CONNECTED_FILE"
                 echo "forgotten:$MAC" >> "$BT_RESULT_FILE"
                 ;;

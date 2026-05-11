@@ -314,11 +314,16 @@ function execCmd(cmd) {
             if (ytPlayer) ytPlayer.seekTo(0, true);
             showToast('Replay');
             break;
-        case cmd.startsWith('quality:'):
+        case cmd.startsWith('quality:'): {
             const q = cmd.split(':')[1];
-            if (ytPlayer) ytPlayer.setPlaybackQuality(qualityMap[q] || 'default');
+            const yt = qualityMap[q] || 'default';
+            if (ytPlayer) {
+                try { ytPlayer.setPlaybackQualityRange(yt, yt); } catch(e) {}
+                try { ytPlayer.setPlaybackQuality(yt); } catch(e) {}
+            }
             showToast(q);
             break;
+        }
         default:
             break;
     }

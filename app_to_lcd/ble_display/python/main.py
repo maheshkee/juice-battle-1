@@ -438,14 +438,7 @@ def _bt_connect(mac: str):
         except Exception: pass
         push_to_phone('bt_audio_connected', {'mac': mac, 'name': name, 'time': now_str()})
         log(f'[BT] Connected: {mac} ({name})')
-        # Resend current video so PipeWire routes new audio stream to BT sink
-        if current_url:
-            video_id = extract_video_id(current_url)
-            if video_id:
-                time.sleep(2)
-                log(f'[BT] Resuming video on BT sink: {video_id}')
-                GLib.idle_add(set_mode, 'youtube')
-                ui.send_message('display_cmd', {'cmd': 'play', 'video_id': video_id})
+
     else:
         push_to_phone('bt_audio_error', {'mac': mac, 'time': now_str()})
         log(f'[BT] Connect failed: {mac}')
@@ -582,6 +575,11 @@ def handle_phone_command(text: str):
         elif cmd.startswith('BT_FORGET:'):
             mac = cmd[10:].strip()
             threading.Thread(target=_bt_forget, args=(mac,), daemon=True).start()
+        elif cmd == 'HISTORY_CLEAR':
+            url_history.clear()
+            save_history()
+            push_to_phone('url_history', {'history': url_history})
+            log('[HISTORY] Cleared')
         elif cmd == 'BT_STATUS':
             result = launcher_send('BT_STATUS')
             push_to_phone('bt_status', {'result': result, 'time': now_str()})
