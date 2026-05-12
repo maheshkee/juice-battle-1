@@ -23,6 +23,7 @@
             justify-content: center;
         }
         .screen.active { display: flex; }
+
         #idle-screen {
             background: radial-gradient(ellipse at 30% 40%, #0a0a2e 0%, #000 70%);
             flex-direction: column;
@@ -173,13 +174,20 @@
 })();
 
 let currentMode  = 'idle';
+let previousMode = 'idle';
+let lastVideoId  = null;
+try { lastVideoId = localStorage.getItem('lastVideoId'); } catch(e) {}
 let queueActive  = false;
 
 function showScreen(mode) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    if (mode === 'idle') console.log('[DEBUG] showScreen idle called from:', new Error().stack);
+    document.querySelectorAll('.screen').forEach(s => {
+        s.classList.remove('active');
+    });
     const target = document.getElementById(mode + '-screen');
     if (target) target.classList.add('active');
-    currentMode = mode;
+    previousMode = currentMode;
+    currentMode  = mode;
 }
 
 let toastTimer = null;
@@ -254,7 +262,7 @@ function onPlayerStateChange(event) {
     const state = states[event.data] || 'unknown';
     socket.emit('player_event', { state });
     if (event.data === YT.PlayerState.ENDED && !queueActive) {
-        setTimeout(() => showScreen('idle'), 2000);
+        setTimeout(() => { try { ytPlayer.stopVideo(); } catch(e) {} }, 500);
     }
 }
 
@@ -263,6 +271,8 @@ function loadAndPlay(videoId) {
         pendingVideo = videoId;
         return;
     }
+    lastVideoId = videoId;
+    try { localStorage.setItem('lastVideoId', videoId); } catch(e) {}
     showScreen('youtube');
     ytPlayer.loadVideoById({ videoId, suggestedQuality: 'hd720' });
     setTimeout(() => {
@@ -310,16 +320,30 @@ function execCmd(cmd) {
             if (ytPlayer) ytPlayer.seekTo(Math.max(0, ytPlayer.getCurrentTime() - 10), true);
             showToast('-10s');
             break;
-        case cmd === 'replay':
-            if (ytPlayer) ytPlayer.seekTo(0, true);
+        case cmd === 'replay': {
+            const replayId = (ytPlayer && ytPlayer.getVideoData && ytPlayer.getVideoData().video_id)
+                || lastVideoId;
+            if (replayId) {
+                loadAndPlay(replayId);
+            }
             showToast('Replay');
             break;
+        }
         case cmd.startsWith('quality:'): {
             const q = cmd.split(':')[1];
             const yt = qualityMap[q] || 'default';
             if (ytPlayer) {
-                try { ytPlayer.setPlaybackQualityRange(yt, yt); } catch(e) {}
-                try { ytPlayer.setPlaybackQuality(yt); } catch(e) {}
+                try {
+                    const currentTime = ytPlayer.getCurrentTime();
+                    const videoId = ytPlayer.getVideoData().video_id;
+                    if (videoId) {
+                        ytPlayer.loadVideoById({
+                            videoId,
+                            startSeconds: currentTime,
+                            suggestedQuality: yt
+                        });
+                    }
+                } catch(e) {}
             }
             showToast(q);
             break;
@@ -342,11 +366,13 @@ socket.on('connect', () => {
 });
 
 socket.on('disconnect', () => {
+    console.log('[DEBUG] socket disconnected - going idle');
     if (ytPlayer) { try { ytPlayer.stopVideo(); } catch(e) {} }
     showScreen('idle');
 });
 
 socket.on('display_cmd', (data) => {
+    console.log('[DEBUG] display_cmd received:', JSON.stringify(data));
     const { cmd, video_id, mode } = data;
     if (cmd === 'play' && video_id) {
         showToast('Loading...');
@@ -361,7 +387,12 @@ socket.on('display_cmd', (data) => {
         return;
     }
     if (cmd === 'set_mode' && mode) {
-        showScreen(mode);
+        if (mode === currentMode && lastVideoId && ytPlayer) {
+            // tapping same mode again — go back to video
+            loadAndPlay(lastVideoId);
+        } else {
+            showScreen(mode);
+        }
         return;
     }
     execCmd(cmd);

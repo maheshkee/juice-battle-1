@@ -50,6 +50,7 @@ WATCHLATER_FILE = '/app/watchlater.json'
 BT_CMD_FILE    = '/app/bt_cmd.txt'
 BT_RESULT_FILE = '/app/bt_result.txt'
 HISTORY_FILE   = '/app/history.json'
+PLAYLIST_FILE  = '/app/playlists.json'
 
 PHONE_SVC_UUID = 'a00b0000-0000-0000-0000-000000000000'
 PHONE_CMD_UUID = 'a00b0002-0000-0000-0000-000000000000'
@@ -82,6 +83,15 @@ adv_mgr_global  = None
 adv_global      = None
 gatt_mgr_global = None
 evt_char_global = None
+
+_sched_chunks       = {}
+_sched_chunk_time   = 0
+_queue_chunks       = {}
+_queue_chunk_time   = 0
+_playlist_chunks    = {}
+_playlist_chunk_time = 0
+
+playlists = []
 
 
 def now_str():
@@ -200,6 +210,7 @@ def save_watch_later():
 
 def push_watch_later():
     push_to_phone('watchlater_update', {'items': watch_later})
+    push_to_phone('playlist_update', {'playlists': playlists})
 
 
 def load_history():
@@ -220,6 +231,32 @@ def save_history():
             json.dump(url_history, f)
     except Exception: pass
 
+
+def load_playlists():
+    global playlists
+    try:
+        if os.path.exists(PLAYLIST_FILE):
+            with open(PLAYLIST_FILE, 'r') as f:
+                playlists = json.load(f)
+            log(f'[PLAYLIST] Loaded {len(playlists)} playlists')
+    except Exception as e:
+        log(f'[PLAYLIST] Load failed: {e}')
+
+def save_playlists():
+    try:
+        with open(PLAYLIST_FILE, 'w') as f:
+            json.dump(playlists, f)
+    except Exception: pass
+
+def push_playlists():
+    push_to_phone('playlist_update', {'playlists': playlists})
+
+def apply_playlists(data: str):
+    global playlists
+    playlists = json.loads(data)
+    save_playlists()
+    push_playlists()
+    log(f'[PLAYLIST] Updated - {len(playlists)} playlists')
 
 def launcher_send(cmd: str) -> str:
     try:
@@ -292,6 +329,8 @@ def _play(video_id: str, title: str = ''):
     set_mode('youtube')
     ui.send_message('display_cmd', {'cmd': 'play', 'video_id': video_id})
     log(f'[PLAYER] Play: {video_id} "{title}"')
+    GLib.idle_add(lambda v=video_id, t=title: push_to_phone('now_playing',
+        {'video_id': v, 'title': t, 'time': now_str()}) or False)
 
 def handle_player_cmd(cmd: str):
     log(f'[PLAYER] {cmd}')
@@ -374,7 +413,15 @@ def _queue_play_current():
         item  = queue[queue_index]
         vid   = item.get('video_id', '')
         title = item.get('title', '')
+        url   = item.get('url', f'https://www.youtube.com/watch?v={vid}')
         log(f'[QUEUE] [{queue_index+1}/{len(queue)}] {title or vid}')
+        # add to history
+        url_history.insert(0, {'url': url, 'video_id': vid,
+            'title': title, 'time': now_str()})
+        if len(url_history) > MAX_HISTORY: url_history.pop()
+        save_history()
+        GLib.idle_add(lambda h=list(url_history): push_to_phone('url_history',
+            {'history': h}) or False)
         threading.Thread(target=_play, args=(vid, title), daemon=True).start()
 
 def on_video_ended():
@@ -473,6 +520,73 @@ def handle_phone_command(text: str):
         except Exception as e:
             log(f'[SCHEDULE] Parse failed: {e}')
 
+    elif text.startswith('SCHED_CHUNK:'):
+        try:
+            global _sched_chunks, _sched_chunk_time
+            parts = text.split(':', 3)
+            idx   = int(parts[1])
+            total = int(parts[2])
+            data  = parts[3]
+            if time.time() - _sched_chunk_time > 12:
+                _sched_chunks.clear()
+            _sched_chunk_time  = time.time()
+            _sched_chunks[idx] = data
+            if len(_sched_chunks) == total:
+                full = ''.join(_sched_chunks[i] for i in range(total))
+                _sched_chunks.clear()
+                if full.startswith('SCHEDULE:'):
+                    schedule = json.loads(full[9:])
+                    save_schedule()
+                    push_schedule()
+                    log(f'[SCHEDULE] Chunked update - {len(schedule)} entries')
+        except Exception as e:
+            log(f'[SCHEDULE] Chunk failed: {e}')
+
+    elif text.startswith('PLAYLIST:'):
+        try:
+            GLib.idle_add(apply_playlists, text[9:])
+        except Exception as e:
+            log(f'[PLAYLIST] Parse failed: {e}')
+
+    elif text.startswith('PLAYLIST_CHUNK:'):
+        try:
+            global _playlist_chunks, _playlist_chunk_time
+            parts = text.split(':', 3)
+            idx   = int(parts[1])
+            total = int(parts[2])
+            data  = parts[3]
+            if time.time() - _playlist_chunk_time > 12:
+                _playlist_chunks.clear()
+            _playlist_chunk_time    = time.time()
+            _playlist_chunks[idx]   = data
+            if len(_playlist_chunks) == total:
+                full = ''.join(_playlist_chunks[i] for i in range(total))
+                _playlist_chunks.clear()
+                if full.startswith('PLAYLIST:'):
+                    GLib.idle_add(apply_playlists, full[9:])
+        except Exception as e:
+            log(f'[PLAYLIST] Chunk failed: {e}')
+
+    elif text.startswith('QUEUE_CHUNK:'):
+        try:
+            global _queue_chunks, _queue_chunk_time
+            parts = text.split(':', 3)
+            idx   = int(parts[1])
+            total = int(parts[2])
+            data  = parts[3]
+            if time.time() - _queue_chunk_time > 12:
+                _queue_chunks.clear()
+            _queue_chunk_time  = time.time()
+            _queue_chunks[idx] = data
+            if len(_queue_chunks) == total:
+                full = ''.join(_queue_chunks[i] for i in range(total))
+                _queue_chunks.clear()
+                if full.startswith('QUEUE:'):
+                    GLib.idle_add(queue_set, json.loads(full[6:]))
+                    log(f'[QUEUE] Chunked update received')
+        except Exception as e:
+            log(f'[QUEUE] Chunk failed: {e}')
+
     elif text.startswith('WATCHLATER_ADD:'):
         try:
             parts    = text[15:].strip().split('||', 2)
@@ -521,7 +635,11 @@ def handle_phone_command(text: str):
         elif cmd == 'PLAYER_VOL_DOWN': GLib.idle_add(handle_player_cmd, 'vol_down')
         elif cmd == 'PLAYER_SEEK_FWD': GLib.idle_add(handle_player_cmd, 'seek_fwd')
         elif cmd == 'PLAYER_SEEK_BACK':GLib.idle_add(handle_player_cmd, 'seek_back')
-        elif cmd == 'PLAYER_REPLAY':   GLib.idle_add(handle_player_cmd, 'replay')
+        elif cmd == 'PLAYER_REPLAY':
+            if current_url:
+                GLib.idle_add(handle_url, current_url, now_playing_title)
+            else:
+                GLib.idle_add(handle_player_cmd, 'replay')
         elif cmd.startswith('PLAYER_QUALITY:'):
             quality = cmd.split(':')[1].strip()
             GLib.idle_add(handle_player_cmd, f'quality:{quality}')
@@ -614,6 +732,7 @@ def _push_full_status_to_phone():
     })
     push_to_phone('schedule_update', {'entries': schedule})
     push_to_phone('watchlater_update', {'items': watch_later})
+    push_to_phone('playlist_update', {'playlists': playlists})
     push_to_phone('scan_results', {'devices': [
         {'mac': mac, 'name': d.get('name',''), 'rssi': d.get('rssi',0)}
         for mac, d in scan_results.items()]})
@@ -948,7 +1067,7 @@ def ble_main():
         print(f'[BLE] SystemBus failed: {e}'); return
 
     BLEObjectWatcher(bus)
-    load_trusted(); load_schedule(); load_watch_later(); load_history()
+    load_trusted(); load_schedule(); load_watch_later(); load_history(); load_playlists()
     GLib.idle_add(_autoconnect_existing)
     GLib.idle_add(start_scan)
 
