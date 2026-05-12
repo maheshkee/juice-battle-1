@@ -22,6 +22,8 @@ class BoardState extends ChangeNotifier {
   String btAudioName    = '';
   List<Map<String, dynamic>> btPairedDevices = [];
   bool _historyClearedLocally = false;
+  bool _scheduleDirty = false;
+  bool get scheduleDirty => _scheduleDirty;
 
   BoardState() {
     _loadBtConnected();
@@ -71,12 +73,18 @@ class BoardState extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> saveSchedule() async {
+  Future<void> saveSchedule({bool dirty = true}) async {
+    if (dirty) _scheduleDirty = true;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('schedule_entries',
         jsonEncode(scheduleEntries.map((e) => e.toJson()).toList()));
     } catch (_) {}
+  }
+
+  void markScheduleClean() {
+    _scheduleDirty = false;
+    notifyListeners();
   }
 
   void clearHistoryLocally() {
@@ -162,12 +170,13 @@ class BoardState extends ChangeNotifier {
         queueStatus = QueueStatus.fromJson(d);
         break;
       case 'schedule_update':
-        final incoming = (d['entries'] as List? ?? [])
-            .map((e) => ScheduleEntry.fromJson(e)).toList();
-        // only overwrite local if board has more entries, or local is empty
-        if (incoming.length >= scheduleEntries.length) {
-          scheduleEntries = incoming;
-          saveSchedule();
+        if (!_scheduleDirty) {
+          final incoming = (d['entries'] as List? ?? [])
+              .map((e) => ScheduleEntry.fromJson(e)).toList();
+          if (incoming.isNotEmpty || scheduleEntries.isEmpty) {
+            scheduleEntries = incoming;
+            saveSchedule(dirty: false);
+          }
         }
         break;
       case 'watchlater_update':
@@ -198,6 +207,9 @@ class BoardState extends ChangeNotifier {
         btPairedDevices = List<Map<String, dynamic>>.from(
             (d['devices'] as List? ?? []).map((e) =>
               {'mac': e['mac'], 'name': e['name']}));
+        break;
+      case 'playlist_update':
+        // handled in hub_screen via ble.events
         break;
     }
     notifyListeners();

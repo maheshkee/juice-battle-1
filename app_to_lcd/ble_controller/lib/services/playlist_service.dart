@@ -20,31 +20,60 @@ class Playlist {
     id:     j['id']   ?? '',
     name:   j['name'] ?? '',
     videos: (j['videos'] as List? ?? [])
-        .map((v) => QueueItem.fromJson(v)).toList(),
+        .map((v) => QueueItem.fromJson(Map<String, dynamic>.from(v))).toList(),
   );
 }
 
 class PlaylistService extends ChangeNotifier {
   List<Playlist> _playlists = [];
+  bool _dirty = false;
+
   List<Playlist> get playlists => List.unmodifiable(_playlists);
+  bool get dirty => _dirty;
 
   Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw   = prefs.getString('playlists') ?? '[]';
-      _playlists  = (jsonDecode(raw) as List)
-          .map((e) => Playlist.fromJson(e)).toList();
-    } catch (_) {}
+      final list  = jsonDecode(raw) as List;
+      _playlists  = list
+          .map((e) => Playlist.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (e) {
+      print('[PLAYLIST] load error: $e');
+    }
     notifyListeners();
   }
 
-  Future<void> _save() async {
+  Future<void> _save({bool dirty = true}) async {
+    if (dirty) _dirty = true;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('playlists',
           jsonEncode(_playlists.map((p) => p.toJson()).toList()));
     } catch (_) {}
   }
+
+  void markClean() {
+    _dirty = false;
+    notifyListeners();
+  }
+
+  void syncFromBoard(List<dynamic> boardPlaylists) {
+    try {
+      _playlists = boardPlaylists
+          .map((e) => Playlist.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      _dirty = false;
+      _save(dirty: false);
+      notifyListeners();
+    } catch (e) {
+      print('[PLAYLIST] syncFromBoard error: $e');
+    }
+  }
+
+  List<Map<String, dynamic>> toJsonList() =>
+      _playlists.map((p) => p.toJson()).toList();
 
   Future<void> createPlaylist(String name) async {
     final id = DateTime.now().millisecondsSinceEpoch.toString();

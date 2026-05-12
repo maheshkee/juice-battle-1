@@ -38,12 +38,13 @@ class BleService {
     _setState(ConnState.scanning);
     _log('[SCAN] Looking for BLE-Hub...');
     await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
-    _scanSub = FlutterBluePlus.scanResults.listen((results) {
+    _scanSub = FlutterBluePlus.scanResults.listen((results) async {
       for (var r in results) {
         if (r.device.platformName == 'BLE-Hub') {
           _log('[SCAN] Found: ${r.device.platformName}');
           FlutterBluePlus.stopScan();
           _scanSub?.cancel();
+          await Future.delayed(const Duration(milliseconds: 500));
           _connect(r.device);
           return;
         }
@@ -71,7 +72,10 @@ class BleService {
     _log('[BLE] Connecting to ${device.platformName}...');
     _device = device;
     try {
-      await device.connect(timeout: const Duration(seconds: 10));
+      await device.connect(
+        timeout: const Duration(seconds: 15),
+        autoConnect: false,
+      );
       _connSub = device.connectionState.listen((s) {
         if (s == BluetoothConnectionState.disconnected) {
           _log('[BLE] Disconnected from board');
@@ -175,12 +179,59 @@ class BleService {
 
   Future<void> sendQueue(List<QueueItem> items) async {
     final payload = jsonEncode(items.map((e) => e.toJson()).toList());
-    await _write('QUEUE:$payload');
+    final full    = 'QUEUE:$payload';
+    final bytes   = utf8.encode(full);
+    const chunkSize = 450;
+    if (bytes.length <= chunkSize) {
+      await _write(full);
+      return;
+    }
+    final total = (bytes.length / chunkSize).ceil();
+    for (int i = 0; i < total; i++) {
+      final start = i * chunkSize;
+      final end   = (start + chunkSize).clamp(0, bytes.length);
+      final chunk = utf8.decode(bytes.sublist(start, end));
+      await _write('QUEUE_CHUNK:$i:$total:$chunk');
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+  }
+
+  Future<void> sendPlaylists(List<dynamic> playlists) async {
+    final payload = jsonEncode(playlists);
+    final full    = 'PLAYLIST:$payload';
+    final bytes   = utf8.encode(full);
+    const chunkSize = 450;
+    if (bytes.length <= chunkSize) {
+      await _write(full);
+      return;
+    }
+    final total = (bytes.length / chunkSize).ceil();
+    for (int i = 0; i < total; i++) {
+      final start = i * chunkSize;
+      final end   = (start + chunkSize).clamp(0, bytes.length);
+      final chunk = utf8.decode(bytes.sublist(start, end));
+      await _write('PLAYLIST_CHUNK:$i:$total:$chunk');
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
   }
 
   Future<void> sendSchedule(List<ScheduleEntry> entries) async {
     final payload = jsonEncode(entries.map((e) => e.toJson()).toList());
-    await _write('SCHEDULE:$payload');
+    final full    = 'SCHEDULE:$payload';
+    final bytes   = utf8.encode(full);
+    const chunkSize = 450;
+    if (bytes.length <= chunkSize) {
+      await _write(full);
+      return;
+    }
+    final total = (bytes.length / chunkSize).ceil();
+    for (int i = 0; i < total; i++) {
+      final start = i * chunkSize;
+      final end   = (start + chunkSize).clamp(0, bytes.length);
+      final chunk = utf8.decode(bytes.sublist(start, end));
+      await _write('SCHED_CHUNK:$i:$total:$chunk');
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
   }
 
   void dispose() {

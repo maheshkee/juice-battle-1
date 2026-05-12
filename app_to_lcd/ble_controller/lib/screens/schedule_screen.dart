@@ -30,7 +30,9 @@ class _ScheduleScreenState extends State<ScheduleScreen>
   final _titleCtrl       = TextEditingController();
   bool _fetchingTitle    = false;
   bool _addingVideo      = false;
-  bool _showAllEntries   = false;
+  bool _showAllEntries   = true;
+  bool _dateSelected     = false;
+  bool _hasChanges       = false;
   late AnimationController _fadeCtrl;
   late Animation<double>   _fadeAnim;
 
@@ -105,7 +107,16 @@ class _ScheduleScreenState extends State<ScheduleScreen>
   }
 
   void _selectDate(DateTime d) {
-    setState(() { _selectedDate = d; _addingVideo = false; });
+    setState(() {
+      if (_dateSelected && _isSameDay(d, _selectedDate)) {
+        _dateSelected = false;
+        _addingVideo  = false;
+      } else {
+        _selectedDate = d;
+        _addingVideo  = false;
+        _dateSelected = true;
+      }
+    });
     _fadeCtrl.reset();
     _fadeCtrl.forward();
   }
@@ -134,11 +145,16 @@ class _ScheduleScreenState extends State<ScheduleScreen>
     setState(() {
       _entries.removeWhere((x) => _isSameDay(x.date, e.date));
       if (e.playlist.isNotEmpty) _entries.add(e);
+      _hasChanges = true;
     });
   }
 
   void _deleteDay(DateTime d) {
-    setState(() => _entries.removeWhere((e) => _isSameDay(e.date, d)));
+    setState(() {
+      _entries.removeWhere((e) => _isSameDay(e.date, d));
+      _hasChanges = true;
+      _dateSelected = false;
+    });
   }
 
   Future<String> _fetchTitle(String videoId) async {
@@ -224,7 +240,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: GestureDetector(
-              onTap: () {
+              onTap: _hasChanges ? () {
                 setState(() {
                   _addingVideo = false;
                   _urlCtrl.clear();
@@ -232,11 +248,11 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                 });
                 widget.onSave(List.from(_entries));
                 Navigator.pop(context);
-              },
-              child: const Text('Save',
+              } : null,
+              child: Text('Save',
                 style: TextStyle(
                   fontSize: 17,
-                  color: _blue,
+                  color: _hasChanges ? _blue : _label,
                   fontWeight: FontWeight.w600)),
             ),
           ),
@@ -373,8 +389,8 @@ class _ScheduleScreenState extends State<ScheduleScreen>
               child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
 
-                // heading
-                Row(children: [
+                // heading — only show when date selected
+                if (_dateSelected) Row(children: [
                   Expanded(child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -402,10 +418,10 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                         fontSize: 15, color: _red))),
                 ]),
 
-                const SizedBox(height: 16),
+                if (_dateSelected) const SizedBox(height: 16),
 
                 // videos
-                if (entry != null && entry.playlist.isNotEmpty)
+                if (_dateSelected && entry != null && entry.playlist.isNotEmpty)
                   Container(
                     decoration: BoxDecoration(
                       color: _card,
@@ -416,7 +432,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                           isLast: e.key == entry.playlist.length - 1)),
                     ]),
                   )
-                else
+                else if (_dateSelected)
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 28),
@@ -432,6 +448,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                     ]),
                   ),
 
+                if (_dateSelected) ...[
                 const SizedBox(height: 16),
 
                 // add button / form
@@ -458,9 +475,11 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                     ),
                   ),
 
+                ], // end _dateSelected
+
                 // all dates
                 if (_entries.isNotEmpty) ...[
-                  const SizedBox(height: 32),
+                  if (_dateSelected) const SizedBox(height: 32),
                   GestureDetector(
                     onTap: () =>
                       setState(() => _showAllEntries = !_showAllEntries),
@@ -556,6 +575,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                 title:   item.title.isNotEmpty ? item.title : item.videoId,
                 url:     item.url));
             }
+            _hasChanges = true;
           });
         },
       ),

@@ -69,11 +69,8 @@ class WatchLaterService extends ChangeNotifier {
   }
 
   List<String> flushPendingRemovals() {
-    final removals = List<String>.from(_pendingRemovals);
-    _pendingRemovals.clear();
-    _save();
-    notifyListeners();
-    return removals;
+    // don't clear yet — keep until board confirms via syncFromBoard
+    return List<String>.from(_pendingRemovals);
   }
 
   // phone is source of truth — only add new items from board,

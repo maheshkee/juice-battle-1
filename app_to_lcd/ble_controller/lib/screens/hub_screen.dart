@@ -21,14 +21,7 @@ import '../screens/playlists_screen.dart';
 import '../services/playlist_service.dart';
 import '../main.dart' show startKeepAlive, stopKeepAlive;
 
-Route<T> _opaqueRoute<T>(Widget page) => PageRouteBuilder<T>(
-  pageBuilder: (_, __, ___) => page,
-  opaque: true,
-  barrierColor: Colors.transparent,
-  transitionDuration: const Duration(milliseconds: 250),
-  transitionsBuilder: (_, anim, __, child) =>
-    FadeTransition(opacity: anim, child: child),
-);
+
 
 class HubScreen extends StatefulWidget {
   const HubScreen({super.key});
@@ -55,6 +48,15 @@ class _HubScreenState extends State<HubScreen> {
           startKeepAlive();
           Future.delayed(const Duration(milliseconds: 500), () {
             ble.getStatus();
+            if (board.scheduleDirty) {
+              ble.sendSchedule(board.scheduleEntries);
+              board.markScheduleClean();
+            }
+            final pl = context.read<PlaylistService>();
+            if (pl.dirty) {
+              ble.sendPlaylists(pl.toJsonList());
+              pl.markClean();
+            }
           });
           final wl      = context.read<WatchLaterService>();
           final removals = wl.flushPendingRemovals();
@@ -65,7 +67,7 @@ class _HubScreenState extends State<HubScreen> {
           for (final item in pending) {
             ble.watchLaterAdd(item.url, item.title, item.videoId);
           }
-          ble.watchLaterGet();
+          if (removals.isEmpty) ble.watchLaterGet();
         }
         if (s == ConnState.disconnected)
           { board.addLog('[APP] Disconnected'); stopKeepAlive(); }
@@ -97,6 +99,14 @@ class _HubScreenState extends State<HubScreen> {
           final wl = context.read<WatchLaterService>();
           wl.syncFromBoard(board.watchLaterItems);
         }
+        if (evt.event == 'playlist_update') {
+          final pl = context.read<PlaylistService>();
+          final boardPlaylists = evt.data['playlists'] as List? ?? [];
+          // only sync from board if phone has no playlists (first install)
+          if (pl.playlists.isEmpty && boardPlaylists.isNotEmpty) {
+            pl.syncFromBoard(boardPlaylists);
+          }
+        }
       }));
       ble.startScan();
     });
@@ -116,19 +126,18 @@ class _HubScreenState extends State<HubScreen> {
   void _openSchedule() {
     final ble   = context.read<BleService>();
     final board = context.read<BoardState>();
-    Navigator.of(context).push(PageRouteBuilder(
-      opaque: true,
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 250),
-      transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
-      pageBuilder: (_, __, ___) => ScheduleScreen(
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ScheduleScreen(
         initialEntries: board.scheduleEntries,
         enabled:        ble.state == ConnState.connected,
         onSave: (entries) {
-          ble.sendSchedule(entries);
           final b = context.read<BoardState>();
           b.scheduleEntries = List.from(entries);
           b.saveSchedule();
+          if (ble.state == ConnState.connected) {
+            ble.sendSchedule(entries);
+            b.markScheduleClean();
+          }
           b.notifyListeners();
         },
       ),
@@ -166,14 +175,26 @@ class _HubScreenState extends State<HubScreen> {
                     context.read<BoardState>().notifyListeners();
                   },
                   onModeIdle: () {
-                    ble.setModeIdle();
-                    context.read<BoardState>().mode = 'idle';
-                    context.read<BoardState>().notifyListeners();
+                    final b = context.read<BoardState>();
+                    if (b.mode == 'idle') {
+                      ble.setModeYouTube();
+                      b.mode = 'youtube';
+                    } else {
+                      ble.setModeIdle();
+                      b.mode = 'idle';
+                    }
+                    b.notifyListeners();
                   },
                   onModeClock: () {
-                    ble.setModeClock();
-                    context.read<BoardState>().mode = 'clock';
-                    context.read<BoardState>().notifyListeners();
+                    final b = context.read<BoardState>();
+                    if (b.mode == 'clock') {
+                      ble.setModeYouTube();
+                      b.mode = 'youtube';
+                    } else {
+                      ble.setModeClock();
+                      b.mode = 'clock';
+                    }
+                    b.notifyListeners();
                   },
                   onSchedule: _openSchedule,
                 ),
@@ -186,8 +207,10 @@ class _HubScreenState extends State<HubScreen> {
                   enabled:    connected,
                   onSend: (url, title) {
                     ble.sendUrlWithTitle(url, title);
-                    context.read<BoardState>().nowPlaying = title.isNotEmpty ? title : url;
-                    context.read<BoardState>().notifyListeners();
+                    if (title.isNotEmpty) {
+                      context.read<BoardState>().nowPlaying = title;
+                      context.read<BoardState>().notifyListeners();
+                    }
                     context.read<BoardState>().urlHistory.insert(0,
                       HistoryItem(url: url, time: DateTime.now().toString().substring(11, 16), title: title));
                     context.read<BoardState>().notifyListeners();
@@ -316,7 +339,7 @@ class _HubScreenState extends State<HubScreen> {
 
   Widget _todayTile(QueueItem item, int idx, bool connected, BleService ble) =>
     GestureDetector(
-      onTap: connected ? () => ble.sendUrl(item.url) : null,
+      onTap: connected ? () => ble.sendUrlWithTitle(item.url, item.title) : null,
       child: Container(
         margin: const EdgeInsets.fromLTRB(10, 0, 10, 6),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -379,7 +402,7 @@ class _HubScreenState extends State<HubScreen> {
               subtitle: Text(item.time, style: const TextStyle(
                 fontSize: 10, color: Color(0xFF4B6070))),
               onTap: ble.state == ConnState.connected ? () {
-                ble.sendUrl(item.url);
+                ble.sendUrlWithTitle(item.url, item.title);
                 Navigator.pop(context);
               } : null,
             );
@@ -425,7 +448,7 @@ class _HubScreenState extends State<HubScreen> {
           final ble   = ctx.watch<BleService>();
           return GestureDetector(
             onTap: () => Navigator.of(context).push(
-              _opaqueRoute(const HistoryScreen())),
+              MaterialPageRoute(builder: (_) => const HistoryScreen())),
             child: Container(
               width: 38, height: 38,
               decoration: BoxDecoration(
@@ -448,7 +471,7 @@ class _HubScreenState extends State<HubScreen> {
           final wl = ctx.watch<WatchLaterService>();
           return GestureDetector(
             onTap: () => Navigator.of(context).push(
-              _opaqueRoute(const WatchLaterScreen())),
+              MaterialPageRoute(builder: (_) => const WatchLaterScreen())),
             child: Container(
               width: 38, height: 38,
               decoration: BoxDecoration(
@@ -476,7 +499,7 @@ class _HubScreenState extends State<HubScreen> {
         const SizedBox(width: 8),
         GestureDetector(
           onTap: () => Navigator.of(context).push(
-            _opaqueRoute(const BtDevicesScreen())),
+            MaterialPageRoute(builder: (_) => const BtDevicesScreen())),
           child: Container(
             width: 38, height: 38,
             decoration: BoxDecoration(

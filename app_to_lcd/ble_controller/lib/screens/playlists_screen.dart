@@ -7,6 +7,16 @@ import '../services/playlist_service.dart';
 import '../services/watch_later_service.dart';
 import '../services/ble_service.dart';
 
+void _syncPlaylistsToBoard(BuildContext context) {
+  final ble = context.read<BleService>();
+  final pl  = context.read<PlaylistService>();
+  if (ble.state == ConnState.connected) {
+    ble.sendPlaylists(pl.toJsonList());
+    pl.markClean();
+  }
+}
+
+
 class PlaylistsScreen extends StatelessWidget {
   const PlaylistsScreen({super.key});
 
@@ -135,11 +145,12 @@ class PlaylistsScreen extends StatelessWidget {
                   horizontal: 14, vertical: 12)))),
           const SizedBox(height: 16),
           GestureDetector(
-            onTap: () {
+            onTap: () async {
               final name = ctrl.text.trim();
               if (name.isEmpty) return;
-              ps.createPlaylist(name);
-              Navigator.pop(context);
+              await ps.createPlaylist(name);
+              if (context.mounted) _syncPlaylistsToBoard(context);
+              if (context.mounted) Navigator.pop(context);
             },
             child: Container(
               width: double.infinity,
@@ -179,7 +190,11 @@ class PlaylistsScreen extends StatelessWidget {
             style: TextStyle(fontSize: 13, color: Color(0xFF8E8E93))),
           const SizedBox(height: 20),
           GestureDetector(
-            onTap: () { ps.deletePlaylist(id); Navigator.pop(context); },
+            onTap: () {
+                ps.deletePlaylist(id);
+                _syncPlaylistsToBoard(context);
+                Navigator.pop(context);
+              },
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 14),
@@ -283,6 +298,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     }
     await ps.addVideo(widget.playlistId,
       QueueItem(videoId: id, title: title, url: url));
+    _syncPlaylistsToBoard(context);
     _urlCtrl.clear(); _titleCtrl.clear();
     if (mounted) setState(() {});
   }
@@ -312,8 +328,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           GestureDetector(
             onTap: () {
               ps.deletePlaylist(id);
-              Navigator.pop(context); // close sheet
-              Navigator.pop(context); // go back to playlists list
+              _syncPlaylistsToBoard(context);
+              Navigator.pop(context);
+              Navigator.pop(context);
             },
             child: Container(
               width: double.infinity,
@@ -361,6 +378,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 title:   item.title.isNotEmpty ? item.title : item.videoId,
                 url:     item.url));
           }
+          _syncPlaylistsToBoard(context);
         },
       ),
     ));
@@ -444,7 +462,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             physics: const ClampingScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             itemCount: playlist.videos.length,
-            onReorder: (o, n) => ps.reorderVideo(widget.playlistId, o, n),
+            onReorder: (o, n) {
+              ps.reorderVideo(widget.playlistId, o, n);
+              _syncPlaylistsToBoard(context);
+            },
             itemBuilder: (_, i) {
               final v = playlist.videos[i];
               return Container(
@@ -469,7 +490,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       color: Colors.white, fontWeight: FontWeight.w500),
                     overflow: TextOverflow.ellipsis)),
                   GestureDetector(
-                    onTap: () => ps.removeVideo(widget.playlistId, i),
+                    onTap: () {
+                      ps.removeVideo(widget.playlistId, i);
+                      _syncPlaylistsToBoard(context);
+                    },
                     child: const Icon(Icons.close_rounded,
                       color: _label, size: 18)),
                 ]),
