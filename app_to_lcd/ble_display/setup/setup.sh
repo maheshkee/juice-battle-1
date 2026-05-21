@@ -4,22 +4,22 @@
 # Run this ONCE on the board after importing the project in App Lab.
 #
 # What it does:
-#   1. Copies wheels + typelibs from ble_arduino project
+#   1. Verifies wheels + typelibs are present (imported with project)
 #   2. Installs dbus-bridge systemd service
 #   3. Installs chromium-launcher systemd service
 #   4. Disables unwanted autostart entries (App Lab browser, blueman)
 #   5. Configures lightdm autologin
-#   6. Verifies everything is in place
+#   6. Verifies dependencies
 #
 # Usage:
-#   chmod +x ~/ArduinoApps/ble_display/setup/setup.sh
-#   bash ~/ArduinoApps/ble_display/setup/setup.sh
+#   dos2unix setup/setup.sh        (only needed if script came from Windows)
+#   chmod +x setup/setup.sh
+#   bash setup/setup.sh
 
 set -e
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
-SOURCE_DIR="$HOME/ArduinoApps/ble_arduino"
 DBUS_SERVICE="dbus-bridge-${PROJECT_NAME}.service"
 LAUNCHER_SERVICE="chromium-launcher-${PROJECT_NAME}.service"
 
@@ -31,24 +31,29 @@ echo "  Path    : $PROJECT_DIR"
 echo "================================================"
 echo ""
 
-# --- 1. Copy wheels and typelibs ---
-echo ">> Copying wheels and typelibs from ble_arduino..."
+# --- 1. Verify wheels and typelibs ---
+echo ">> Checking wheels and typelibs..."
 
-if [ ! -d "$SOURCE_DIR/wheels" ]; then
+if [ ! -d "$PROJECT_DIR/wheels" ]; then
     echo ""
-    echo "  ERROR: Could not find $SOURCE_DIR/wheels"
-    echo "  Make sure ble_arduino is set up on this board first."
-    echo "  Or copy manually:"
-    echo "    cp -r <path>/wheels   $PROJECT_DIR/wheels"
-    echo "    cp -r <path>/typelibs $PROJECT_DIR/typelibs"
+    echo "  ERROR: wheels/ not found at $PROJECT_DIR/wheels"
+    echo "  Make sure wheels/ and typelibs/ are included in the project zip"
+    echo "  before importing into App Lab."
     echo ""
     exit 1
 fi
 
-cp -r "$SOURCE_DIR/wheels"   "$PROJECT_DIR/"
-cp -r "$SOURCE_DIR/typelibs" "$PROJECT_DIR/"
-echo "  [OK] wheels/  copied"
-echo "  [OK] typelibs/ copied"
+if [ ! -d "$PROJECT_DIR/typelibs" ]; then
+    echo ""
+    echo "  ERROR: typelibs/ not found at $PROJECT_DIR/typelibs"
+    echo "  Make sure typelibs/ is included in the project zip"
+    echo "  before importing into App Lab."
+    echo ""
+    exit 1
+fi
+
+echo "  [OK] wheels/  found"
+echo "  [OK] typelibs/ found"
 
 # --- 2. Install dbus-bridge service ---
 echo ""
@@ -95,6 +100,8 @@ Wants=graphical.target
 User=arduino
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/var/run/lightdm/root/:0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=PIPEWIRE_RUNTIME_DIR=/run/user/1000
 ExecStart=/usr/bin/python3 ${PROJECT_DIR}/setup/chromium-launcher.py
 ExecStopPost=/bin/rm -f ${PROJECT_DIR}/launcher.sock
 Restart=always
@@ -115,7 +122,7 @@ echo ">> Configuring autostart..."
 
 mkdir -p "$HOME/.config/autostart"
 
-# Disable App Lab browser window (App Lab still runs via Run at startup)
+# Disable App Lab browser window
 cat > "$HOME/.config/autostart/ArduinoAppLab.desktop" << EOF
 [Desktop Entry]
 Name=Arduino App Lab
@@ -125,7 +132,7 @@ Hidden=true
 EOF
 echo "  [OK] App Lab browser window disabled"
 
-# Disable blueman tray (shows BT connection popups on screen)
+# Disable blueman tray
 cat > "$HOME/.config/autostart/blueman.desktop" << EOF
 [Desktop Entry]
 Name=Blueman Applet
@@ -155,9 +162,11 @@ fi
 echo ""
 echo ">> Checking dependencies..."
 
-command -v chromium &>/dev/null && echo "  [OK] chromium" || echo "  WARNING: chromium not found - sudo apt install chromium"
-command -v socat    &>/dev/null && echo "  [OK] socat"    || echo "  WARNING: socat not found - sudo apt install socat"
-command -v xdotool  &>/dev/null && echo "  [OK] xdotool"  || echo "  INFO: xdotool not installed (optional) - sudo apt install xdotool"
+command -v chromium  &>/dev/null && echo "  [OK] chromium"  || echo "  WARNING: chromium not found  - sudo apt install chromium"
+command -v socat     &>/dev/null && echo "  [OK] socat"     || echo "  WARNING: socat not found     - sudo apt install socat"
+command -v dos2unix  &>/dev/null && echo "  [OK] dos2unix"  || echo "  INFO:    dos2unix not found  - sudo apt install dos2unix (needed if scripts came from Windows)"
+command -v nmcli     &>/dev/null && echo "  [OK] nmcli"     || echo "  WARNING: nmcli not found     - required for WiFi management"
+command -v bluetoothctl &>/dev/null && echo "  [OK] bluetoothctl" || echo "  WARNING: bluetoothctl not found"
 
 # --- Done ---
 echo ""
@@ -167,11 +176,18 @@ echo "================================================"
 echo ""
 echo "  Next steps:"
 echo "  1. Enable Run at startup in App Lab"
-echo "  2. Copy socket.io.min.js from ble_arduino:"
-echo "     cp ~/ArduinoApps/ble_arduino/assets/libs/socket.io.min.js \\"
-echo "        $PROJECT_DIR/assets/libs/"
+echo "  2. IMPORTANT - app.yaml must have network_mode: host"
+echo "     Edit inside the zip BEFORE importing into App Lab."
+echo "     App Lab resets app.yaml on import and locks it afterward."
 echo "  3. Reboot the board"
 echo "  4. Open dashboard at http://<board-ip>:7000"
+echo ""
+echo "  Optional - BT audio auto-connect on boot:"
+echo "    Run setup/setup_for_bt_audio.sh after pairing a speaker"
+echo ""
+echo "  If scripts came from Windows, run first:"
+echo "    dos2unix setup/setup.sh"
+echo "    dos2unix setup/chromium-launcher.sh"
 echo ""
 echo "  Service status commands:"
 echo "    sudo systemctl status $DBUS_SERVICE"
