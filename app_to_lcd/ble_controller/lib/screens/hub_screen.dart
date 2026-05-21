@@ -10,7 +10,6 @@ import '../widgets/youtube_section.dart';
 import '../widgets/player_controls.dart';
 import '../widgets/log_console.dart';
 import '../widgets/led_mode_bar.dart';
-import '../widgets/queue_section.dart';
 import '../screens/schedule_screen.dart';
 import '../screens/watch_later_screen.dart';
 import '../services/watch_later_service.dart';
@@ -232,19 +231,7 @@ class _HubScreenState extends State<HubScreen> {
                   onQuality:     (q) => ble.playerQuality(q),
                   nowPlaying:    board.nowPlaying,
                 ),
-                const SizedBox(height: 12),
-                QueueSection(
-                  status:      board.queueStatus,
-                  enabled:     connected,
-                  onSendQueue: (items) => ble.sendQueue(items),
-                  onPlay:      () => ble.queuePlay(),
-                  onPause:     () => ble.queuePause(),
-                  onResume:    () => ble.queueResume(),
-                  onSkip:      () => ble.queueSkip(),
-                  onReplay:    () => ble.queueReplay(),
-                  onStop:      () => ble.queueStop(),
-                  onGoto:      (i) => ble.queueGoto(i),
-                ),
+
                 const SizedBox(height: 12),
                 _PlaylistsSection(connected: connected),
                 const SizedBox(height: 12),
