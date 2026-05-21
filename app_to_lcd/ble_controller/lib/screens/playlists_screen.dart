@@ -280,6 +280,16 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     } catch (_) { return videoId; }
   }
 
+  void _syncQueueIfPlaying(BuildContext context, PlaylistService ps) {
+    final ble = context.read<BleService>();
+    if (ble.state != ConnState.connected) return;
+    final playlist = ps.playlists.firstWhere(
+      (p) => p.id == widget.playlistId,
+      orElse: () => Playlist(id: '', name: '', videos: []));
+    if (playlist.id.isEmpty || playlist.videos.isEmpty) return;
+    ble.sendQueue(playlist.videos);
+  }
+
   Future<void> _addVideo(PlaylistService ps) async {
     final url    = _urlCtrl.text.trim();
     final manual = _titleCtrl.text.trim();
@@ -299,6 +309,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     await ps.addVideo(widget.playlistId,
       QueueItem(videoId: id, title: title, url: url));
     _syncPlaylistsToBoard(context);
+    _syncQueueIfPlaying(context, ps);
     _urlCtrl.clear(); _titleCtrl.clear();
     if (mounted) setState(() {});
   }
@@ -379,6 +390,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 url:     item.url));
           }
           _syncPlaylistsToBoard(context);
+          _syncQueueIfPlaying(context, ps);
         },
       ),
     ));
@@ -392,6 +404,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       (p) => p.id == widget.playlistId,
       orElse: () => Playlist(id: '', name: '', videos: []));
     final connected = ble.state == ConnState.connected;
+    final shuffle   = playlist.shuffle;
+    final loop      = playlist.loop;
+    final repeat    = playlist.repeat;
 
     return Scaffold(
       backgroundColor: _bg,
@@ -414,46 +429,112 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         ],
       ),
       body: Column(children: [
-        // Play All button
+        // Play All + mode toggles
         if (playlist.videos.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: GestureDetector(
-              onTap: connected ? () {
-                final ble = context.read<BleService>();
-                ble.sendQueue(playlist.videos);
-                Future.delayed(const Duration(milliseconds: 300),
-                  () => ble.queuePlay());
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
+            child: Column(children: [
+              Row(children: [
+                _modeChip(
+                  icon: Icons.shuffle_rounded,
+                  label: 'Shuffle',
+                  active: shuffle,
+                  color: const Color(0xFF0A84FF),
+                  onTap: () {
+                    final newShuffle = !shuffle;
+                    context.read<PlaylistService>().updateModes(
+                      playlist.id,
+                      shuffle: newShuffle,
+                      loop:    loop,
+                      repeat:  newShuffle ? false : repeat,
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+                _modeChip(
+                  icon: Icons.repeat_one_rounded,
+                  label: 'Repeat',
+                  active: repeat,
+                  color: const Color(0xFFFF9F0A),
+                  onTap: () {
+                    final newRepeat = !repeat;
+                    context.read<PlaylistService>().updateModes(
+                      playlist.id,
+                      shuffle: newRepeat ? false : shuffle,
+                      loop:    newRepeat ? false : loop,
+                      repeat:  newRepeat,
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+                _modeChip(
+                  icon: Icons.repeat_rounded,
+                  label: 'Loop',
+                  active: loop,
+                  color: const Color(0xFF30D158),
+                  onTap: () {
+                    final newLoop = !loop;
+                    context.read<PlaylistService>().updateModes(
+                      playlist.id,
+                      shuffle: shuffle,
+                      loop:    newLoop,
+                      repeat:  newLoop ? false : repeat,
+                    );
+                  },
+                ),
+              ]),
+              const SizedBox(height: 10),
+              GestureDetector(
+                onTap: connected ? () {
+                  final ble    = context.read<BleService>();
+                  final videos = List<QueueItem>.from(playlist.videos);
+                  if (shuffle) videos.shuffle();
+                  ble.sendQueue(videos);
+                  Future.delayed(const Duration(milliseconds: 300), () {
+                    ble.queuePlay();
+                  });
+                  Future.delayed(const Duration(milliseconds: 600), () {
+                    if (loop) {
+                      ble.queueRepeatOff();
+                      ble.queueLoopOn();
+                    } else if (repeat) {
+                      ble.queueLoopOff();
+                      ble.queueRepeatOn();
+                    } else {
+                      ble.queueLoopOff();
+                      ble.queueRepeatOff();
+                    }
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                     backgroundColor: const Color(0xFF1C1C1E),
-                    content: Text('Playing ${playlist.videos.length} videos',
+                    content: Text(
+                      'Playing \${videos.length} videos\${shuffle ? " (shuffled)" : ""}\${loop ? " Loop" : ""}\${repeat ? " Repeat" : ""}',
                       style: const TextStyle(color: Colors.white))));
-              } : null,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: connected
-                    ? _green.withOpacity(0.15)
-                    : const Color(0xFF1C1C1E),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
+                } : null,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
                     color: connected
-                      ? _green.withOpacity(0.4)
-                      : const Color(0xFF3A3A3C))),
-                child: Row(mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                  Icon(Icons.play_arrow_rounded,
-                    color: connected ? _green : _label, size: 22),
-                  const SizedBox(width: 8),
-                  Text('Play All',
-                    style: TextStyle(fontSize: 15,
-                      fontWeight: FontWeight.w600,
+                      ? _green.withOpacity(0.15)
+                      : const Color(0xFF1C1C1E),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: connected
+                        ? _green.withOpacity(0.4)
+                        : const Color(0xFF3A3A3C))),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                    Icon(Icons.play_arrow_rounded,
+                      color: connected ? _green : _label, size: 22),
+                    const SizedBox(width: 8),
+                    Text('Play All', style: TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w600,
                       color: connected ? _green : _label)),
-                ]),
+                  ]),
+                ),
               ),
-            ),
+            ]),
           ),
 
         // Video list
@@ -493,6 +574,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                     onTap: () {
                       ps.removeVideo(widget.playlistId, i);
                       _syncPlaylistsToBoard(context);
+                      _syncQueueIfPlaying(context, ps);
                     },
                     child: const Icon(Icons.close_rounded,
                       color: _label, size: 18)),
@@ -599,6 +681,34 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       ]),
     );
   }
+
+  Widget _modeChip({
+    required IconData icon,
+    required String label,
+    required bool active,
+    required Color color,
+    required VoidCallback onTap,
+  }) => Expanded(
+    child: GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        decoration: BoxDecoration(
+          color: active ? color.withOpacity(0.15) : const Color(0xFF1C1C1E),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: active ? color.withOpacity(0.5) : const Color(0xFF3A3A3C))),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 16, color: active ? color : _label),
+          const SizedBox(height: 3),
+          Text(label, style: TextStyle(
+            fontSize: 9, fontWeight: FontWeight.w700,
+            color: active ? color : _label, letterSpacing: 0.5)),
+        ]),
+      ),
+    ),
+  );
 
   Widget _field(TextEditingController ctrl, String hint) =>
     Container(

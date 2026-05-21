@@ -20,8 +20,6 @@ import '../screens/playlists_screen.dart';
 import '../services/playlist_service.dart';
 import '../main.dart' show startKeepAlive, stopKeepAlive;
 
-
-
 class HubScreen extends StatefulWidget {
   const HubScreen({super.key});
   @override
@@ -57,19 +55,17 @@ class _HubScreenState extends State<HubScreen> {
               pl.markClean();
             }
           });
-          final wl      = context.read<WatchLaterService>();
+          final wl       = context.read<WatchLaterService>();
           final removals = wl.flushPendingRemovals();
-          for (final url in removals) {
-            ble.watchLaterRemove(url);
-          }
+          for (final url in removals) ble.watchLaterRemove(url);
           final pending = wl.flushPending();
-          for (final item in pending) {
-            ble.watchLaterAdd(item.url, item.title, item.videoId);
-          }
+          for (final item in pending) ble.watchLaterAdd(item.url, item.title, item.videoId);
           if (removals.isEmpty) ble.watchLaterGet();
         }
-        if (s == ConnState.disconnected)
-          { board.addLog('[APP] Disconnected'); stopKeepAlive(); }
+        if (s == ConnState.disconnected) {
+          board.addLog('[APP] Disconnected');
+          stopKeepAlive();
+        }
       }));
       _subs.add(ble.devName.listen((_) => setState(() {})));
       _subs.add(ble.logs.listen((msg) => board.addLog(msg)));
@@ -95,13 +91,11 @@ class _HubScreenState extends State<HubScreen> {
           if (mac.isNotEmpty) btAudio.setForgotten(mac);
         }
         if (evt.event == 'watchlater_update') {
-          final wl = context.read<WatchLaterService>();
-          wl.syncFromBoard(board.watchLaterItems);
+          context.read<WatchLaterService>().syncFromBoard(board.watchLaterItems);
         }
         if (evt.event == 'playlist_update') {
-          final pl = context.read<PlaylistService>();
+          final pl             = context.read<PlaylistService>();
           final boardPlaylists = evt.data['playlists'] as List? ?? [];
-          // only sync from board if phone has no playlists (first install)
           if (pl.playlists.isEmpty && boardPlaylists.isNotEmpty) {
             pl.syncFromBoard(boardPlaylists);
           }
@@ -146,7 +140,6 @@ class _HubScreenState extends State<HubScreen> {
   @override
   Widget build(BuildContext context) {
     final ble       = context.watch<BleService>();
-    final board     = context.watch<BoardState>();
     final connected = ble.state == ConnState.connected;
 
     return Scaffold(
@@ -164,80 +157,119 @@ class _HubScreenState extends State<HubScreen> {
               physics: const ClampingScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               child: Column(children: [
-                LedModeBar(
-                  ledOn:       board.ledOn,
-                  mode:        board.mode,
-                  enabled:     connected,
-                  onLedToggle: () {
-                    ble.sendLedToggle();
-                    context.read<BoardState>().ledOn = !context.read<BoardState>().ledOn;
-                    context.read<BoardState>().notifyListeners();
+
+                Selector<BoardState, (String, bool)>(
+                  selector: (_, b) => (b.mode, b.ledOn),
+                  builder: (ctx, _, __) {
+                    final b = ctx.read<BoardState>();
+                    return LedModeBar(
+                      ledOn:       b.ledOn,
+                      mode:        b.mode,
+                      enabled:     connected,
+                      onLedToggle: () {
+                        final board = ctx.read<BoardState>();
+                        ble.sendLedToggle();
+                        board.ledOn = !board.ledOn;
+                        board.notifyListeners();
+                      },
+                      onModeIdle: () {
+                        final board = ctx.read<BoardState>();
+                        if (board.mode == 'idle') {
+                          ble.setModeYouTube(); board.mode = 'youtube';
+                        } else {
+                          ble.setModeIdle(); board.mode = 'idle';
+                        }
+                        board.notifyListeners();
+                      },
+                      onModeClock: () {
+                        final board = ctx.read<BoardState>();
+                        if (board.mode == 'clock') {
+                          ble.setModeYouTube(); board.mode = 'youtube';
+                        } else {
+                          ble.setModeClock(); board.mode = 'clock';
+                        }
+                        board.notifyListeners();
+                      },
+                      onSchedule: _openSchedule,
+                    );
                   },
-                  onModeIdle: () {
-                    final b = context.read<BoardState>();
-                    if (b.mode == 'idle') {
-                      ble.setModeYouTube();
-                      b.mode = 'youtube';
-                    } else {
-                      ble.setModeIdle();
-                      b.mode = 'idle';
-                    }
-                    b.notifyListeners();
-                  },
-                  onModeClock: () {
-                    final b = context.read<BoardState>();
-                    if (b.mode == 'clock') {
-                      ble.setModeYouTube();
-                      b.mode = 'youtube';
-                    } else {
-                      ble.setModeClock();
-                      b.mode = 'clock';
-                    }
-                    b.notifyListeners();
-                  },
-                  onSchedule: _openSchedule,
-                ),
-                const SizedBox(height: 12),
-                _buildTodayCard(board, ble),
-                const SizedBox(height: 12),
-                YouTubeSection(
-                  currentUrl: board.currentUrl,
-                  history:    board.urlHistory,
-                  enabled:    connected,
-                  onSend: (url, title) {
-                    ble.sendUrlWithTitle(url, title);
-                    if (title.isNotEmpty) {
-                      context.read<BoardState>().nowPlaying = title;
-                      context.read<BoardState>().notifyListeners();
-                    }
-                    context.read<BoardState>().urlHistory.insert(0,
-                      HistoryItem(url: url, time: DateTime.now().toString().substring(11, 16), title: title));
-                    context.read<BoardState>().notifyListeners();
-                  },
-                ),
-                const SizedBox(height: 12),
-                PlayerControls(
-                  enabled:       connected,
-                  onPause:       () => ble.playerPause(),
-                  onResume:      () => ble.playerResume(),
-                  onStop:        () => ble.playerStop(),
-                  onMute:        () => ble.playerMute(),
-                  onUnmute:      () => ble.playerUnmute(),
-                  onVolUp:       () => ble.playerVolUp(),
-                  onVolDown:     () => ble.playerVolDown(),
-                  onSeekForward: () => ble.playerSeekForward(),
-                  onSeekBack:    () => ble.playerSeekBack(),
-                  onReplay:      () => ble.playerReplay(),
-                  onQuality:     (q) => ble.playerQuality(q),
-                  nowPlaying:    board.nowPlaying,
                 ),
 
                 const SizedBox(height: 12),
-                _PlaylistsSection(connected: connected),
+
+                Selector<BoardState, List<ScheduleEntry>>(
+                  selector: (_, b) => b.scheduleEntries,
+                  shouldRebuild: (a, b) => a.length != b.length || a != b,
+                  builder: (ctx, entries, __) => _TodayCard(
+                    entries:   entries,
+                    connected: connected,
+                    ble:       ble,
+                    onManage:  _openSchedule,
+                  ),
+                ),
+
                 const SizedBox(height: 12),
-                LogConsole(
-                  logs:    board.logs,
-                  onClear: () { board.logs.clear(); board.notifyListeners(); }),
+
+                Selector<BoardState, (String?, List<HistoryItem>)>(
+                  selector: (_, b) => (b.currentUrl, b.urlHistory),
+                  shouldRebuild: (a, b) =>
+                    a.$1 != b.$1 || a.$2.length != b.$2.length,
+                  builder: (ctx, data, __) => YouTubeSection(
+                    currentUrl: data.$1,
+                    history:    data.$2,
+                    enabled:    connected,
+                    onSend: (url, title) {
+                      ble.sendUrlWithTitle(url, title);
+                      final board = ctx.read<BoardState>();
+                      if (title.isNotEmpty) board.nowPlaying = title;
+                      board.urlHistory.insert(0, HistoryItem(
+                        url:   url,
+                        time:  DateTime.now().toString().substring(11, 16),
+                        title: title));
+                      board.notifyListeners();
+                    },
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                Selector<BoardState, String?>(
+                  selector: (_, b) => b.nowPlaying,
+                  builder: (ctx, nowPlaying, __) => PlayerControls(
+                    enabled:       connected,
+                    nowPlaying:    nowPlaying,
+                    onPause:       () => ble.playerPause(),
+                    onResume:      () => ble.playerResume(),
+                    onStop:        () => ble.playerStop(),
+                    onMute:        () => ble.playerMute(),
+                    onUnmute:      () => ble.playerUnmute(),
+                    onVolUp:       () => ble.playerVolUp(),
+                    onVolDown:     () => ble.playerVolDown(),
+                    onSeekForward: () => ble.playerSeekForward(),
+                    onSeekBack:    () => ble.playerSeekBack(),
+                    onReplay:      () => ble.playerReplay(),
+                    onQuality:     (q) => ble.playerQuality(q),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+                const _PlaylistsSection(),
+                const SizedBox(height: 12),
+
+                Selector<BoardState, int>(
+                  selector: (_, b) => b.logs.length,
+                  builder: (ctx, _, __) {
+                    final board = ctx.read<BoardState>();
+                    return LogConsole(
+                      logs:    board.logs,
+                      onClear: () {
+                        board.logs.clear();
+                        board.notifyListeners();
+                      },
+                    );
+                  },
+                ),
+
               ]),
             ),
           ),
@@ -246,27 +278,127 @@ class _HubScreenState extends State<HubScreen> {
     );
   }
 
-  Widget _buildTodayCard(BoardState board, BleService ble) {
-    final now   = DateTime.now();
-    final today = board.scheduleEntries.where((e) =>
-        e.date.year == now.year &&
-        e.date.month == now.month &&
-        e.date.day   == now.day).firstOrNull;
-    final upcoming = board.scheduleEntries
+  Widget _buildHeader(BleService ble) {
+    final live = ble.state == ConnState.connected;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 16, 6),
+      child: Row(children: [
+        Container(
+          width: 38, height: 38,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+              colors: [Color(0xFF00D4FF), Color(0xFF0052D4)]),
+            borderRadius: BorderRadius.circular(11),
+            boxShadow: live ? [BoxShadow(
+              color: const Color(0xFF00D4FF).withOpacity(0.3),
+              blurRadius: 12, offset: const Offset(0, 4))] : []),
+          child: const Icon(Icons.hub_rounded, color: Colors.white, size: 20)),
+        const SizedBox(width: 12),
+        const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('BLE HUB', style: TextStyle(
+            fontSize: 15, fontWeight: FontWeight.w900, color: Colors.white,
+            letterSpacing: 1.5)),
+          Text('Arduino UNO Q', style: TextStyle(
+            fontSize: 10, color: Color(0xFF3D5068), letterSpacing: 0.5)),
+        ]),
+        const Spacer(),
+        const SizedBox(width: 8),
+        Selector<BoardState, int>(
+          selector: (_, b) => b.urlHistory.length,
+          builder: (ctx, count, __) => GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HistoryScreen())),
+            child: Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF3D71).withOpacity(0.07),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: const Color(0xFFFF3D71).withOpacity(0.15))),
+              child: Stack(alignment: Alignment.center, children: [
+                const Icon(Icons.history, color: Color(0xFFFF3D71), size: 18),
+                if (count > 0) Positioned(top: 6, right: 6,
+                  child: Container(width: 6, height: 6,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle, color: Color(0xFFFF3D71)))),
+              ])))),
+        const SizedBox(width: 8),
+        Selector<WatchLaterService, (int, int)>(
+          selector: (_, wl) => (wl.pendingCount, wl.items.length),
+          builder: (ctx, data, __) => GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const WatchLaterScreen())),
+            child: Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0A84FF).withOpacity(0.07),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: const Color(0xFF0A84FF).withOpacity(0.15))),
+              child: Stack(alignment: Alignment.center, children: [
+                const Icon(Icons.bookmark_outline_rounded,
+                  color: Color(0xFF0A84FF), size: 18),
+                if (data.$1 > 0) Positioned(top: 5, right: 5,
+                  child: Container(width: 7, height: 7,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle, color: Color(0xFFFF9F0A))))
+                else if (data.$2 > 0) Positioned(top: 6, right: 6,
+                  child: Container(width: 6, height: 6,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle, color: Color(0xFF0A84FF)))),
+              ])))),
+        const SizedBox(width: 8),
+        Selector<BoardState, String>(
+          selector: (_, b) => b.btAudioStatus,
+          builder: (ctx, status, __) => GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const BtDevicesScreen())),
+            child: Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(
+                color: const Color(0xFF00D4FF).withOpacity(0.07),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: const Color(0xFF00D4FF).withOpacity(0.15))),
+              child: Stack(alignment: Alignment.center, children: [
+                const Icon(Icons.bluetooth_rounded,
+                  color: Color(0xFF00D4FF), size: 18),
+                if (status == 'connected') Positioned(top: 7, right: 7,
+                  child: Container(width: 6, height: 6,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle, color: Color(0xFF34C759)))),
+              ])))),
+      ]),
+    );
+  }
+}
+
+class _TodayCard extends StatelessWidget {
+  final List<ScheduleEntry> entries;
+  final bool connected;
+  final BleService ble;
+  final VoidCallback onManage;
+  const _TodayCard({required this.entries, required this.connected,
+    required this.ble, required this.onManage});
+
+  @override
+  Widget build(BuildContext context) {
+    final now      = DateTime.now();
+    final today    = entries.where((e) =>
+        e.date.year == now.year && e.date.month == now.month &&
+        e.date.day  == now.day).firstOrNull;
+    final upcoming = entries
         .where((e) => e.date.isAfter(DateTime(now.year, now.month, now.day)))
         .toList()..sort((a, b) => a.date.compareTo(b.date));
     if (today == null && upcoming.isEmpty) return const SizedBox.shrink();
-    final connected = ble.state == ConnState.connected;
-    final mnShort   = ['Jan','Feb','Mar','Apr','May','Jun',
-                       'Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    final mnShort = ['Jan','Feb','Mar','Apr','May','Jun',
+                     'Jul','Aug','Sep','Oct','Nov','Dec'];
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF0D1520),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: today != null
-            ? const Color(0xFFFFB347).withOpacity(0.25)
-            : const Color(0xFF1A2840))),
+        border: Border.all(color: today != null
+          ? const Color(0xFFFFB347).withOpacity(0.25)
+          : const Color(0xFF1A2840))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
@@ -278,23 +410,20 @@ class _HubScreenState extends State<HubScreen> {
                   ? const Color(0xFFFFB347).withOpacity(0.12)
                   : const Color(0xFF1A2840),
                 borderRadius: BorderRadius.circular(6)),
-              child: Text(
-                today != null ? 'TODAY' : 'UPCOMING',
+              child: Text(today != null ? 'TODAY' : 'UPCOMING',
                 style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800,
                   letterSpacing: 1.2,
                   color: today != null
-                    ? const Color(0xFFFFB347)
-                    : const Color(0xFF3D5068)))),
+                    ? const Color(0xFFFFB347) : const Color(0xFF3D5068)))),
             const Spacer(),
-            GestureDetector(
-              onTap: _openSchedule,
-              child: const Text('Manage →',
+            GestureDetector(onTap: onManage,
+              child: const Text('Manage \u2192',
                 style: TextStyle(fontSize: 10, color: Color(0xFF3D5068)))),
           ]),
         ),
         if (today != null)
           ...today.playlist.asMap().entries.map((e) =>
-            _todayTile(e.value, e.key, connected, ble))
+            _todayTile(context, e.value, e.key))
         else
           ...upcoming.take(2).map((entry) => Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -324,7 +453,7 @@ class _HubScreenState extends State<HubScreen> {
     );
   }
 
-  Widget _todayTile(QueueItem item, int idx, bool connected, BleService ble) =>
+  Widget _todayTile(BuildContext context, QueueItem item, int idx) =>
     GestureDetector(
       onTap: connected ? () => ble.sendUrlWithTitle(item.url, item.title) : null,
       child: Container(
@@ -335,10 +464,9 @@ class _HubScreenState extends State<HubScreen> {
             ? const Color(0xFFFFB347).withOpacity(0.05)
             : const Color(0xFF131E2E),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: connected
-              ? const Color(0xFFFFB347).withOpacity(0.15)
-              : const Color(0xFF1A2840))),
+          border: Border.all(color: connected
+            ? const Color(0xFFFFB347).withOpacity(0.15)
+            : const Color(0xFF1A2840))),
         child: Row(children: [
           Container(
             width: 26, height: 26,
@@ -352,171 +480,22 @@ class _HubScreenState extends State<HubScreen> {
           Expanded(child: Text(item.title, style: const TextStyle(
             fontSize: 12, color: Colors.white, fontWeight: FontWeight.w500),
             overflow: TextOverflow.ellipsis)),
-          if (connected)
-            const Icon(Icons.play_circle_outline,
-              color: Color(0xFFFFB347), size: 18),
+          if (connected) const Icon(Icons.play_circle_outline,
+            color: Color(0xFFFFB347), size: 18),
         ]),
       ),
     );
-
-  void _showHistory(BoardState board, BleService ble) {
-    if (board.urlHistory.isEmpty) return;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF0D1520),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 36, height: 4,
-          margin: const EdgeInsets.only(top: 12, bottom: 16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E3048),
-            borderRadius: BorderRadius.circular(2))),
-        const Padding(
-          padding: EdgeInsets.only(bottom: 12),
-          child: Text('Recent Videos', style: TextStyle(
-            fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white))),
-        Flexible(child: ListView(shrinkWrap: true, children: [
-          ...board.urlHistory.take(15).map((item) {
-            final display = item.title.isNotEmpty ? item.title : item.url;
-            return ListTile(
-              leading: const Icon(Icons.play_circle_outline,
-                color: Color(0xFFFF3D71), size: 20),
-              title: Text(display, style: const TextStyle(
-                fontSize: 13, color: Colors.white),
-                overflow: TextOverflow.ellipsis),
-              subtitle: Text(item.time, style: const TextStyle(
-                fontSize: 10, color: Color(0xFF4B6070))),
-              onTap: ble.state == ConnState.connected ? () {
-                ble.sendUrlWithTitle(item.url, item.title);
-                Navigator.pop(context);
-              } : null,
-            );
-          }),
-        ])),
-        const SizedBox(height: 16),
-      ]),
-    );
-  }
-
-  Widget _buildHeader(BleService ble) {
-    final live  = ble.state == ConnState.connected;
-    final c     = live ? const Color(0xFF00D4FF) : const Color(0xFF3D5068);
-    final cGlow = live ? const Color(0xFF00D4FF) : Colors.transparent;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 16, 6),
-      child: Row(children: [
-        Container(
-          width: 38, height: 38,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft, end: Alignment.bottomRight,
-              colors: [Color(0xFF00D4FF), Color(0xFF0052D4)]),
-            borderRadius: BorderRadius.circular(11),
-            boxShadow: live ? [
-              BoxShadow(color: const Color(0xFF00D4FF).withOpacity(0.3),
-                blurRadius: 12, offset: const Offset(0, 4))] : [],
-          ),
-          child: const Icon(Icons.hub_rounded, color: Colors.white, size: 20)),
-        const SizedBox(width: 12),
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('BLE HUB', style: TextStyle(
-            fontSize: 15, fontWeight: FontWeight.w900, color: Colors.white,
-            letterSpacing: 1.5)),
-          const Text('Arduino UNO Q', style: TextStyle(
-            fontSize: 10, color: Color(0xFF3D5068), letterSpacing: 0.5)),
-        ]),
-        const Spacer(),
-
-        const SizedBox(width: 8),
-        Builder(builder: (ctx) {
-          final board = ctx.watch<BoardState>();
-          final ble   = ctx.watch<BleService>();
-          return GestureDetector(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const HistoryScreen())),
-            child: Container(
-              width: 38, height: 38,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFF3D71).withOpacity(0.07),
-                borderRadius: BorderRadius.circular(11),
-                border: Border.all(
-                  color: const Color(0xFFFF3D71).withOpacity(0.15))),
-              child: Stack(alignment: Alignment.center, children: [
-                const Icon(Icons.history, color: Color(0xFFFF3D71), size: 18),
-                if (board.urlHistory.isNotEmpty)
-                  Positioned(top: 6, right: 6,
-                    child: Container(width: 6, height: 6,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFFFF3D71)))),
-              ])));
-        }),
-        const SizedBox(width: 8),
-        Builder(builder: (ctx) {
-          final wl = ctx.watch<WatchLaterService>();
-          return GestureDetector(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const WatchLaterScreen())),
-            child: Container(
-              width: 38, height: 38,
-              decoration: BoxDecoration(
-                color: const Color(0xFF0A84FF).withOpacity(0.07),
-                borderRadius: BorderRadius.circular(11),
-                border: Border.all(
-                  color: const Color(0xFF0A84FF).withOpacity(0.15))),
-              child: Stack(alignment: Alignment.center, children: [
-                const Icon(Icons.bookmark_outline_rounded,
-                  color: Color(0xFF0A84FF), size: 18),
-                if (wl.pendingCount > 0)
-                  Positioned(top: 5, right: 5,
-                    child: Container(width: 7, height: 7,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFFFF9F0A))))
-                else if (wl.items.isNotEmpty)
-                  Positioned(top: 6, right: 6,
-                    child: Container(width: 6, height: 6,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFF0A84FF)))),
-              ])));
-        }),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const BtDevicesScreen())),
-          child: Container(
-            width: 38, height: 38,
-            decoration: BoxDecoration(
-              color: const Color(0xFF00D4FF).withOpacity(0.07),
-              borderRadius: BorderRadius.circular(11),
-              border: Border.all(
-                color: const Color(0xFF00D4FF).withOpacity(0.15))),
-            child: Stack(alignment: Alignment.center, children: [
-              const Icon(Icons.bluetooth_rounded,
-                color: Color(0xFF00D4FF), size: 18),
-              if (context.watch<BoardState>().btAudioStatus == 'connected')
-                Positioned(top: 7, right: 7,
-                  child: Container(width: 6, height: 6,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Color(0xFF34C759)))),
-            ]))),
-      ]),
-    );
-  }
 }
 
 class _PlaylistsSection extends StatelessWidget {
-  final bool connected;
-  const _PlaylistsSection({required this.connected});
+  const _PlaylistsSection();
 
   @override
   Widget build(BuildContext context) {
-    final ps      = context.watch<PlaylistService>();
-    final preview = ps.playlists.take(3).toList();
+    final ble       = context.read<BleService>();
+    final connected = ble.state == ConnState.connected;
+    final ps        = context.watch<PlaylistService>();
+    final preview   = ps.playlists.take(3).toList();
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -528,9 +507,9 @@ class _PlaylistsSection extends StatelessWidget {
         Row(children: [
           const Icon(Icons.queue_music, color: Color(0xFF30D158), size: 16),
           const SizedBox(width: 8),
-          const Text('PLAYLISTS', style: TextStyle(
-            fontSize: 10, fontWeight: FontWeight.w700,
-            color: Color(0xFF30D158), letterSpacing: 1.5)),
+          const Text('PLAYLISTS', style: TextStyle(fontSize: 10,
+            fontWeight: FontWeight.w700, color: Color(0xFF30D158),
+            letterSpacing: 1.5)),
           const Spacer(),
           GestureDetector(
             onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -554,8 +533,7 @@ class _PlaylistsSection extends StatelessWidget {
               decoration: BoxDecoration(
                 color: const Color(0xFF30D158).withOpacity(0.08),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: const Color(0xFF30D158).withOpacity(0.2))),
+                border: Border.all(color: const Color(0xFF30D158).withOpacity(0.2))),
               child: const Row(mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                 Icon(Icons.add, color: Color(0xFF30D158), size: 16),
@@ -590,7 +568,6 @@ class _PlaylistsSection extends StatelessWidget {
                   overflow: TextOverflow.ellipsis)),
                 Text('${p.videos.length}', style: const TextStyle(
                   fontSize: 11, color: Color(0xFF4A5568))),
-
               ]),
             ),
           )),

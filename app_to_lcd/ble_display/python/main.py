@@ -67,6 +67,8 @@ queue        = []
 queue_index  = -1
 queue_active = False
 queue_paused = False
+queue_loop   = False
+queue_repeat = False
 
 schedule         = []
 schedule_playing = False
@@ -649,6 +651,20 @@ def handle_phone_command(text: str):
         elif cmd == 'QUEUE_SKIP':   GLib.idle_add(queue_skip)
         elif cmd == 'QUEUE_REPLAY': GLib.idle_add(queue_replay)
         elif cmd == 'QUEUE_STOP':   GLib.idle_add(queue_stop)
+        elif cmd == 'QUEUE_LOOP_ON':
+            global queue_loop
+            queue_loop = True
+            push_to_phone('queue_mode', {'loop': queue_loop, 'repeat': queue_repeat, 'time': now_str()})
+        elif cmd == 'QUEUE_LOOP_OFF':
+            queue_loop = False
+            push_to_phone('queue_mode', {'loop': queue_loop, 'repeat': queue_repeat, 'time': now_str()})
+        elif cmd == 'QUEUE_REPEAT_ON':
+            global queue_repeat
+            queue_repeat = True
+            push_to_phone('queue_mode', {'loop': queue_loop, 'repeat': queue_repeat, 'time': now_str()})
+        elif cmd == 'QUEUE_REPEAT_OFF':
+            queue_repeat = False
+            push_to_phone('queue_mode', {'loop': queue_loop, 'repeat': queue_repeat, 'time': now_str()})
         elif cmd.startswith('QUEUE_GOTO:'):
             try: GLib.idle_add(queue_goto, int(cmd.split(':')[1]))
             except Exception: pass

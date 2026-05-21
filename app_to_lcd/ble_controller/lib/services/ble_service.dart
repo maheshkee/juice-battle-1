@@ -161,6 +161,10 @@ class BleService {
   Future<void> queueSkip()                                => _write('CMD:QUEUE_SKIP');
   Future<void> queueReplay()                              => _write('CMD:QUEUE_REPLAY');
   Future<void> queueStop()                                => _write('CMD:QUEUE_STOP');
+  Future<void> queueLoopOn()                              => _write('CMD:QUEUE_LOOP_ON');
+  Future<void> queueLoopOff()                             => _write('CMD:QUEUE_LOOP_OFF');
+  Future<void> queueRepeatOn()                            => _write('CMD:QUEUE_REPEAT_ON');
+  Future<void> queueRepeatOff()                           => _write('CMD:QUEUE_REPEAT_OFF');
   Future<void> queueGoto(int index)                       => _write('CMD:QUEUE_GOTO:$index');
   Future<void> watchLaterGet()                            => _write('CMD:WATCHLATER_GET');
   Future<void> btScanStart()                              => _write('CMD:BT_SCAN_START');

@@ -7,19 +7,35 @@ class Playlist {
   final String id;
   String name;
   List<QueueItem> videos;
+  bool shuffle;
+  bool loop;
+  bool repeat;
 
-  Playlist({required this.id, required this.name, required this.videos});
+  Playlist({
+    required this.id,
+    required this.name,
+    required this.videos,
+    this.shuffle = false,
+    this.loop    = false,
+    this.repeat  = false,
+  });
 
   Map<String, dynamic> toJson() => {
-    'id':     id,
-    'name':   name,
-    'videos': videos.map((v) => v.toJson()).toList(),
+    'id':      id,
+    'name':    name,
+    'videos':  videos.map((v) => v.toJson()).toList(),
+    'shuffle': shuffle,
+    'loop':    loop,
+    'repeat':  repeat,
   };
 
   factory Playlist.fromJson(Map<String, dynamic> j) => Playlist(
-    id:     j['id']   ?? '',
-    name:   j['name'] ?? '',
-    videos: (j['videos'] as List? ?? [])
+    id:      j['id']      ?? '',
+    name:    j['name']    ?? '',
+    shuffle: j['shuffle'] ?? false,
+    loop:    j['loop']    ?? false,
+    repeat:  j['repeat']  ?? false,
+    videos:  (j['videos'] as List? ?? [])
         .map((v) => QueueItem.fromJson(Map<String, dynamic>.from(v))).toList(),
   );
 }
@@ -106,6 +122,16 @@ class PlaylistService extends ChangeNotifier {
     final p = _playlists.firstWhere((p) => p.id == id);
     p.videos.removeAt(index);
     await _save();
+    notifyListeners();
+  }
+
+  void updateModes(String id, {required bool shuffle, required bool loop, required bool repeat}) {
+    final p = _playlists.firstWhere((p) => p.id == id, orElse: () => Playlist(id: '', name: '', videos: []));
+    if (p.id.isEmpty) return;
+    p.shuffle = shuffle;
+    p.loop    = loop;
+    p.repeat  = repeat;
+    _save();
     notifyListeners();
   }
 
