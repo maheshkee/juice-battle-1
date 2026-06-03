@@ -1,0 +1,4 @@
+name: hx711-005-linearity
+description: Experiment 005 — HX711 calibration linearity, Phase A tare+noise baseline
+version: "1.0"
+network_mode: "host"

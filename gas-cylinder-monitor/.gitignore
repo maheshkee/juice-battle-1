@@ -1,0 +1,11 @@
+.cache/
+data/
+*.db
+__pycache__/
+*.pyc
+venv/
+.env
+secrets/
+dbus.sock
+*.log
+.DS_Store
