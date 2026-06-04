@@ -145,3 +145,123 @@ All subsequent flashes: automatic. No BOOT button ever again.
 - GPIO2, GPIO8, GPIO9: determine boot mode at startup
 - External pull-down during boot can force flash mode or prevent normal boot
 - GPIO12-17: internal flash, not broken out on SuperMini
+
+---
+
+## L-006 — Complete measurement mental model — 2026-06-04
+
+### The measurement equation
+grams = (raw - tare) / cal_factor
+Everything in the system exists to get tare and cal_factor right.
+
+### Raw counts
+HX711 outputs a 24-bit integer. No units, no meaning in isolation.
+Represents: voltage difference between A+ and A-, amplified 128x, digitised to 24 bits.
+Meaning only comes from subtracting tare and dividing by cal_factor.
+
+### Tare — the zero reference
+Raw count when nothing is on the scale.
+Exists because the Wheatstone bridge has manufacturing offset — never perfectly balanced.
+Must be derived BEFORE cal_factor — cal_factor derivation depends on it.
+If tare is wrong → cal_factor is wrong → every gram reading is wrong. Error compounds.
+Derived: mean of N=50 unloaded samples per boot.
+
+### Cal_factor — the conversion constant
+How many raw counts equal one gram on this specific hardware combination.
+Absorbs: load cell sensitivity, HX711 gain, actual VCC voltage, mechanical mounting.
+Derived: (loaded_mean - tare) / known_weight_grams
+Hardware-specific — never carry across MCU or hardware changes.
+
+### Why mean, not mode or RMS
+HX711 noise is Gaussian — random thermal and electrical noise, symmetrically distributed.
+For Gaussian noise, mean is the maximum likelihood estimator of true value.
+Mean uses all samples equally and converges to truth as N increases.
+Mode ignores most data. RMS amplifies outliers. Mean is the right tool.
+
+### Why N=50 production, N=200 experiments
+Standard error of mean = std / sqrt(N)
+At N=50:  SE = std / sqrt(50)  → ~10% error on event threshold → acceptable for production
+At N=200: SE = std / sqrt(200) → ~5% error → tighter, needed for sensor characterisation
+Beyond N=200: diminishing returns. Halving error again requires N=800. Not worth it.
+Below N=50: mean too noisy to trust as tare or cal reference.
+
+### Noise floor — why per boot, not hardcoded
+Noise std is not constant. Same hardware, same room: std=1.4g one morning, 2.3g that evening.
+Causes: temperature, vibration, USB power quality variations.
+Hardcoded threshold → either misses real events or triggers on phantom ones.
+Per-boot characterisation → threshold always set relative to actual noise of this run.
+Threshold = 4σ (four times measured std) = 4x safety factor above noise.
+
+### Temperature effect
+Load cell strain gauge resistors have a temperature coefficient.
+Resistance changes with temperature → tare drifts (zero shifts) + cal_factor drifts (sensitivity changes).
+These are slow drifts — hours to seasons, not minute to minute.
+Defence: re-derive tare every boot (catches slow zero drift).
+Cal_factor drift: detected by 30-day trend line, triggers recalibration when needed.
+
+### Sliding window delta detector
+Single-sample threshold fails for slow consumption (cylinder loses ~50g over 30 minutes —
+no single sample looks different enough from the previous one).
+Sliding window: compare mean of last N samples (window_A) vs mean of N samples before that (window_B).
+delta = window_A - window_B
+If delta exceeds threshold → real weight change detected.
+Smooths noise, detects trends invisible sample-by-sample.
+The right question is not "is this reading different?" but "is the average changing over time?"
+
+### Why 5% gate for E-001
+5% of 30g calibration weight = 1.5g error tolerance.
+1.5g is within the noise floor → if we pass this gate, calibration is in the right ballpark.
+Not a precision engineering tolerance — a sanity gate before moving forward.
+
+---
+
+## L-007 — Re-evaluation rules: what must be re-derived and when — 2026-06-04
+
+### Rule
+Any time hardware, firmware, or physical setup changes — certain values become VOID and
+must be re-derived before trusting any readings. Never carry numerical values across
+hardware changes.
+
+### List A — Must re-derive on EVERY boot (automatic, built into firmware)
+These change run-to-run even on identical hardware. Firmware handles this automatically.
+- Tare (mean of N=50 unloaded samples)
+- Noise floor std (std of same N samples)
+- Event detection threshold (4 × noise std)
+
+### List B — Must re-derive when hardware or physical setup changes
+These are stable within a setup but become void if anything physical changes.
+Trigger: any of the items in the "what counts as a setup change" list below.
+- cal_factor (raw counts per gram)
+- Noise std baseline (the expected typical range)
+- Event threshold baseline
+
+### What counts as a setup change (triggers List B re-derivation)
+- MCU change (STM32 → ESP32, or any other MCU swap)
+- HX711 module swap (even same model — manufacturing variation)
+- Load cell swap (even same model — sensitivity varies unit to unit)
+- VCC voltage change (5V → 3.3V or vice versa — changes full-scale range)
+- Number of load cells changes (1 cell → 4 cell summing)
+- Mechanical mounting changes (load cell repositioned, platform changed)
+- Long-term temperature drift detected (30-day trend line triggers recalibration)
+- Cylinder brand change (for tare/steel values — not cal_factor, but worth noting)
+
+### Values confirmed VOID from STM32 era — must re-derive on ESP32
+| Value | STM32 value | Status | When re-derived |
+|---|---|---|---|
+| cal_factor | 106.7 raw/g | VOID | E-001 |
+| Noise std | ~1.87g | VOID — re-measure | E-002 |
+| Event threshold | 6g | VOID — re-derive from new std | E-002 |
+| Tare range | -13744 to -14551 raw | VOID | E-001 boot |
+| N=50 SE margin | ~0.26g (10% of 6g) | VOID — recalculate after E-002 | E-002 |
+
+### The invariants — what never changes regardless of hardware
+These are mathematical/physical laws. They do not need re-derivation.
+- Mean is the correct estimator for Gaussian noise
+- SE = std / sqrt(N) relationship
+- The measurement equation: grams = (raw - tare) / cal_factor
+- Three corrupt filters: LONG_MIN, -1, 0x7FFFFF
+- Sign extension rule: bit 23 is the sign bit
+- 25th SCK pulse locks Channel A Gain 128
+- Wheatstone bridge physics (unloaded raw is negative due to manufacturing offset)
+- Sliding window delta detection principle
+- 4σ safety factor for threshold setting

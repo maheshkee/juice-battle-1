@@ -91,7 +91,8 @@ void setup() {
   digitalWrite(LED_PIN, HIGH); // LED off (active LOW on SuperMini)
 
   Serial.begin(115200);
-  delay(1500); // give Serial Monitor time to connect
+  while (!Serial) { delay(10); }
+  delay(1000);
 
   Serial.println("========================================");
   Serial.println("HW_VERIFY - hardware verification sketch");
@@ -117,7 +118,7 @@ void setup() {
   Serial.print("PASS: HX711 responding. First raw = ");
   Serial.println(first);
   blink_pass();
-  delay(500);
+  delay(5000);
 
   // --- CHECK 2: stable reads (10 samples, count corrupt) ---
   Serial.println("");
@@ -161,8 +162,9 @@ void setup() {
   }
   Serial.print("  Baseline (unloaded): "); Serial.println(baseline);
   Serial.println("  >>> PLACE A WEIGHT ON THE LOAD CELL NOW <<<");
-  Serial.println("  Waiting 5 seconds...");
-  delay(5000);
+  Serial.println("  Press ENTER in Serial Monitor when weight is placed...");
+  while (!Serial.available()) { delay(100); }
+  while (Serial.available()) Serial.read();
 
   Serial.println("  Taking loaded reading...");
   long loaded = average_reads(10);
@@ -180,7 +182,7 @@ void setup() {
   if (delta < 500) {
     Serial.println("FAIL: load cell not responding to weight.");
     Serial.println("      Check: E+/E-/A+/A- load cell connections.");
-    Serial.println("      Check: weight was placed during the 5 second window.");
+    Serial.println("      Check: weight was actually on the cell when ENTER was pressed.");
     blink_fail();
     return;
   }
