@@ -349,6 +349,26 @@ wait_ready timeout  : 400ms (tuned for AQ3 under Bridge load — re-tune on ESP3
 
 ---
 
+## ESP32-C3 specific findings - confirmed 2026-06-04
+
+### Pinout (SuperMini HW-466AB)
+Left side top to bottom: 5V, G, 3V3, 4, 3, 2, 1, 0
+Right side top to bottom: 5, 6, 7, 8, 9, 10, 20, 21
+
+### Safe HX711 pins confirmed
+DOUT: GPIO4, SCK: GPIO3 - confirmed working, no boot interference
+
+### cal_factor on ESP32 - rough estimate only
+~113 raw/g - specific to this ESP32+GISLAB HX711+YZC161A combination
+STM32 value of 106.7 raw/g is VOID on ESP32. Never carry over across MCUs.
+E-001 will derive properly from known weights.
+
+### 3.3V VDD confirmed working
+GISLAB HX711 module works correctly at 3.3V VDD.
+DOUT swings at 3.3V - safe for ESP32-C3 GPIO. No level shifter needed.
+
+---
+
 ## Change Log
 
 | Date | Entry |
@@ -356,3 +376,4 @@ wait_ready timeout  : 400ms (tuned for AQ3 under Bridge load — re-tune on ESP3
 | 2026-05-05 | Created (STM32 era) |
 | 2026-05-06 | Added entries 3–12 (STM32 era) |
 | 2026-06-04 | MAJOR: ESP32 pivot — Part I is new canonical; Part II archived as SUPERSEDED |
+| 2026-06-04 Session 2 | Added ESP32-C3 pinout, safe pins, rough cal_factor, 3.3V VDD confirmed |

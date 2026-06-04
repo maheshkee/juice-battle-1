@@ -36,22 +36,27 @@ Hub stamps timestamp on receipt. ESP32-C3 has no RTC.
 | Hub | Arduino UNO Q AQ3 | 192.168.1.161 (SSH: arduino@192.168.1.161) |
 | Node | ESP32-C3 | in hand — USB flash via Arduino IDE / PlatformIO |
 | Load cell | YZC-161A 20 kg | Red→E+, Black→E-, Green→A+, White→A- |
-| ADC | HX711 (green PCB) | VCC = 5V (critical — HX711 needs 5V full excitation) |
+| ADC | HX711 GISLAB (green PCB, AVIAIC chip) | VDD = 3.3V — DOUT/SCK safe for ESP32-C3 GPIO |
 
 **JCTL on UNO Q = 1.8V ONLY. 3.3V damages hardware.**
-**ESP32-C3 GPIO = 3.3V. HX711 DOUT/SCK at 5V VCC — check logic-level compatibility (E-000 gate).**
+**ESP32-C3 wiring locked: GPIO4=DOUT, GPIO3=SCK, 3V3=VDD. 3.3V gate cleared 2026-06-04.**
 
 ---
 
 ## Current State
 
 ```
-Status:         SCAFFOLD ONLY
-node/:          empty — no ESP32-C3 firmware
-hub/:           empty — no Python hub
-Current chunk:  Pre-Group-1
-Next action:    Design E-000 in Claude.ai chat
-                (3.3V gate + GPIO pin selection + first raw read)
+Status:           E-000 COMPLETE AND PASSED (2026-06-04)
+Wiring:           LOCKED — GPIO4=DOUT, GPIO3=SCK, 3V3=VDD, GND=GND
+                  Load cell Red=E+, Black=E-, Green=A+, White=A-
+Arduino IDE:      esp32 v3.0.7, ESP32C3 Dev Module, COM11, USB CDC On Boot=ENABLED
+node/ built:      E000_raw_read/E000_raw_read.ino (flashed, verified)
+                  STOP/STOP.ino
+                  HW_VERIFY/HW_VERIFY.ino
+hub/:             empty — not started
+Rough cal_factor: ~113 raw/g (ESP32-specific — re-derive in E-001, never use STM32's 106.7)
+Current chunk:    Group 1, E-001
+Next action:      Design E-001 in Claude.ai chat, implement via Claude Code CLI
 ```
 
 ---
@@ -60,9 +65,9 @@ Next action:    Design E-000 in Claude.ai chat
 
 | # | Question | Status |
 |---|----------|--------|
-| 1 | 3.3V logic-level compatibility: HX711 DOUT/SCK vs ESP32-C3 GPIO | PENDING — E-000 gate |
-| 2 | GPIO pin pair for ESP32-C3 + HX711 | PENDING — E-000 |
-| 3 | cal_factor on ESP32-C3 (old 106.7 is VOID) | PENDING — E-001 |
+| 1 | 3.3V logic-level compatibility: HX711 DOUT/SCK vs ESP32-C3 GPIO | RESOLVED — 3V3 VDD safe, no level shifter needed |
+| 2 | GPIO pin pair for ESP32-C3 + HX711 | RESOLVED — GPIO4=DOUT, GPIO3=SCK |
+| 3 | cal_factor on ESP32-C3 (old 106.7 is VOID) | PENDING — E-001 (rough estimate ~113 raw/g) |
 | 4 | float vs double on ESP32-C3 (double-broken was STM32-specific) | PENDING — E-001 |
 | 5 | Noise floor on ESP32-C3 + with hardened wiring | PENDING — E-002 |
 | 6 | WiFi transport protocol details (MQTT vs HTTP) | PENDING — Group 2 |

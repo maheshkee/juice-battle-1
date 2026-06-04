@@ -139,12 +139,22 @@ Copy only when the WebUI phase (Group 7) begins. Never commit wheels/ to git.
 ## Current State — 2026-06-04
 
 ```
-Status:      SCAFFOLD ONLY
-node/:       empty — no ESP32 firmware written yet
-hub/:        empty — no Python hub written yet
-Next action: Design E-000 (ESP32-C3 + HX711 bring-up) in Claude.ai chat.
-             Chat produces CLI prompt. Execute in CLI.
-             First gate: verify 3.3V logic level before powering anything.
+Status:         E-000 COMPLETE AND PASSED (2026-06-04)
+node/:          E000_raw_read, STOP, HW_VERIFY built
+hub/:           empty — not started yet
+
+Wiring locked (do not change without re-verifying):
+  ESP32-C3 GPIO4 = DOUT, GPIO3 = SCK, 3V3 = VDD, GND = GND
+  Load cell: Red=E+, Black=E-, Green=A+, White=A-
+
+Arduino IDE locked:
+  esp32 by Espressif v3.0.7, Board: ESP32C3 Dev Module
+  Port: COM11, USB CDC On Boot: ENABLED
+
+Rough cal_factor: ~113 raw/g (ESP32-specific, re-derive in E-001 — never use 106.7)
+
+Current position: Group 1, E-001 — tare averaging, cal_factor derivation, grams output
+Next action:      Design E-001 in Claude.ai chat. Implement via Claude Code CLI.
 ```
 
 ---
