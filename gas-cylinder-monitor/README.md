@@ -1,49 +1,56 @@
 # gas-cylinder-monitor
 
-A weight-based LPG gas level monitor for Indian households. A load cell permanently mounted under the cylinder continuously measures total weight. The MCU reads the HX711 ADC, detects weight changes, and pushes events to the Linux side via Bridge RPC. The Linux MPU stores snapshots to SQLite, predicts days until refill, and surfaces a live display and BLE alert to the phone.
+LPG cylinder weight monitor for Indian households.
 
-**Development phase uses water in a container, not a gas cylinder.** Weight is weight. No code may hard-code "gas" semantics.
+An **ESP32-C3 sensor node** reads a 20 kg load cell via HX711, computes gross weight in
+grams, and sends `{grams, quality, sigma}` over WiFi to the **Arduino UNO Q hub**.
+The hub stamps timestamps, derives cylinder steel via anchor events, computes gas %,
+stores to SQLite, runs analytics + prediction, and serves a WebUI dashboard.
 
----
-
-> **VOLTAGE WARNING**
->
-> The Arduino UNO Q has two different voltage domains on its headers.
->
-> - MCU Arduino headers (JDIGITAL, JANALOG): **3.3V logic** — except A0/A1 which are 3.3V max, NOT 5V tolerant.
-> - **JCTL and JMISC (MPU-side pins): 1.8V ONLY.** Applying 3.3V to any JCTL or JMISC pin causes **immediate hardware damage**. No exceptions.
->
-> The HX711 module (green PCB clone) requires **5V AVDD**. Connect to the 5V pin on JDIGITAL, NOT to 3.3V. The HX711 data and clock lines (D7, D6) are driven at 3.3V MCU logic — this is fine.
+Development phase uses water in a container — not a gas cylinder. Weight is weight.
 
 ---
 
-## Hardware List
+## The Node / Hub Split
 
-| Component | Model | Notes |
-|-----------|-------|-------|
-| Board | Arduino UNO Q (AQ3) | MPU: QRB2210 Linux + MCU: STM32U585 Zephyr |
-| Load cell | YZC-161A 20kg | ±0.05% accuracy, aluminum alloy, compression type |
-| ADC | HX711 module (green PCB) | 24-bit, gain 128, requires 5V VCC |
-| Cable | 4-wire load cell cable | Red→E+, Black→E-, Green→A+, White→A- |
-
-### Critical Wiring
+This project has two distinct software contexts. Never blur them.
 
 ```
-HX711 DT  → D7  (ONLY valid INPUT pin — D2/D3/D4/D5 have timer conflicts)
-HX711 SCK → D6  (ONLY valid OUTPUT pin)
-HX711 VCC → 5V  (NOT 3.3V — green PCB clones require 5V AVDD)
-HX711 GND → GND
+node/   ← ESP32-C3 firmware (Arduino IDE / PlatformIO)
+        Owns: HX711 bit-bang, corrupt filters, cal_factor, grams output, WiFi send
+        Does NOT: compute gas %, know steel, have a clock, use App Lab or Bridge
 
-Load cell:
-  Red   → E+
-  Black → E-
-  Green → A+
-  White → A-
+hub/    ← UNO Q Python (App Lab Docker / QRB2210 Linux)
+        Owns: WiFi receive, timestamp, steel derivation, gas%, SQLite, analytics,
+              prediction, WebUI
+        Does NOT: touch a sensor pin, see raw ADC counts, or call Bridge.notify
 ```
 
-### Load Cell Mounting Rule
+**Payload across WiFi:** `{grams: float, quality: "GOOD"|"DEGRADED"|"FAILED", sigma: float}`
+Hub stamps timestamp on receipt — ESP32-C3 has no RTC.
 
-One end **FIXED** (clamped/screwed to rigid surface). Other end **FREE** (hangs over edge, nothing touching it). Weight placed on free end only. If both ends rest on a surface → corrupt cycling readings.
+---
+
+## Voltage Warning
+
+```
+⚠️  HX711 VCC = 5V required (green PCB clone — 3.3V gives degraded output)
+⚠️  ESP32-C3 GPIO = 3.3V — check HX711 DOUT/SCK logic-level compatibility
+    before applying power. Level-shift if needed. (E-000 safety gate)
+⚠️  UNO Q JCTL header = 1.8V ONLY. 3.3V = immediate hardware damage.
+⚠️  UNO Q STM32 MCU is IDLE in V1 — ESP32-C3 owns all sensing.
+```
+
+---
+
+## Hardware
+
+| Role | Board | Notes |
+|------|-------|-------|
+| Hub | Arduino UNO Q AQ3 (192.168.1.161) | App Lab / Python / SQLite / WebUI |
+| Node | ESP32-C3 | Arduino IDE / PlatformIO. NOT App Lab. |
+| Load cell | YZC-161A 20 kg | Red→E+, Black→E-, Green→A+, White→A- |
+| ADC | HX711 (green PCB) | 24-bit, gain 128. VCC = 5V. |
 
 ---
 
@@ -51,97 +58,72 @@ One end **FIXED** (clamped/screwed to rigid surface). Other end **FREE** (hangs 
 
 ```
 gas-cylinder-monitor/
-├── CLAUDE.md               ← Read before every CLI session. Locked constants, rules, current state.
-├── README.md               ← This file. Onboarding and orientation.
-├── SKILL.md                ← HX711/Bridge/Python patterns, rules, anti-patterns.
-├── .gitignore
+├── CLAUDE.md              ← Read FIRST every CLI session
+├── SKILL.md               ← node (ESP32/HX711) vs hub (App Lab/Python) patterns
+├── README.md              ← This file
+│
+├── node/                  ← ESP32-C3 firmware (empty — not yet written)
+│   └── README.md
+│
+├── hub/                   ← UNO Q Python hub (empty — not yet written)
+│   └── README.md
 │
 ├── docs/
-│   ├── PLAN.md             ← Master plan: phases, chunks, acceptance criteria.
-│   ├── PROJECT_CONTEXT.md  ← Problem statement, target user, version roadmap, India-specific facts.
-│   ├── RESEARCH.md         ← First-principles derivations, design decisions, open questions.
-│   ├── LEARNINGS.md        ← Permanent platform bug record. Read before touching HX711 code.
-│   ├── HANDOFF.md          ← Session state — what was done, what's next.
+│   ├── PLAN.md            ← Chunk-groups 1–7, current position
+│   ├── SCOPE.md           ← V1 locked scope, state machine, config values
+│   ├── RESEARCH.md        ← First-principles findings (ESP32 era + STM32 archived)
+│   ├── HANDOFF.md         ← Session handoffs
+│   ├── PROJECT_CONTEXT.md ← One-screen current state
 │   │
 │   ├── reference/
-│   │   ├── SENSOR_CHARACTERISATION.md  ← Self-characterisation philosophy. Locked derived constants.
-│   │   ├── HX711_CALIBRATION_ARCHITECTURE.md  ← TARE vs CAL_FACTOR model. Stability checks.
-│   │   ├── HARDWARE.md                 ← Pin constraints, voltage domains, wiring reference.
-│   │   ├── INTERFACE_CONTRACTS.md      ← Bridge RPC, BLE, Socket.IO, SQLite contracts.
-│   │   ├── ARCHITECTURE.md             ← System data flow, MCU/Linux responsibilities, failure modes.
-│   │   ├── SPEC.md                     ← Technical spec: hardware, measurement cycle, accuracy targets.
-│   │   └── EXPERIMENT_HISTORY.md       ← One-table summary of experiments 001–007 and their findings.
+│   │   ├── ARCHITECTURE.md          ← System design, node/hub, pipeline
+│   │   ├── INTERFACE_CONTRACTS.md   ← Node↔hub seam + module result-struct contract
+│   │   ├── HANDOFF_ESP32_PIVOT.md   ← Why we pivoted from STM32 to ESP32-C3
+│   │   ├── HARDWARE.md              ← Load cell wiring, board pinouts
+│   │   ├── SENSOR_CHARACTERISATION.md  ← (to be created at E-002)
+│   │   └── specs/                   ← V1 subsystem specs (read per chunk-group)
+│   │       ├── ARCHITECTURE_SPECIFICATION.md
+│   │       ├── TRANSPORT_SPECIFICATION.md
+│   │       ├── DATA_STORAGE_SPECIFICATION.md
+│   │       ├── ANALYTICS_SPECIFICATION.md
+│   │       ├── PREDICTION_SPECIFICATION.md
+│   │       ├── LPG_DOMAIN_SPECIFICATION.md
+│   │       ├── MEASUREMENT_AND_CALIBRATION.md
+│   │       ├── EXPERIMENT_PROGRAM.md
+│   │       └── _source/MDD_v2_full.md
 │   │
-│   ├── datasheets/
-│   │   ├── ABX00162fullpinout.pdf
-│   │   ├── ABX00162schematics.pdf
-│   │   ├── SKUABX00162ABX00173datasheet.pdf
-│   │   ├── hx711_english.pdf
-│   │   ├── load_cell_hx711_mcu.docx
-│   │   └── loadcell_hx711_mcu_reference.docx
-│   │
-│   └── platform/           ← Arduino UNO Q learning guides (4 parts)
-│       ├── UNO_Q_Part1_Hardware_Architecture.md
-│       ├── UNO_Q_Part2_AppLab_Bridge.md
-│       ├── UNO_Q_Part3_Linux_BLE_Advanced.md
-│       └── UNO_Q_Part4_Projects_Reference.md
+│   └── datasheets/
+│       ├── hx711_english.pdf
+│       ├── esp32-c3_datasheet_en.pdf
+│       └── ... (UNO Q docs)
 │
-├── reference-code/
-│   └── hx711-modular/      ← Modular HX711 sketch from experiment 004. Reference only — copy, don't modify.
-│       ├── hx711.cpp / .h
-│       ├── tare.cpp / .h
-│       ├── cal.cpp / .h
-│       ├── noise.cpp / .h
-│       ├── delta.cpp / .h
-│       ├── sketch.ino
-│       └── sketch.yaml
-│
-└── app/                    ← (empty — App Lab app goes here when Phase 1 is designed in chat)
+└── reference-code/
+    └── stm32-hx711-modular/   ← STM32 reference (port logic not code)
+        └── PORTING_NOTE.md    ← What carries, what doesn't, safety gate
 ```
 
 ---
 
 ## Where to Start
 
-If you are a new engineer picking this up, do these steps in order:
+1. `ssh arduino@192.168.1.161`
+2. `cd ~/ArduinoApps/gas-cylinder-monitor`
+3. Read `CLAUDE.md` — architecture, node/hub split, rules, never-do list
+4. Read `docs/PLAN.md` — chunk-groups, current position
+5. Read `docs/PROJECT_CONTEXT.md` — current state, open questions
+6. Read `docs/HANDOFF.md` — what the last session left
+7. **Design the next chunk in Claude.ai chat** — chat produces a CLI prompt
+8. Execute that prompt in Claude Code CLI
 
-1. **SSH to the board:** `ssh arduino@192.168.1.161`
-2. **Navigate to this folder:** `cd ~/ArduinoApps/gas-cylinder-monitor`
-3. **Read CLAUDE.md** — locked constants, rules, current state, what never to do
-4. **Read docs/PLAN.md** — where Phase 1 begins and what needs designing
-5. **Read docs/PROJECT_CONTEXT.md** — what the product is and why it exists
-6. **Read docs/HANDOFF.md** — what was done last session and what comes next
-7. **Open Claude.ai chat** (not CLI) to design the next phase from first principles
-8. Chat produces a precise CLI prompt. Execute that prompt in Claude Code CLI.
-
-**Do not write any product code before completing steps 1–7.**
+**Do not write any product code before steps 1–7.**
 
 ---
 
-## The Working Rule
+## Working Rule
 
 ```
-PLANNING / RESEARCH / BRAINSTORMING → Claude.ai chat only.
-CODE WRITING / IMPLEMENTATION       → Claude Code CLI only.
+PLANNING / RESEARCH / BRAINSTORMING → Claude.ai chat only
+CODE WRITING / IMPLEMENTATION       → Claude Code CLI only
 ```
 
-These two modes never mix. See `~/ArduinoApps/WORKING_MODE.md` for the full contract.
-
----
-
-## Key Locked Values (quick reference)
-
-```
-DT=D7, SCK=D6               ← never change
-HX711 VCC = 5V              ← never change
-CAL_FACTOR = 100–107 raw/g  ← self-compute every deployment
-TARE = -12799 to -13737 raw ← self-compute every boot
-NOISE STD = 1.33–2.36g      ← self-compute every boot
-THRESHOLD = 2.38–4.23g      ← derived from STD × formula
-FALLBACK threshold = 8.0g   ← if characterisation fails
-millis() pacing = 120ms     ← at TOP of loop() only
-wait_ready timeout = 400ms  ← tuned for AQ3 under Bridge load
-```
-
-Full derivation and proof in `docs/reference/SENSOR_CHARACTERISATION.md`.
-Full experiment history in `docs/reference/EXPERIMENT_HISTORY.md`.
+See `~/ArduinoApps/WORKING_MODE.md` for the full contract.
