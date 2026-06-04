@@ -193,6 +193,55 @@ Everything else is written by Claude Code CLI on the board.
 
 ---
 
+## Modular sketch principle
+
+### Rule
+Single-file sketches are acceptable for early experiments (E-000, E-001, E-002).
+The main production sketch must be modular — never one long monolithic .ino file.
+
+### Structure
+One orchestrator + multiple focused module files:
+- sketch.ino — orchestrator only. setup() and loop(). No sensor logic. No math.
+  Calls modules. Passes data between them. Nothing else.
+- hx711.h / hx711.cpp — raw bit-bang read. Corrupt filters. Nothing else.
+- tare.h / tare.cpp — tare derivation and validation. Nothing else.
+- cal.h / cal.cpp — cal_factor derivation and storage. Nothing else.
+- noise.h / noise.cpp — noise floor characterisation. Nothing else.
+- delta.h / delta.cpp — sliding window delta detector. Nothing else.
+- weight.h / weight.cpp — grams computation from raw. Nothing else.
+- comms.h / comms.cpp — WiFi send, payload construction. Nothing else.
+
+### Why modular
+- Each module can be tested independently without the full system
+- A bug in tare does not require reading 500 lines of sketch to find
+- Modules can be reused — hx711.cpp ports unchanged to any future MCU
+- New capability (4-cell summing, BLE fallback) = new module, orchestrator unchanged
+- Easier to hand off — a collaborator reads one file, not everything
+
+### When to go modular
+Transition from single-file to modular happens at Group 1 completion — when all
+experiments (E-000 through E-00x) are done and the production node sketch begins.
+Experiments stay single-file — they are throwaway characterisation code.
+Production code is always modular from the first line.
+
+### Module contract (non-negotiable)
+Every module must:
+- Return a result struct containing: value + quality (GOOD/DEGRADED/FAILED) + diagnosis string
+- Never call hx711_read() directly except hx711.cpp — all others receive raw passed in
+- Never block — return immediately, let orchestrator manage state
+- Never use String class — use char buf[] and snprintf only
+- Never use global variables shared across modules — pass everything via function arguments
+
+### Orchestrator contract (non-negotiable)
+sketch.ino must:
+- Contain only setup(), loop(), and state machine cases
+- Have no sensor math, no averaging, no threshold logic
+- Pace itself with millis() guard at TOP of loop() only
+- Pass raw readings down to modules, receive result structs back
+- Make all decisions based on result.quality — never on raw values directly
+
+---
+
 ## What never goes in any document
 - Usernames or hostnames hardcoded (use 192.168.1.161 format for IPs only)
 - Tool names in git commit messages
