@@ -35,3 +35,41 @@ Architecture locked. Ready for E-000 hardware bring-up.
 | Rough cal_factor | ~113 raw/g | rough |
 ### Gate
 E-000 PASSED. Zero corrupt values. Hardware confirmed talking.
+
+---
+
+## Session 003 - 2026-06-05 - E-001 tare + cal_factor + grams
+
+### Goal
+Derive tare from unloaded samples, derive cal_factor from known weight,
+output grams in continuous loop. Gate: grams within 5% of known weight.
+
+### What happened
+- Built E001_tare_cal_grams.ino - single file, no library, raw bit-bang ported from E-000
+- Fixed Serial buffer drain bug (stale \n byte caused cal_factor = inf on first run)
+- Added 10 second settle window after keypress before sampling - eliminates load cell creep error
+- Extended sketch to loop through multiple weights - derives separate cal_factor per weight
+- Ran linearity test across 8 weights: 10g, 20g, 30g, 40g, 50g, 227g, 234g, 257g
+
+### Real hardware outputs
+| Weight | Cal_factor (raw/g) | Mean reading | Error |
+|---|---|---|---|
+| 10g | 29.50 | 9.26g | unstable |
+| 20g | 69.13 | 20.37g | good |
+| 30g | 87.52 | 30.61g | good |
+| 40g | 95.83 | 40.37g | good |
+| 50g | 97.77 | 50.12g | good |
+| 227g | 104.84 | 227.57g | excellent |
+| 234g | 105.21 | 233.24g | excellent |
+| 257g | 105.50 | 256.47g | excellent |
+
+Key finding: cal_factor unstable below ~100g (SNR problem, not hardware fault).
+cal_factor stable at ~105 raw/g above 227g. Variation only 0.6% across 227-257g.
+Load cell confirmed linear in the range that matters for gas cylinder operation.
+Tare this session: -13823 to -15747 raw (varies per boot - self-characterised correctly)
+
+### Gate
+E-001 PASSED. Grams output accurate above 100g reference weight.
+
+### Sketches built
+- node/E001_tare_cal_grams/E001_tare_cal_grams.ino

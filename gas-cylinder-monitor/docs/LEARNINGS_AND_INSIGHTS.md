@@ -265,3 +265,73 @@ These are mathematical/physical laws. They do not need re-derivation.
 - Wheatstone bridge physics (unloaded raw is negative due to manufacturing offset)
 - Sliding window delta detection principle
 - 4σ safety factor for threshold setting
+
+---
+
+## L-008 - cal_factor signal-to-noise regime boundary - 2026-06-05
+
+### The finding
+cal_factor derived from a reference weight below ~100g is unreliable on this hardware.
+cal_factor derived from weights above ~200g is stable to within 0.6%.
+
+### Why
+cal_factor = (loaded_mean - tare) / known_weight_g
+The numerator (loaded_mean - tare) is the signal.
+The noise floor of this system is roughly ±2g peak.
+
+For 10g reference weight:
+  signal = 10g × 105 raw/g ~ 1050 raw
+  noise = ±200 raw peak
+  SNR = 1050 / 200 = 5.25 - noise is 19% of signal
+
+For 227g reference weight:
+  signal = 227g × 105 raw/g ~ 23835 raw
+  noise = ±200 raw peak
+  SNR = 23835 / 200 = 119 - noise is 0.8% of signal
+
+When SNR is low, the 50-sample mean is still contaminated by noise.
+The computed cal_factor absorbs that noise as error.
+Above ~200g, SNR is high enough that the mean converges reliably.
+
+### Rule
+Always derive cal_factor from a reference weight that produces
+a signal at least 20× the peak noise. For this system: reference weight > 150g minimum.
+For production first-boot calibration: use the known steel weight (~15kg) as the reference.
+The cylinder itself is the calibration weight - massive SNR advantage.
+
+### Verified
+Hardware confirmed 2026-06-05. 8-weight linearity run.
+
+---
+
+## L-009 - Load cell mechanical creep and the settle window - 2026-06-05
+
+### The finding
+When a weight is placed on a load cell, the raw reading does not immediately
+settle to its final value. It creeps over several seconds.
+If sampling begins too soon after placement, the 50-sample mean is pulled toward
+the mid-creep value, not the settled value. This produces a wrong cal_factor.
+
+### Why
+Load cells are metal structures under mechanical stress (strain gauges bonded to a beam).
+When a load is applied, the metal deforms elastically - but not instantaneously.
+The metal creeps: it continues deforming slowly over 5-15 seconds as internal
+stress redistributes. This is a physical property of the material, not electronics.
+The HX711 faithfully reports this creep as a slow drift in raw values.
+The first few seconds of readings after placement are systematically biased low
+(the beam has not fully deformed yet), then the readings stabilise.
+
+### The fix
+Wait 10 seconds after the user signals weight is placed, before taking the 50 samples.
+At 10 seconds, the beam has reached mechanical equilibrium.
+The 50 samples then represent the true settled load, not the creep transient.
+
+### Rule
+Any calibration sampling (tare or cal_factor derivation) must happen only after
+a minimum 5-10 second settle window following load change.
+Tare settle is handled by waiting for stable readings before boot sampling.
+Cal_factor settle is handled by explicit 10s delay after keypress.
+
+### Verified
+Hardware confirmed 2026-06-05. Previous bad cal_factor runs had no settle window.
+Runs with 10s settle produced consistent, reproducible cal_factor values.

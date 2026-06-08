@@ -369,6 +369,27 @@ DOUT swings at 3.3V - safe for ESP32-C3 GPIO. No level shifter needed.
 
 ---
 
+## ESP32-C3 Session 2 findings - 2026-06-05
+
+### cal_factor confirmed range (ESP32-C3 + GISLAB HX711 + YZC-161A, 3.3V VDD)
+- Stable range (reference >200g): 104.84 - 105.50 raw/g
+- Variation: 0.6% across 227g-257g
+- Unreliable range (reference <100g): 29.5 - 97.8 raw/g (SNR too low)
+- Locked production value: ~105 raw/g [DERIVED - pending Experiment 005 for full range]
+
+### Serial input on ESP32-C3 Arduino
+- Serial.setTimeout(30000) required before readStringUntil - default 1000ms times out too fast
+- Serial buffer contains stale \n from Serial Monitor open event
+- Flush required: while (Serial.available()) Serial.read() before every user input prompt
+- Without flush: readStringUntil returns empty string immediately, toFloat("") = 0.0
+
+### Load cell settle time
+- 10 seconds after load placement required for mechanical creep to reach equilibrium
+- Sampling before settle = systematically biased cal_factor
+- millis() countdown preferred over delay() - keeps Serial responsive during wait
+
+---
+
 ## Change Log
 
 | Date | Entry |
@@ -377,3 +398,4 @@ DOUT swings at 3.3V - safe for ESP32-C3 GPIO. No level shifter needed.
 | 2026-05-06 | Added entries 3–12 (STM32 era) |
 | 2026-06-04 | MAJOR: ESP32 pivot — Part I is new canonical; Part II archived as SUPERSEDED |
 | 2026-06-04 Session 2 | Added ESP32-C3 pinout, safe pins, rough cal_factor, 3.3V VDD confirmed |
+| 2026-06-05 | E-001 complete. cal_factor ~105 raw/g confirmed. Serial drain and settle rules added. |

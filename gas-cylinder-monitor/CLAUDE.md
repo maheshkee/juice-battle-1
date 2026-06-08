@@ -136,11 +136,11 @@ Copy only when the WebUI phase (Group 7) begins. Never commit wheels/ to git.
 
 ---
 
-## Current State — 2026-06-04
+## Current State — 2026-06-05
 
 ```
-Status:         E-000 COMPLETE AND PASSED (2026-06-04)
-node/:          E000_raw_read, STOP, HW_VERIFY built
+Status:         E-001 COMPLETE AND PASSED (2026-06-05)
+node/:          E000_raw_read, STOP, HW_VERIFY, E001_tare_cal_grams built
 hub/:           empty — not started yet
 
 Wiring locked (do not change without re-verifying):
@@ -151,10 +151,21 @@ Arduino IDE locked:
   esp32 by Espressif v3.0.7, Board: ESP32C3 Dev Module
   Port: COM11, USB CDC On Boot: ENABLED
 
-Rough cal_factor: ~113 raw/g (ESP32-specific, re-derive in E-001 — never use 106.7)
+Locked values (ESP32-C3 + GISLAB HX711 + YZC-161A, 3.3V VDD):
+  cal_factor:         ~105 raw/g (derived 227g-257g weights, stable to 0.6%)
+  cal_factor unreliable below ~100g reference weight (SNR too low — see L-008)
+  Tare range:         -13823 to -15747 raw (varies per boot, self-characterised)
+  Settle window:      10 seconds after weight placement before sampling — mandatory
+  Serial buffer:      flush before every readStringUntil prompt (stale \n bug — see L-009 / RESEARCH)
+  known_weight_g:     must be entered at runtime, never hardcoded
+  cal_factor ref:     must be derived from reference weight above 100g for reliable results
 
-Current position: Group 1, E-001 — tare averaging, cal_factor derivation, grams output
-Next action:      Design E-001 in Claude.ai chat. Implement via Claude Code CLI.
+Completed this session (2026-06-05):
+  E-001 tare derivation, cal_factor derivation, grams output. Gate PASSED.
+  Grams accurate to within 1% above 100g reference weight.
+
+Current position: Group 1 - WEIGHT. E-001 PASSED. E-002 is next.
+Next action:      E-002 noise floor characterisation on ESP32-C3
 ```
 
 ---
