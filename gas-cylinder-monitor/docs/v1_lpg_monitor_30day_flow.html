@@ -1,0 +1,350 @@
+
+<h2 class="sr-only">V1 Gas Cylinder Monitor — 30-day end-to-end flow showing what happens from installation to low-gas alert</h2>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{padding:1.5rem 0 2rem;font-size:14px}
+.section-label{font-size:11px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:.5rem}
+.phase-strip{display:flex;gap:3px;margin-bottom:1.5rem}
+.phase-block{display:flex;align-items:center;justify-content:center;height:32px;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer;transition:opacity .15s;position:relative}
+.phase-block:hover{opacity:.85}
+.phase-boot{flex:1;background:var(--color-background-warning);color:var(--color-text-warning);border:0.5px solid var(--color-border-warning)}
+.phase-track{flex:14;background:var(--color-background-success);color:var(--color-text-success);border:0.5px solid var(--color-border-success)}
+.phase-burn{flex:7;background:var(--color-background-info);color:var(--color-text-info);border:0.5px solid var(--color-border-info)}
+.phase-low{flex:8;background:var(--color-background-danger);color:var(--color-text-danger);border:0.5px solid var(--color-border-danger)}
+.chart-wrap{position:relative;height:200px;margin-bottom:1.25rem}
+.day-axis{display:flex;justify-content:space-between;font-size:10px;color:var(--color-text-tertiary);margin-bottom:1.5rem;padding:0 2px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.5rem}
+.card{background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:.75rem 1rem}
+.card-label{font-size:11px;color:var(--color-text-tertiary);margin-bottom:.35rem;font-weight:500}
+.card-val{font-size:20px;font-weight:500;color:var(--color-text-primary);line-height:1}
+.card-sub{font-size:11px;color:var(--color-text-secondary);margin-top:.25rem}
+.card-dash{font-size:20px;font-weight:500;color:var(--color-text-tertiary)}
+.card.highlighted{border-color:var(--color-border-info);background:var(--color-background-info)}
+.card.highlighted .card-val{color:var(--color-text-info)}
+.card.warn{border-color:var(--color-border-danger);background:var(--color-background-danger)}
+.card.warn .card-val{color:var(--color-text-danger)}
+.timeline{border-left:1.5px solid var(--color-border-tertiary);padding-left:1rem;display:flex;flex-direction:column;gap:.75rem;margin-bottom:1.5rem}
+.event{display:flex;gap:.6rem;align-items:flex-start;cursor:pointer;border-radius:6px;padding:.35rem .5rem;transition:background .15s}
+.event:hover{background:var(--color-background-secondary)}
+.dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.dot-ok{background:var(--color-text-success)}
+.dot-info{background:var(--color-text-info)}
+.dot-warn{background:var(--color-text-warning)}
+.dot-danger{background:var(--color-text-danger)}
+.dot-gray{background:var(--color-text-tertiary)}
+.event-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+.event-sub{font-size:12px;color:var(--color-text-secondary)}
+.slider-row{display:flex;align-items:center;gap:10px;margin-bottom:1.25rem}
+.slider-row label{font-size:12px;color:var(--color-text-secondary);white-space:nowrap}
+.slider-row input{flex:1}
+.day-badge{font-size:13px;font-weight:500;color:var(--color-text-primary);min-width:52px;text-align:right}
+.state-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;padding:3px 9px;border-radius:999px}
+.state-uninst{background:var(--color-background-warning);color:var(--color-text-warning);border:0.5px solid var(--color-border-warning)}
+.state-track{background:var(--color-background-success);color:var(--color-text-success);border:0.5px solid var(--color-border-success)}
+.state-lowgas{background:var(--color-background-danger);color:var(--color-text-danger);border:0.5px solid var(--color-border-danger)}
+.divider{height:0.5px;background:var(--color-border-tertiary);margin:1.25rem 0}
+.legend-row{display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--color-text-secondary);margin-bottom:1rem}
+.legend-item{display:flex;align-items:center;gap:5px}
+.legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+</style>
+
+<div class="wrap">
+  <div class="section-label">V1 gas cylinder monitor — day 0 to day 30</div>
+
+  <div class="phase-strip">
+    <div class="phase-block phase-boot" style="flex:1" title="Boot & install">Boot</div>
+    <div class="phase-block phase-track" style="flex:13" title="Tracking — gas + %, no prediction yet">Tracking (no prediction)</div>
+    <div class="phase-block phase-burn" style="flex:7" title="Burn rate + days remaining unlocked">Tracking + prediction</div>
+    <div class="phase-block phase-low" style="flex:9" title="LOW GAS state — alert fires">LOW GAS alert</div>
+  </div>
+
+  <div class="slider-row">
+    <label>Scrub day</label>
+    <input type="range" min="0" max="30" value="0" id="day-slider" step="1">
+    <span class="day-badge" id="day-badge">Day 0</span>
+  </div>
+
+  <div id="state-row" style="margin-bottom:1rem;display:flex;align-items:center;gap:8px">
+    <span style="font-size:12px;color:var(--color-text-secondary)">State:</span>
+    <span class="state-badge state-uninst" id="state-badge">UNINSTALLED</span>
+    <span style="font-size:12px;color:var(--color-text-secondary);margin-left:4px" id="state-note">Waiting for fresh cylinder delivery</span>
+  </div>
+
+  <div class="chart-wrap">
+    <canvas id="gasCurve" role="img" aria-label="Gas remaining weight curve over 30 days. Starts at 14.2kg on day 0 and declines to near 0 by day 30."></canvas>
+  </div>
+
+  <div class="day-axis" id="day-axis"></div>
+
+  <div class="divider"></div>
+  <div class="section-label" style="margin-bottom:.75rem">What the user sees on their dashboard</div>
+
+  <div class="cards" id="cards">
+    <div class="card" id="c-gas">
+      <div class="card-label"><i class="ti ti-flame" aria-hidden="true"></i> Gas remaining</div>
+      <div class="card-val" id="v-gas">—</div>
+      <div class="card-sub" id="s-gas">Waiting for install</div>
+    </div>
+    <div class="card" id="c-pct">
+      <div class="card-label"><i class="ti ti-chart-pie" aria-hidden="true"></i> Percentage</div>
+      <div class="card-val" id="v-pct">—</div>
+      <div class="card-sub" id="s-pct"></div>
+    </div>
+    <div class="card" id="c-days">
+      <div class="card-label"><i class="ti ti-calendar" aria-hidden="true"></i> Days remaining</div>
+      <div class="card-val" id="v-days">—</div>
+      <div class="card-sub" id="s-days">No data yet</div>
+    </div>
+    <div class="card" id="c-burn">
+      <div class="card-label"><i class="ti ti-trending-down" aria-hidden="true"></i> Burn rate</div>
+      <div class="card-val" id="v-burn">—</div>
+      <div class="card-sub" id="s-burn">Needs 24h data</div>
+    </div>
+    <div class="card" id="c-steel">
+      <div class="card-label"><i class="ti ti-cylinder" aria-hidden="true"></i> Steel (tare)</div>
+      <div class="card-val" id="v-steel">—</div>
+      <div class="card-sub" id="s-steel">Derived at install</div>
+    </div>
+    <div class="card" id="c-state">
+      <div class="card-label"><i class="ti ti-activity" aria-hidden="true"></i> System state</div>
+      <div class="card-val" id="v-state" style="font-size:13px">UNINSTALLED</div>
+      <div class="card-sub" id="s-state">Hardware ready</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+  <div class="section-label" style="margin-bottom:.75rem">Key events on this day</div>
+  <div class="timeline" id="timeline"></div>
+
+  <div class="divider"></div>
+  <div class="legend-row">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--color-text-success)"></div>Normal tracking</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--color-text-info)"></div>Prediction unlocked (24h+)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--color-text-danger)"></div>LOW GAS alert zone</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--color-text-warning)"></div>Pre-install / boot</div>
+  </div>
+  <div style="font-size:11px;color:var(--color-text-tertiary)">Burn rate assumed 473g/day (typical Indian household). 14.2kg net gas. Steel = 15.3kg (derived at install). LOW GAS fires at &lt;2kg gas OR &lt;10 days remaining.</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const CAPACITY = 14200;
+const STEEL    = 15300;
+const BURN_G   = 473;
+const LOW_GAS_G = 2000;
+const LOW_DAYS  = 10;
+const MIN_BURN_H = 24;
+
+function gasAt(day){
+  if(day < 0) return CAPACITY;
+  return Math.max(0, CAPACITY - BURN_G * day);
+}
+function pctAt(day){ return (gasAt(day)/CAPACITY*100).toFixed(1); }
+function daysLeft(gas){ return (gas/BURN_G).toFixed(1); }
+
+const events = {
+  0:[
+    {dot:'dot-warn',title:'System boots',sub:'ESP32 starts. Self-characterises noise floor. Derives tare_raw. Begins BLE advertising.'},
+    {dot:'dot-warn',title:'State: UNINSTALLED',sub:'No cylinder present. Dashboard shows "Place new cylinder". No outputs yet.'},
+    {dot:'dot-gray',title:'15-min heartbeats begin',sub:'ESP32 sends {grams, quality, sigma} every 15 minutes to hub via BLE.'},
+  ],
+  1:[
+    {dot:'dot-ok',title:'Fresh cylinder delivered — G-jump detected',sub:'Gross weight jumps from ~0 to ~29.5kg (>8kg threshold). Hub detects install event.'},
+    {dot:'dot-ok',title:'Steel derived instantly',sub:'steel = 29.5kg − 14.2kg = 15.3kg. Written to config.json. Never changes for this cylinder.'},
+    {dot:'dot-ok',title:'Gas% and kg go live immediately',sub:'gas = gross − steel. User sees 14.2kg / 100% from this moment on.'},
+    {dot:'dot-info',title:'State → TRACKING',sub:'SQLite begins recording. Heartbeat spine starts building. Burn rate and days still show "—".'},
+  ],
+  2:[
+    {dot:'dot-info',title:'24 hours of data crossed',sub:'MIN_HOURS_BURNRATE = 24h reached. burn_rate now computable from real readings.'},
+    {dot:'dot-info',title:'Burn rate unlocked',sub:'burn_rate = gas_consumed_in_24h / 1 day. First estimate — rough but real. No government averages used.'},
+    {dot:'dot-info',title:'Days remaining unlocked',sub:'days_remaining = gas_remaining / burn_rate. Shown with low confidence until 7-day window fills.'},
+  ],
+  7:[
+    {dot:'dot-info',title:'7-day rolling window filled',sub:'burn_rate now uses a stable 7-day rolling average. Prediction confidence increases significantly.'},
+    {dot:'dot-ok',title:'Prediction becomes personalised',sub:'The system knows this household\'s actual cooking patterns. Not population averages.'},
+  ],
+  15:[
+    {dot:'dot-ok',title:'Mid-cylinder checkpoint (~50% gas)',sub:'~7.1kg gas remaining. 100% nominal operation. All outputs live and stable.'},
+    {dot:'dot-ok',title:'96 SQLite rows per day',sub:'Heartbeat spine has ~1440 rows by now. Burn rate and pattern analytics are solid.'},
+  ],
+  21:[
+    {dot:'dot-danger',title:'LOW GAS state entered',sub:'gas < 2kg OR days_remaining < 10. Both thresholds checked. Earlier one fires first.'},
+    {dot:'dot-danger',title:'BLE alert pushed',sub:'Hub pushes low_gas_alert event via BLE notification. WebUI shows warning banner.'},
+    {dot:'dot-danger',title:'Dashboard shows urgency',sub:'Gas gauge turns red. Days remaining shown prominently. Recommendation: order replacement.'},
+  ],
+  22:[{dot:'dot-danger',title:'Continued LOW GAS tracking',sub:'System keeps measuring and predicting accurately. Nothing degrades — state is informational only.'}],
+  25:[{dot:'dot-danger',title:'~5 days remaining',sub:'If no action taken, system will reach CYLINDER_REMOVED threshold soon. Alert remains active.'}],
+  30:[
+    {dot:'dot-danger',title:'Cylinder nearing empty',sub:'Gas ~0.1kg. System still measuring. Burn rate still tracked.'},
+    {dot:'dot-warn',title:'Next: cylinder removed → auto-tare',sub:'When cylinder lifted off, G drops below 2kg. Hub triggers auto-tare. Scale zero re-derived. Ready for next install.'},
+  ],
+};
+
+const axisEl = document.getElementById('day-axis');
+for(let d=0;d<=30;d+=5){
+  const s=document.createElement('span');
+  s.textContent=d===0?'Day 0':(d===30?'Day 30':'Day '+d);
+  axisEl.appendChild(s);
+}
+
+const labels=[], gasData=[], colorData=[];
+for(let d=0;d<=30;d++){
+  labels.push('Day '+d);
+  const g=gasAt(d);
+  gasData.push((g/1000).toFixed(2));
+  colorData.push(d===0?'#D4953A': g<=LOW_GAS_G?'#C04848': d>=2?'#3B8BD4':'#1D9E75');
+}
+
+const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
+const gridCol=isDark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.07)';
+const textCol=isDark?'#7a7a72':'#888780';
+
+const ctx=document.getElementById('gasCurve').getContext('2d');
+const chart=new Chart(ctx,{
+  type:'line',
+  data:{
+    labels,
+    datasets:[{
+      label:'Gas remaining (kg)',
+      data:gasData,
+      borderColor:'#3B8BD4',
+      backgroundColor:'rgba(59,139,212,0.08)',
+      pointBackgroundColor:colorData,
+      pointRadius:3,
+      pointHoverRadius:5,
+      borderWidth:1.5,
+      fill:true,
+      tension:.35
+    }]
+  },
+  options:{
+    responsive:true,
+    maintainAspectRatio:false,
+    plugins:{
+      legend:{display:false},
+      tooltip:{
+        callbacks:{
+          label:ctx=>`${ctx.parsed.y} kg gas remaining`
+        }
+      }
+    },
+    scales:{
+      x:{
+        display:false
+      },
+      y:{
+        min:0,max:15,
+        ticks:{
+          color:textCol,
+          font:{size:11},
+          callback:v=>v+'kg'
+        },
+        grid:{color:gridCol},
+        border:{display:false}
+      }
+    }
+  }
+});
+
+let currentLine=null;
+
+function update(day){
+  const d=parseInt(day);
+  document.getElementById('day-badge').textContent='Day '+d;
+
+  const gas=gasAt(d);
+  const gasKg=(gas/1000).toFixed(2);
+  const pct=pctAt(d);
+  const dl=daysLeft(gas);
+  const hasBurn=d>=2;
+  const isLow=gas<=LOW_GAS_G||parseFloat(dl)<=LOW_DAYS;
+  const isUninstalled=d===0;
+
+  const stateEl=document.getElementById('state-badge');
+  const stateNote=document.getElementById('state-note');
+  if(isUninstalled){
+    stateEl.className='state-badge state-uninst';
+    stateEl.textContent='UNINSTALLED';
+    stateNote.textContent='Waiting for fresh cylinder delivery';
+  } else if(isLow){
+    stateEl.className='state-badge state-lowgas';
+    stateEl.textContent='LOW GAS';
+    stateNote.textContent='Alert active — order replacement cylinder';
+  } else {
+    stateEl.className='state-badge state-track';
+    stateEl.textContent='TRACKING';
+    stateNote.textContent='Normal operation';
+  }
+
+  const gasCard=document.getElementById('c-gas');
+  const pctCard=document.getElementById('c-pct');
+  const daysCard=document.getElementById('c-days');
+
+  gasCard.className='card'+(isLow&&!isUninstalled?' warn':'')+((!isUninstalled&&!isLow)?' highlighted':'');
+  pctCard.className='card'+(isLow&&!isUninstalled?' warn':'');
+  daysCard.className='card'+(isLow&&!isUninstalled?' warn':'');
+
+  if(isUninstalled){
+    document.getElementById('v-gas').textContent='—';
+    document.getElementById('s-gas').textContent='Waiting for install';
+    document.getElementById('v-pct').textContent='—';
+    document.getElementById('s-pct').textContent='';
+    document.getElementById('v-days').textContent='—';
+    document.getElementById('s-days').textContent='No data yet';
+    document.getElementById('v-burn').textContent='—';
+    document.getElementById('s-burn').textContent='Needs 24h data';
+    document.getElementById('v-steel').textContent='—';
+    document.getElementById('s-steel').textContent='Derived at install';
+    document.getElementById('v-state').textContent='UNINSTALLED';
+    document.getElementById('s-state').textContent='Hardware ready';
+  } else {
+    document.getElementById('v-gas').textContent=gasKg+'kg';
+    document.getElementById('s-gas').textContent='G − steel = gas remaining';
+    document.getElementById('v-pct').textContent=pct+'%';
+    document.getElementById('s-pct').textContent='Exact (steel known)';
+    document.getElementById('v-days').textContent=hasBurn?dl+' days':'—';
+    document.getElementById('s-days').textContent=hasBurn?'From real burn rate':'Need 24h data';
+    document.getElementById('v-burn').textContent=hasBurn?(BURN_G+'g/day'):'—';
+    document.getElementById('s-burn').textContent=hasBurn?(d>=7?'7-day rolling avg':'1-day estimate (rough)'):'Need 24h data';
+    document.getElementById('v-steel').textContent='15.3kg';
+    document.getElementById('s-steel').textContent='Derived day 1, exact';
+    document.getElementById('v-state').textContent=isLow?'LOW GAS':'TRACKING';
+    document.getElementById('s-state').textContent=isLow?'Alert active':'All outputs live';
+  }
+
+  if(currentLine){currentLine.remove();currentLine=null;}
+  const meta=chart.getDatasetMeta(0);
+  if(meta.data[d]){
+    const pt=meta.data[d].getCenterPoint();
+    const canvas=document.getElementById('gasCurve');
+    const line=document.createElement('div');
+    line.style.cssText=`position:absolute;left:${pt.x}px;top:0;width:1px;height:100%;background:var(--color-border-secondary);pointer-events:none;`;
+    canvas.parentElement.appendChild(line);
+    currentLine=line;
+  }
+
+  const tl=document.getElementById('timeline');
+  tl.innerHTML='';
+  const dayEvents=events[d]||[];
+  if(dayEvents.length===0){
+    const p=document.createElement('div');
+    p.className='event';
+    p.innerHTML=`<div class="dot dot-gray"></div><div><div class="event-title">No key event today</div><div class="event-sub">System reading heartbeat every 15 minutes. SQLite growing. ${hasBurn?'Burn rate updating.':'Burn rate accumulating data.'}</div></div>`;
+    tl.appendChild(p);
+  } else {
+    dayEvents.forEach(ev=>{
+      const el=document.createElement('div');
+      el.className='event';
+      el.innerHTML=`<div class="dot ${ev.dot}"></div><div><div class="event-title">${ev.title}</div><div class="event-sub">${ev.sub}</div></div>`;
+      tl.appendChild(el);
+    });
+  }
+}
+
+document.getElementById('day-slider').addEventListener('input',e=>update(e.target.value));
+update(0);
+
+chart.options.animation=false;
+chart.update();
+</script>
