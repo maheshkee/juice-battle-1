@@ -17,14 +17,14 @@ Development uses water in a container — not gas. No code path hardcodes "gas" 
 ## Architecture
 
 ```
-Load cell → HX711 → ESP32-C3 (node/) ──WiFi──▶ UNO Q hub (hub/)
-             [-------- node/ ---------]         [------- hub/ ----------]
-             bit-bang, corrupt filters           timestamp, steel, gas%, SQLite,
-             N-avg, cal_factor, grams            analytics, prediction, WebUI
-             no gas%, no clock, no history       App Lab / Docker / Python
+Load cell → HX711 → ESP32-C3 (node/) ──BLE──▶ UNO Q hub (hub/)
+             [-------- node/ ---------]        [------- hub/ ----------]
+             bit-bang, corrupt filters          timestamp, steel, gas%, SQLite,
+             N-avg, cal_factor, grams           analytics, prediction, WebUI
+             no gas%, no clock, no history      App Lab / Docker / Python
 ```
 
-Payload across WiFi: `{grams: float, quality: GOOD|DEGRADED|FAILED, sigma: float}`
+Payload via BLE GATT notify: `{grams: float, quality: GOOD|DEGRADED|FAILED, sigma: float}`
 Hub stamps timestamp on receipt. ESP32-C3 has no RTC.
 
 ---
@@ -46,20 +46,23 @@ Hub stamps timestamp on receipt. ESP32-C3 has no RTC.
 ## Current State
 
 ```
-Status:           E-001 COMPLETE AND PASSED (2026-06-05)
-Wiring:           LOCKED — GPIO4=DOUT, GPIO3=SCK, 3V3=VDD, GND=GND
-                  Load cell Red=E+, Black=E-, Green=A+, White=A-
-Arduino IDE:      esp32 v3.0.7, ESP32C3 Dev Module, COM11, USB CDC On Boot=ENABLED
-node/ built:      E000_raw_read/E000_raw_read.ino — DONE
-                  E001_tare_cal_grams/E001_tare_cal_grams.ino — DONE
-                  STOP/STOP.ino
-                  HW_VERIFY/HW_VERIFY.ino
-hub/:             empty — not started
-cal_factor:       ~105 raw/g (derived from 227g-257g weights, stable to 0.6%)
-                  Unreliable below ~100g reference weight (SNR too low)
-Tare range:       -13823 to -15747 raw (varies per boot, self-characterised)
-Current chunk:    Group 1 - WEIGHT. E-001 PASSED. E-002 is next.
-Next action:      E-002 noise floor characterisation on ESP32-C3
+Transport  : BLE only (LOCKED 2026-06-05, validated 2026-06-08)
+             E-003 PASSED. Full pipeline proven end-to-end.
+             ESP32 GATT server → BlueZ QRB2210 → Python bleak → hub terminal with timestamp.
+             bleak service_uuids filter not respected on QRB2210 - name filter applied in code (L-020)
+             Noise STD with BLE running: 1.81g, threshold 7.24g (supersedes E-002 BLE-off values)
+
+Experiments:
+  E-000  PASSED  2026-06-04
+  E-001  PASSED  2026-06-05
+  E-002  PASSED  2026-06-08
+  E-003  PASSED  2026-06-08
+  Next: modular refactor → App Lab migration
+
+Hub files:
+  hub/e003_ble_test.py     - BLE subscriber, self-provisioning, MAC cache
+  hub/config.json          - device config (MAC auto-populated on first run)
+  hub/requirements.txt     - bleak>=0.21.0
 ```
 
 ---
@@ -70,12 +73,14 @@ Next action:      E-002 noise floor characterisation on ESP32-C3
 |---|----------|--------|
 | 1 | 3.3V logic-level compatibility: HX711 DOUT/SCK vs ESP32-C3 GPIO | RESOLVED — 3V3 VDD safe, no level shifter needed |
 | 2 | GPIO pin pair for ESP32-C3 + HX711 | RESOLVED — GPIO4=DOUT, GPIO3=SCK |
-| 3 | cal_factor on ESP32-C3 (old 106.7 is VOID) | RESOLVED — ~105 raw/g (derived E-001, stable 227g-257g) |
-| 4 | float vs double on ESP32-C3 (double-broken was STM32-specific) | PENDING — E-001 |
-| 5 | Noise floor on ESP32-C3 + with hardened wiring | PENDING — E-002 |
-| 6 | WiFi transport protocol details (MQTT vs HTTP) | PENDING — Group 2 |
-| 7 | cal_factor linearity (227g-257g confirmed, below 100g unreliable) | PARTIALLY RESOLVED — stable 0.6% variation 227g-257g. Below 100g unreliable (SNR). Above 257g unknown — pending Experiment 005 with kg-range weights. |
-| 8 | cal_factor linearity above 257g | PENDING — requires kg-range known weights, Experiment 005 |
+| 3 | cal_factor on ESP32-C3 (old 106.7 is VOID) | RESOLVED E-001: ~105 raw/g (single point, E-005 pending) |
+| 4 | float vs double on ESP32-C3 (double-broken was STM32-specific) | RESOLVED E-001: float-only confirmed sufficient |
+| 5 | Noise floor on ESP32-C3 + with hardened wiring | RESOLVED E-002: STD 0.62-0.67g, threshold 2.67g |
+| 6 | WiFi transport protocol details (MQTT vs HTTP) | SUPERSEDED — transport locked as BLE-only |
+| 7 | cal_factor linearity across full 0-20kg range | PENDING E-005 (parked) |
+| 8 | Minimum detectable cooking event (real measurement) | PENDING E-006B post-install |
+| 9 | BLE GATT UUIDs (service + characteristic) | RESOLVED E-003: service aa206b91-..., char b9b25bb1-... |
+| 10 | Hub discovery without hardcoded MAC | RESOLVED E-003: self-provisioning via name filter + config.json cache |
 
 ---
 

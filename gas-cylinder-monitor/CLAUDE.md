@@ -17,7 +17,7 @@ Development phase uses water in a container — not a gas cylinder. Weight is we
 No code path may be hardcoded for "gas" semantics.
 
 ```
-Load cell → HX711 → ESP32-C3 (grams) ──WiFi──▶ UNO Q hub (everything else)
+Load cell → HX711 → ESP32-C3 (grams) ──BLE──▶ UNO Q hub (everything else)
             [------ node/ ----------]           [-------- hub/ --------------]
 ```
 
@@ -70,7 +70,7 @@ patterns only. ESP32-C3 firmware is standard Arduino/PlatformIO with WiFi librar
 **Board:** UNO Q AQ3 at 192.168.1.161. App Lab / Docker / Python world.
 
 **Owns:**
-- WiFi receive (listen for node payload)
+- BLE receive via BlueZ (listen for GATT notify from ESP32)
 - Timestamp stamping on receipt (ESP32-C3 has no RTC)
 - Cylinder steel derivation (anchor events from SQLite history)
 - `gas% = (grams - steel) / 14200 × 100`
@@ -83,7 +83,7 @@ patterns only. ESP32-C3 firmware is standard Arduino/PlatformIO with WiFi librar
 - A raw HX711 count
 - A pin or bit-bang operation
 - Any sensor register or timing
-- Hub starts at "receive grams via WiFi" — nothing before that
+- Hub starts at "receive grams via BLE" — nothing before that
 
 **Wheels/typelibs/socket.io:** live in home-hub/ — one `cp` away when WebUI phase arrives.
 Do NOT copy now. Do NOT commit wheels/ to git.
@@ -136,36 +136,42 @@ Copy only when the WebUI phase (Group 7) begins. Never commit wheels/ to git.
 
 ---
 
-## Current State — 2026-06-05
+## Current State - 2026-06-08
 
 ```
-Status:         E-001 COMPLETE AND PASSED (2026-06-05)
-node/:          E000_raw_read, STOP, HW_VERIFY, E001_tare_cal_grams built
-hub/:           empty — not started yet
+Status:         E-003 PASSED. Group 1 sensing + Group 2 transport complete.
+node/:          E000_raw_read, E001_tare_cal_grams, E002_noise_floor, E003_ble_transport built
+hub/:           e003_ble_test.py, config.json, requirements.txt built
 
 Wiring locked (do not change without re-verifying):
   ESP32-C3 GPIO4 = DOUT, GPIO3 = SCK, 3V3 = VDD, GND = GND
   Load cell: Red=E+, Black=E-, Green=A+, White=A-
 
 Arduino IDE locked:
-  esp32 by Espressif v3.0.7, Board: ESP32C3 Dev Module
-  Port: COM11, USB CDC On Boot: ENABLED
+  esp32 by Espressif v3.0.7 (NOT v3.3.9 - flasher.exe missing on Windows)
+  Board: ESP32C3 Dev Module, Port: COM11, USB CDC On Boot: ENABLED
 
-Locked values (ESP32-C3 + GISLAB HX711 + YZC-161A, 3.3V VDD):
-  cal_factor:         ~105 raw/g (derived 227g-257g weights, stable to 0.6%)
-  cal_factor unreliable below ~100g reference weight (SNR too low — see L-008)
-  Tare range:         -13823 to -15747 raw (varies per boot, self-characterised)
-  Settle window:      10 seconds after weight placement before sampling — mandatory
-  Serial buffer:      flush before every readStringUntil prompt (stale \n bug — see L-009 / RESEARCH)
-  known_weight_g:     must be entered at runtime, never hardcoded
-  cal_factor ref:     must be derived from reference weight above 100g for reliable results
+BLE locked:
+  Service UUID:      aa206b91-235b-42aa-b370-453a3feedf35
+  Weight Char UUID:  b9b25bb1-f2a9-4545-b48f-295ab2789f41
+  Device name:       GasCylMonitor
+  Device MAC:        10:00:3B:CD:63:32 (cached in hub/config.json - not hardcoded)
 
-Completed this session (2026-06-05):
-  E-001 tare derivation, cal_factor derivation, grams output. Gate PASSED.
-  Grams accurate to within 1% above 100g reference weight.
+Confirmed values (ESP32-C3 era):
+  cal_factor:    ~105 raw/g (E-001, ~230g reference, E-005 linearity pending)
+  Tare range:    -11582 to -16156 raw (varies per boot - always self-derived)
+  Noise STD:     1.81g WITH BLE running (E-003 - production value)
+  Threshold:     7.24g WITH BLE running (4 x 1.81g - production value)
+  Note: E-002 values (STD 0.67g, threshold 2.67g) were BLE-off - superseded for production
 
-Current position: Group 1 - WEIGHT. E-001 PASSED. E-002 is next.
-Next action:      E-002 noise floor characterisation on ESP32-C3
+Hub install:
+  pip3 install -r hub/requirements.txt --break-system-packages
+  bleak service_uuids filter ignored on QRB2210 - name filter used in app layer (see L-020)
+  BlueZ scan transport: "le" only - "auto" kills QRB2210 adapter
+
+Current position: E-003 PASSED. Next: modular refactor (production node sketch).
+Next action:      Design modular sketch structure in chat. Implement via Claude Code CLI.
+                  After refactor: App Lab migration with socat D-Bus forwarding.
 ```
 
 ---
@@ -188,3 +194,7 @@ Next action:      E-002 noise floor characterisation on ESP32-C3
 | Use DT=D7/SCK=D6 on ESP32 | Those are STM32 timer-conflict constraints only | ESP32: pick any GPIO |
 | Use cal_factor=106.7 on ESP32 | STM32 figure, VOID on ESP32-C3 | ESP32 bring-up gate |
 | Skip 3.3V logic-level check | May damage ESP32-C3 GPIO or get corrupt reads | SAFETY gate |
+| Use bleak service_uuids filter alone on QRB2210 | Filter ignored - returns all BLE devices | Use name filter in app layer (L-020) |
+| Hardcode device MAC address | Breaks on hardware replacement/repair | Store in config.json, self-provision |
+| Use "auto" BLE scan transport on QRB2210 | Kills Bluetooth adapter | Use "le" only |
+| Start hub Python before BlueZ ready | BLE scan fails silently | Use After=bluetooth.target in systemd |

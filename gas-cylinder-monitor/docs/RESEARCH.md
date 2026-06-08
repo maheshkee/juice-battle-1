@@ -390,6 +390,63 @@ DOUT swings at 3.3V - safe for ESP32-C3 GPIO. No level shifter needed.
 
 ---
 
+## E-002 Noise Floor - ESP32-C3 + GISLAB HX711 + YZC-161A - 2026-06-08
+
+### Confirmed noise floor values (hardware verified, two clean runs)
+
+| Parameter | Value | Condition |
+|---|---|---|
+| Noise STD | 0.62-0.67g | 3-30 min power off, truly settled |
+| Peak-to-peak | 3.18-3.47g | same conditions |
+| Threshold 4xSTD | 2.48-2.67g | production value: 2.67g (conservative) |
+| Settle reads | 22 (both runs) | dynamic detection, 10Hz HX711 |
+| Settle time | ~2.2 seconds | both runs consistent |
+| HX711 rate | 10Hz confirmed | RATE pin LOW on GISLAB green PCB module |
+| Fan effect | +0.07g on STD | negligible - ceiling fan not a concern |
+
+### Stability detection parameters (locked)
+
+| Parameter | Value | Why |
+|---|---|---|
+| STAB_WINDOW | 20 samples | rolling window size |
+| STAB_SPREAD | 2.5g | max allowed spread within one window |
+| STAB_MEAN_DIFF | 1.0g | max allowed mean drift between consecutive windows |
+| STAB_CONFIRM | 3 | consecutive passing windows required |
+| TARE_SAMPLES | 20 | post-settle tare derivation sample count |
+
+### vs STM32 comparison
+
+ESP32-C3 STD 0.67g is better than STM32 1.87g (experiment 003, AQ3 STM32 era).
+Likely because GISLAB HX711 at 3.3V with USB LDO is quieter than AQ3 5V regulated
+supply for this specific module. Hardware-specific - do not generalise.
+
+---
+
+## 13. BLE Transport - QRB2210 Platform Findings (2026-06-08) — PROVEN
+
+### bleak service_uuids filter behaviour
+Tested: BleakScanner(service_uuids=[UUID]).discover(timeout=10.0) on QRB2210
+running Debian Linux, BlueZ 5.x, bleak 0.21+.
+Result: filter NOT enforced at scan level. All nearby BLE devices returned
+regardless of advertised service UUIDs (14-15 devices observed).
+Fix: application-layer name filter. See L-020.
+
+### BLE radio noise coupling to HX711
+Measured: STD 0.62-0.67g with BLE stack off (E-002).
+Measured: STD 1.81g with BLE stack running (E-003).
+Conclusion: BLE radio causes ~3× noise increase via power rail coupling.
+Always characterise noise with BLE running for production values.
+Production threshold: 7.24g (4 × 1.81g). See L-022.
+
+### ESP32-C3 BLE MAC address
+Hardware: ESP32-C3 SuperMini HW-466AB
+MAC address: 10:00:3B:CD:63:32
+Type: static hardware MAC derived from chip eFuse - does not rotate.
+BlueZ on QRB2210 sees real hardware MAC, not randomised address.
+MAC caching in config.json is reliable and stable.
+
+---
+
 ## Change Log
 
 | Date | Entry |
@@ -399,3 +456,5 @@ DOUT swings at 3.3V - safe for ESP32-C3 GPIO. No level shifter needed.
 | 2026-06-04 | MAJOR: ESP32 pivot — Part I is new canonical; Part II archived as SUPERSEDED |
 | 2026-06-04 Session 2 | Added ESP32-C3 pinout, safe pins, rough cal_factor, 3.3V VDD confirmed |
 | 2026-06-05 | E-001 complete. cal_factor ~105 raw/g confirmed. Serial drain and settle rules added. |
+| 2026-06-08 | E-002 noise floor confirmed on ESP32-C3. STD 0.62-0.67g. Threshold 2.67g locked. Dynamic stability detection parameters locked. |
+| 2026-06-08 | Added section 13 - BLE transport QRB2210 platform findings (E-003) |

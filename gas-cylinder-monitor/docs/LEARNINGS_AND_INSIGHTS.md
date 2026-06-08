@@ -335,3 +335,392 @@ Cal_factor settle is handled by explicit 10s delay after keypress.
 ### Verified
 Hardware confirmed 2026-06-05. Previous bad cal_factor runs had no settle window.
 Runs with 10s settle produced consistent, reproducible cal_factor values.
+
+---
+
+## L-010 - Why noise profiles differ across MCUs - 2026-06-08
+
+Five noise sources change when the MCU changes, even with identical HX711 and load cell:
+
+1. Power supply: HX711 uses VDD as its ADC reference. USB-powered ESP32-C3 SuperMini
+   LDO ripple differs from AQ3 board-regulated 3.3V. Different ripple = different noise.
+
+2. SCK timing: HX711 protocol is pulse-count based. ARM Cortex-M33 (STM32) and
+   RISC-V RV32IMC (ESP32-C3) have different instruction pipelines. Even with identical
+   delayMicroseconds(1), actual pulse width differs. Different pulse accuracy = different
+   gain-bit reliability.
+
+3. GPIO drive strength: Edge slew rate differs between STM32 and ESP32-C3 GPIO output
+   drivers. Slower edges give HX711 ambiguous timing at the SCK transition point.
+
+4. Interrupt latency: ESP32-C3 runs FreeRTOS with WiFi/BLE radio tasks. Even with
+   noInterrupts(), radio subsystem has its own task context. STM32 AQ3 MCU side has
+   no radio - cleaner interrupt environment.
+
+5. Physical wiring: STM32 AQ3 used PCB traces (D7/D6). ESP32-C3 SuperMini uses jumper
+   wires on breadboard - longer, acts as antenna, picks up more EMI.
+
+Verified: ESP32-C3 measured STD 0.62-0.67g vs STM32 1.87g. ESP32-C3 is cleaner -
+likely because USB LDO happens to be quieter for this specific HX711 module.
+Rule: never carry STD or threshold values across MCU changes. Always re-measure.
+
+---
+
+## L-011 - Load cell physics: creep, noise, and why they are different - 2026-06-08
+
+### What a load cell actually is
+A metal beam (usually aluminium alloy) with strain gauges bonded to the surface.
+When weight is applied the beam bends. Top surface stretches (tension), bottom
+compresses. Strain gauges convert deformation to resistance change. HX711 measures
+the differential resistance and outputs a 24-bit raw count.
+
+### What is mechanical creep
+Metal is not perfectly elastic. When stress changes (weight placed, weight removed,
+power cycle causing temperature change in circuit), metal crystals slowly rearrange
+toward a new equilibrium. This takes 30 seconds to several minutes depending on
+previous stress state and temperature. Output during creep = slow directional drift -
+always moving toward true zero, never random.
+
+### What is electronic noise
+Random fluctuation from thermal agitation in resistors, ADC quantisation, power
+supply ripple, EMI coupling from wires. Has no direction - equally likely up or down.
+Described by STD. Magnitude independent of previous state.
+
+### Why they are completely different problems
+Creep: slow, directional, deterministic, decreases over time, depends on history.
+Noise: fast, random, stationary, constant magnitude, independent of history.
+
+What you read = creep + noise superimposed. STD computed during creep is inflated
+because the slow drift looks like variance. Must wait for creep to finish before
+measuring true noise floor.
+
+Verified: E-002 v1 fixed timer gave STD 0.53-3.43g depending on creep state at
+sample time. E-002 v3 dynamic detection gave STD 0.62-0.67g consistently.
+
+---
+
+## L-012 - Why a fixed timer fails for stability detection - 2026-06-08
+
+A fixed timer assumes settle time is constant. It is not. Settle time depends on:
+- How long the load cell was powered off (longer off = more creep recovery needed)
+- Previous mechanical stress state (heavy load, sudden removal)
+- Ambient temperature (changes beam stiffness)
+- Whether the platform was disturbed between runs
+
+Same 5-second timer fired during: mid-heavy-creep (run 1: STD 3.43g),
+mid-moderate-creep (runs 3-5: STD 0.86-1.56g), already-settled (run 2: STD 0.53g).
+Same code, same hardware, wildly different results.
+
+Dynamic stability detection solves this: watch the data, not the clock.
+Physics tells you when it is done - not a guess.
+
+---
+
+## L-013 - Dynamic stability detection: two conditions required - 2026-06-08
+
+One condition is not enough. Spread-only check can be fooled by slow creep where each
+20-sample window looks internally flat but the mean drifts steadily between windows.
+
+Two conditions both required:
+  Condition 1: max - min within window < 2.5g (internal spread check)
+  Condition 2: |mean(window_N) - mean(window_N-1)| < 1.0g (inter-window drift check)
+
+Both must pass for stable_count to increment. Either failing resets stable_count to 0.
+Three consecutive windows both-passing = settled.
+
+Why 2.5g spread: above true noise pp (~3g) but below any creep contribution.
+Why 1.0g mean drift: creep moves the mean; noise does not move it systematically.
+Why 3 consecutive: three windows = 60 samples = 6 seconds of sustained quiet.
+
+Verified: 2.42g spread windows with 0.00-0.08g drift = settled, STD 0.62-0.67g.
+
+---
+
+## L-014 - Tare must be derived after stability, not before - 2026-06-08
+
+Tare is subtracted from every reading: grams = (raw - tare) / cal_factor.
+If tare is wrong by X raw counts, every gram reading is shifted by X/cal_factor grams.
+
+When tare is derived before stability detection:
+- 20-sample mean is contaminated by creep at that moment
+- Creep amount at that instant becomes a permanent offset in all subsequent readings
+- Mean of characterisation block != 0g
+
+When tare is derived after stability detection:
+- Platform is genuinely settled
+- 20-sample mean captures true mechanical zero
+- Mean of characterisation block ~ 0g
+
+Observed: tare-before gave means of 1.06g to 2.89g across consecutive re-upload runs.
+Tare-after with clean rest gave tare correction of 17-38 raw (0.16-0.36g) - very small.
+In production: tare offset does not affect gas% accuracy. Hub computes consumption
+from delta between readings. Constant offset cancels in subtraction.
+
+---
+
+## L-015 - Why N=200 for noise characterisation - 2026-06-08
+
+STD of a sample is an estimate of true population STD. Estimate has uncertainty:
+  SE(STD) = STD / sqrt(2N)
+
+At N=200: SE = STD / 20 = 5% of STD - threshold accurate to ±5%
+At N=20:  SE = STD / 6.3 = 16% of STD - threshold could jump ±16% boot to boot
+At N=500: SE = 3% - marginal gain, 50-second boot time not justified
+
+HX711 at 10Hz = 100ms per sample. N=200 = 20 seconds boot time.
+N=200 is the best accuracy-vs-boot-time tradeoff on this hardware.
+
+---
+
+## L-016 - Why 4xSTD for event detection threshold - 2026-06-08
+
+Noise follows a Gaussian distribution. Threshold is the line beyond which a reading
+is declared a real event rather than noise.
+
+At 4s: probability of pure-noise crossing threshold = 0.0063% per sample.
+At 15-min heartbeat (production): 0.0063% x 96 readings/day = 0.006 false/day.
+At 3s: 0.27% - one false trigger every ~2 days at heartbeat rate - too many.
+
+4s is the engineering standard across semiconductor, finance, and process control.
+Tight enough to catch real events, loose enough to reject noise comfortably.
+Our threshold 2.67g vs 16g planning estimate = 6x detection margin.
+
+---
+
+## L-017 - Why 500ms between readings in the live loop - 2026-06-08
+
+Two constraints define the 500ms choice:
+
+1. HX711 hardware floor: RATE pin LOW = 10Hz = one new conversion every 100ms.
+   Reading faster than 100ms returns stale data - DOUT stays HIGH (not ready) and
+   the read function blocks. Cannot go faster than 100ms on this hardware.
+
+2. Human readability: live loop in experiments is a diagnostic tool - you watch it.
+   100ms (10/sec): numbers blur, impossible to read patterns.
+   500ms (2/sec): comfortable for human observation, trends visible.
+   1000ms (1/sec): too slow, misses short transients.
+
+500ms is 5x above hardware floor (safe) and comfortable for human observation.
+Production uses 15-minute heartbeat - 500ms is for experiment diagnostic loops only.
+
+---
+
+## L-018 - 16g minimum event is a planning estimate, not a measurement - 2026-06-08
+
+The 16g figure was derived from online LPG consumption averages:
+  14.2kg / 30 days = 473g/day
+  473g / 2.5hr cooking = 3.15g/min burn rate
+  shortest cooking event (tea) = 5 min x 3.15g/min ~ 16g
+
+This is theoretical. Never measured on real hardware in a real kitchen.
+Different households, stove types, and cooking habits produce different values.
+Status: planning estimate only. Use for system design sizing. Never treat as validated.
+
+Required experiment: E-006B - minimum event measurement.
+When: after cylinder installed on load cell in real kitchen.
+Protocol: light stove, make tea, record weight before and after. Repeat for shortest
+cooking events. Smallest real drop replaces 16g as the validated number.
+Also required for future 4-cell summing configuration.
+
+---
+
+## L-019 - cal_factor must be re-verified across full cylinder weight range - 2026-06-08
+
+cal_factor derived in E-001 used ~230g reference. Validates linearity at one point only.
+Full operating range: empty steel (~900g) to full cylinder (~15kg). 230g is near the
+bottom of this range - linearity across the full range is assumed, not measured.
+
+If cal_factor shifts materially at higher loads (e.g. 105 raw/g at 230g but
+103 raw/g at 15kg), gram values at full cylinder are wrong by ~300g. Not acceptable.
+
+Dependency: if E-005 shows cal_factor shifts materially, re-run:
+  - E-002 (noise STD is in grams - scales with cal_factor)
+  - Any threshold derived from gram values
+
+Required: E-005 - cal_factor linearity across 0-20kg.
+Until then: use 105 raw/g tagged [DERIVED - single point, E-005 pending].
+
+---
+
+## BLE TRANSPORT FINDINGS - E-003 (2026-06-08)
+
+### L-020: bleak service_uuids filter not respected on QRB2210 BlueZ backend
+Date: 2026-06-08
+BleakScanner(service_uuids=[UUID]) is supposed to pre-filter at scan level -
+only return devices advertising that UUID. On QRB2210 BlueZ backend, this filter
+is passed to BlueZ but not enforced. All nearby BLE devices are returned regardless
+(14-15 devices in test environment, only one was the target).
+Fix: always apply application-layer name filter after scan:
+  matches = [d for d in devices if d.name == config["device_name"]]
+Never rely on bleak service_uuids alone on this hardware.
+Verified: confirmed on QRB2210 running Debian Linux, bleak 0.21+.
+
+### L-021: MAC address self-provisioning pattern
+Date: 2026-06-08
+Hardcoding MAC address in code or config is a maintenance trap:
+ESP32 hardware replacement, repair, production units, or multi-node expansion
+all produce different MACs. Every change requires a code/config edit.
+Correct pattern:
+  1. config.json starts with device_address: null
+  2. First run: scan for device by name, find exactly one match
+  3. Cache MAC into config.json automatically
+  4. All subsequent runs: use cached MAC (Phase 1 - faster, unambiguous)
+  5. If ESP32 replaced: delete device_address from config.json - re-provisions automatically
+Zero human intervention. No MAC ever in source code.
+Verified: self-provisioned correctly on first run, MAC written to config.json.
+
+### L-022: Noise STD higher with BLE radio running
+Date: 2026-06-08
+E-002 (BLE stack off): STD 0.62-0.67g
+E-003 (BLE stack running): STD 1.81g
+Nearly 3× increase. Root cause: BLE radio activity draws pulsed current from
+the 3V3 power rail. Each BLE transmission causes a voltage ripple on the rail.
+HX711 AVDD and DVDD are both on this rail. Ripple modulates the ADC reference
+voltage and appears as measurement noise.
+Production consequence: the E-003 values (1.81g STD, 7.24g threshold) are the
+correct operating values. E-002 values (0.67g STD, 2.67g threshold) were
+measured in a non-production condition (BLE off) and are superseded for
+production use. Always characterise noise with BLE running.
+Verified: two consecutive stable runs both showed STD 1.81g with BLE active.
+
+### L-023: DEGRADED quality correctly fires during weight placement transition
+Date: 2026-06-08
+When a weight is placed on the load cell while a 20-sample measurement window
+is in progress, the window captures both pre-placement and post-placement samples.
+Sigma spikes massively (97.65g observed - vs normal 0.40-0.65g) because the
+samples span two completely different weight states.
+Quality correctly set to DEGRADED. Hub received it and must not store as a
+valid measurement.
+This is correct system behaviour - the quality field exists precisely to
+protect the hub from trusting readings taken during a transition.
+Rule: hub must check quality before storing or computing gas%.
+FAILED and DEGRADED readings must not be stored as weight measurements.
+Verified: DEGRADED reading observed and correctly propagated to hub.
+
+### L-024: BLE transport best-effort confirmed correct
+Date: 2026-06-08
+ESP32 discards readings when hub is not connected. Hub receives and timestamps
+readings when connected. Reconnect loop functions correctly.
+No data loss panic needed for V1 - readings lost during disconnect are
+acceptable. Hub reconnects and resumes within seconds.
+Best-effort delivery is the right model for a 15-minute heartbeat system.
+A reading missed due to a 30-second disconnect window is not a product failure.
+Verified: "No hub connected - discarded" messages seen during startup before
+hub script was launched. After connection: SENT messages confirmed delivery.
+
+---
+
+## BLE CONCEPTUAL FOUNDATIONS (2026-06-08)
+
+### L-025: Why 128-bit UUIDs - not 16-bit
+Date: 2026-06-08
+16-bit UUIDs (e.g. 0x180D Heart Rate) are a reserved namespace managed by
+the Bluetooth SIG standards body. Using them requires registration and means
+your device claims to implement a standardised profile. Two devices using the
+same unregistered 16-bit UUID would collide ambiguously.
+128 bits = 2^128 possible values (~340 undecillion). A randomly generated
+128-bit UUID is statistically guaranteed globally unique. No registration.
+No collision possible in practice. Correct choice for all custom/private services.
+Rule: always use 128-bit UUIDs for project-specific BLE services.
+
+### L-026: What subscribing to BLE notifications actually means
+Date: 2026-06-08
+"Subscribing" is not a special BLE command. It is a write operation.
+Every notifiable BLE characteristic has a Client Characteristic Configuration
+Descriptor (CCCD) attached, at fixed UUID 0x2902.
+CCCD is a 2-byte value: 0x0000 = notifications OFF, 0x0001 = notifications ON.
+When the hub "subscribes", it writes 0x0001 to the CCCD on the ESP32.
+The ESP32 sees this write via the onSubscribe callback, sets deviceConnected=true,
+and starts calling notify().
+If nobody writes 0x0001, notify() sends nothing regardless of how often it is called.
+This is why the ESP32 does not guess whether anyone is listening - it knows,
+because the hub physically wrote into its GATT database.
+
+### L-027: Three communication patterns - all required simultaneously
+Date: 2026-06-08
+No single BLE communication pattern is sufficient for a real IoT product.
+Three patterns must run simultaneously:
+  Heartbeat (15 min): proves liveness, creates data spine for burn-rate analytics.
+    Even "nothing changed" is a data point - it confirms consumption rate.
+  Event-driven (immediate): time-sensitive state transitions - cylinder installed,
+    cylinder removed, sensor fault. A 15-minute delay on these is unacceptable.
+  Request-response (on demand): hub reconnects and needs current state immediately.
+    Not waiting 15 minutes for the next heartbeat.
+Anti-pattern: continuous streaming (every raw sample transmitted).
+  Measurement rate (10Hz) must be separated from transmission rate (15 min).
+  Transmitting 10 readings/second wastes BLE bandwidth, floods SQLite, adds no
+  information beyond what averaging already provides. Noise is not signal.
+
+### L-028: Event detection ownership - ESP32 vs hub
+Date: 2026-06-08
+Events are state transitions that need immediate push (bypass heartbeat rhythm).
+Event detection ownership follows data ownership:
+  ESP32 detects: CYLINDER_INSTALLED (weight jump >8kg), CYLINDER_REMOVED
+    (weight near zero), SENSOR_FAULT (quality=FAILED × N reads).
+    Reason: ESP32 directly observes these. It sees the raw weight change.
+  Hub detects: LOW_GAS (gas% < 20%), CRITICAL_GAS (gas% < 5%).
+    Reason: gas% is computed on hub only. ESP32 never knows gas%.
+    Node only knows grams. Hub converts grams → gas% using steel from history.
+Test for any candidate event: "Would a 15-minute delay on this cause a real problem?"
+YES = push immediately as event. NO = heartbeat data spine is sufficient.
+"Minimum gas used" (e.g. 16g) fails this test - no urgency. Hub derives
+consumption from consecutive heartbeats by subtraction. Not an event.
+
+### L-029: Weight=0 trap - quality=FAILED is not an empty cylinder
+Date: 2026-06-08
+A sensor fault must never be interpreted as an empty cylinder.
+Weight=0 when quality=FAILED means: the sensor cannot produce a valid reading.
+Weight~0 when quality=GOOD means: cylinder is empty or removed.
+These are completely different situations with completely different responses.
+Hub must check quality before computing gas%. A FAILED reading must trigger
+a SENSOR_FAULT alert, not a "cylinder empty" alert.
+This is why the quality field exists - to carry the node's self-assessment
+so the hub can route correctly.
+
+### L-030: Hub discovery strategy - three phases
+Date: 2026-06-08
+Three approaches to finding the ESP32 on the BLE network, compared:
+  Manual: engineer copies MAC from scan output into config.json. Works but
+    requires human action on every hardware replacement.
+  Service UUID only: scan with UUID filter, connect to whatever matches.
+    Fails on platforms where bleak ignores the filter (QRB2210 - L-020).
+  Self-provisioning (chosen): null MAC in config → scan by name on first run
+    → cache MAC automatically → use MAC on all subsequent runs.
+    Survives hardware replacement (delete device_address, re-provisions).
+    Zero human intervention. Name is reliable because it is project-controlled.
+    Multiple-device safety: if >1 named device found, warn and wait rather
+    than auto-selecting the wrong node.
+
+---
+
+## PRODUCTION ENGINEERING PRINCIPLES (2026-06-08)
+
+### L-031: requirements.txt is mandatory for any Python dependency
+Date: 2026-06-08
+Any Python package installed via pip must be listed in requirements.txt.
+Tribal knowledge ("oh you need bleak") is not documentation.
+A new engineer or a fresh board must be able to run:
+  pip3 install -r hub/requirements.txt --break-system-packages
+and have a working environment. The --break-system-packages flag is AQ3-specific
+and must be in the documented install command - without it pip3 refuses to
+install on Debian system Python.
+
+### L-032: config.json for all runtime parameters - nothing production-variable in code
+Date: 2026-06-08
+Any value that could differ between installations, change over time, or vary
+between production units belongs in config.json - never hardcoded in source code.
+This includes: device MAC address, device name, UUIDs, timeouts, thresholds.
+Config change = one line edit. Code change = re-test, re-review, re-deploy.
+The distinction: structural constants (pin numbers, protocol constants) can
+live in code. Operational parameters (which device, how long to wait) belong in config.
+
+### L-033: Plain script before App Lab container - one complexity layer at a time
+Date: 2026-06-08
+When building a new capability, always prove it works as a plain script
+before introducing Docker/App Lab container complexity.
+App Lab Docker adds: container isolation, D-Bus access restrictions,
+socat socket forwarding requirement, app.yaml configuration.
+If the BLE code has a bug AND the socat setup is wrong simultaneously,
+you cannot tell which one caused the failure.
+Correct order: plain Python script on host → proven working → then migrate
+into App Lab container with socat. E-003 followed this correctly.
