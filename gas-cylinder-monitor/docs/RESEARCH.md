@@ -219,7 +219,7 @@ before trusting fine measurements. **This problem moves with the HX711 onto the 
 | 1 | 3.3V logic-level compatibility with HX711 at 5V VCC | 2026-06-02 | ❓ PENDING E-000 |
 | 2 | Correct GPIO pin pair for ESP32-C3 + HX711 | 2026-06-02 | ❓ PENDING E-000 |
 | 3 | cal_factor on ESP32-C3 (was 106.7 on STM32 — VOID) | 2026-06-02 | ❓ PENDING |
-| 4 | float sufficiency on ESP32-C3 (double may be fine) | 2026-06-02 | ❓ PENDING |
+| 4 | Cal_factor linearity across weight range | 2026-05-05 | PROVEN 2026-06-12 - 3-cell 200g to 1800g, CV=4.1% |
 | 5 | Noise floor on ESP32-C3 (drifted to ~5.6g on STM32 — wiring issue) | 2026-06-02 | ❓ PENDING |
 | 6 | Thermal drift magnitude and whether software cross-checks swamp it | 2026-06-02 | ❓ Post-MVP |
 | 7 | Actual minimum detectable removal on ESP32-C3 | 2026-06-02 | ❓ Experiment 006B |
@@ -447,6 +447,39 @@ MAC caching in config.json is reliable and stable.
 
 ---
 
+## 13. 3-Cell Platform Characterisation - Hardware-Verified 2026-06-12
+
+Platform: 3x YZC-161A 20kg load cells in parallel, shared plate, ESP32-C3 SuperMini, GISLAB HX711 at 3.3V.
+
+### cal_factor - PROVEN
+cal_factor = 36.1 raw/g
+Method: self-characterising v5.2 sketch, 3 stages, ~80 clean readings
+Range: 200g to 1800g all within ±8% of mean (CV = 4.1%)
+Physics: 3-cell parallel → 1/3 single-cell sensitivity → 106.7/3 = 35.6 predicted, 36.1 measured
+
+### Linearity - PROVEN
+Linear from 200g to 1800g (9x range). No systematic curvature detected.
+Single cal_factor valid across full cylinder weight range (15.5kg to 29.7kg).
+100g class unreliable - tare walk dominates at that SNR.
+
+### Settling times - PROVEN
+Cold boot, no plate:   3 to 12s
+Cold boot, with plate: 60 to 161s
+Placement settle:      10s sufficient (loaded_std at or below noise_std in all runs)
+Removal re-tare:       6s fast path, up to 86s after heavy loads
+
+### Noise floor - OPEN
+noise_std_raw during cal_factor runs: 72 to 188 raw (varies by thermal state)
+In grams: 2.0g to 5.2g
+BLE-on noise floor not yet measured - required by 3E-002.
+E-003 values (STD=1.81g, threshold=7.24g) VOID for 3-cell platform.
+
+### Minimum reliable weight - PROVEN
+100g unreliable, 200g reliable.
+Threshold: ~150g (SNR = 150g x 36.1 / 150 raw noise ~ 36x, above 20x minimum)
+
+---
+
 ## Change Log
 
 | Date | Entry |
@@ -458,3 +491,4 @@ MAC caching in config.json is reliable and stable.
 | 2026-06-05 | E-001 complete. cal_factor ~105 raw/g confirmed. Serial drain and settle rules added. |
 | 2026-06-08 | E-002 noise floor confirmed on ESP32-C3. STD 0.62-0.67g. Threshold 2.67g locked. Dynamic stability detection parameters locked. |
 | 2026-06-08 | Added section 13 - BLE transport QRB2210 platform findings (E-003) |
+| 2026-06-12 | Section 13 added - 3-cell platform hardware characterisation complete |

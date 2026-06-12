@@ -90,3 +90,30 @@ Hub files:
 2. docs/PROJECT_CONTEXT.md (this file) → docs/HANDOFF.md
 3. Relevant docs/reference/specs/ for the current chunk-group
 4. Design prompt from chat
+
+---
+
+## Current State - 2026-06-12 (ESP32 era - supersedes all sections above)
+
+The platform described above (STM32/Bridge/App Lab) is VOID. Current architecture is in CLAUDE.md.
+
+### Platform
+ESP32-C3 SuperMini sensor node + Arduino UNO Q AQ3 hub.
+3x YZC-161A 20kg load cells in parallel, shared plate. Transport: BLE-only.
+
+### Experiment status
+
+| Experiment | Status | Key output |
+|---|---|---|
+| E-000 raw read single cell | PASSED 2026-06-04 | bit-bang pattern proven |
+| E-001 tare cal grams single cell | PASSED 2026-06-05 | cal_factor ~106.7 raw/g (VOID on 3-cell) |
+| E-002 noise floor single cell | PASSED 2026-06-08 | STD 0.67g BLE-off (VOID on 3-cell) |
+| E-003 BLE transport single cell | PASSED 2026-06-08 | STD 1.81g BLE-on (VOID on 3-cell) |
+| 3E-001 cal_factor 3-cell | PASSED 2026-06-12 | 36.1 raw/g locked, linear 200g to 1800g |
+| 3E-002 noise floor 3-cell | NEXT | BLE off then BLE on |
+
+### Locked values
+cal_factor = 36.1 raw/g | GPIO4 = DOUT, GPIO3 = SCK | HX711 VCC = 3.3V only
+
+### Next action
+Design 3E-002 in chat. Implement via Claude Code CLI on AQ3.

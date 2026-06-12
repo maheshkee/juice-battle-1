@@ -9,7 +9,7 @@
 
 LPG cylinder weight monitor for Indian households. An **ESP32-C3 sensor node** reads a
 20 kg load cell via HX711, computes gross weight in grams, sends
-`{grams, quality, sigma}` over WiFi to the **UNO Q hub**. The hub stamps a timestamp,
+`{grams, quality, sigma}` over BLE to the **UNO Q hub**. The hub stamps a timestamp,
 derives cylinder steel via anchor events, computes gas %, stores in SQLite, runs analytics
 and prediction, and serves a WebUI.
 
@@ -41,7 +41,7 @@ NOT App Lab, NOT Bridge, NOT Bridge.notify — ESP32 has no Bridge.
 - Scale-zero tare (self-computing, never hardcoded)
 - cal_factor derivation (never hardcoded; VOID the old STM32 value of 106.7)
 - Noise characterisation (N=200 lab, N=50 production)
-- WiFi send → payload: `{grams: float, quality: "GOOD"|"DEGRADED"|"FAILED", sigma: float}`
+- BLE send → payload: `{grams: float, quality: "GOOD"|"DEGRADED"|"FAILED", sigma: float}`
 
 **Node outputs grams only.** Never computes gas %. Has no clock, no history,
 no steel knowledge.
@@ -136,43 +136,41 @@ Copy only when the WebUI phase (Group 7) begins. Never commit wheels/ to git.
 
 ---
 
-## Current State - 2026-06-08
+## Current State - 2026-06-12
 
-```
-Status:         E-003 PASSED. Group 1 sensing + Group 2 transport complete.
-node/:          E000_raw_read, E001_tare_cal_grams, E002_noise_floor, E003_ble_transport built
-hub/:           e003_ble_test.py, config.json, requirements.txt built
+Status: 3E-001 cal_factor COMPLETE AND PASSED. Stages 1, 2, 3 all passed.
+Platform: 3-cell YZC-161A parallel (NOT 4-cell - cost decision locked 2026-06-12)
 
-Wiring locked (do not change without re-verifying):
-  ESP32-C3 GPIO4 = DOUT, GPIO3 = SCK, 3V3 = VDD, GND = GND
-  Load cell: Red=E+, Black=E-, Green=A+, White=A-
+Sketches on board:
+  node/3E001_cal_factor_v5/        self-characterising, fixed ref weight, human gate
+  node/3E001_cal_factor_v5_1/      v5 + wall-clock timing instrumentation
+  node/3E001_cal_factor_v5_2/      v5.1 + per-iteration weight entry (Stage 3)
 
-Arduino IDE locked:
-  esp32 by Espressif v3.0.7 (NOT v3.3.9 - flasher.exe missing on Windows)
-  Board: ESP32C3 Dev Module, Port: COM11, USB CDC On Boot: ENABLED
+Locked values (hardware-verified 2026-06-12):
+  cal_factor:              36.1 raw/g (3-cell platform, shared plate)
+  Linear range:            200g to 1800g confirmed (9x weight span, CV 4.1%)
+  Min reliable weight:     ~150g (SNR floor - tare walk dominates below this)
+  GPIO4 = DOUT, GPIO3 = SCK (unchanged from single-cell era)
+  HX711 VCC = 3.3V only (unchanged)
+  3 reds → E+, 3 blacks → E-, 3 greens → A+, 3 whites → A-
 
-BLE locked:
-  Service UUID:      aa206b91-235b-42aa-b370-453a3feedf35
-  Weight Char UUID:  b9b25bb1-f2a9-4545-b48f-295ab2789f41
-  Device name:       GasCylMonitor
-  Device MAC:        10:00:3B:CD:63:32 (cached in hub/config.json - not hardcoded)
+Timing locked from hardware (2026-06-12):
+  Cold boot settle, no plate:    3-12s
+  Cold boot settle, with plate:  60-161s depending on thermal state
+  Placement → stable:            10s sufficient (all loaded_std < noise_std confirmed)
+  Removal → re-tare, fast:       ~6s
+  Removal → re-tare, after 500g: up to 86s (viscoelastic recovery)
 
-Confirmed values (ESP32-C3 era):
-  cal_factor:    ~105 raw/g (E-001, ~230g reference, E-005 linearity pending)
-  Tare range:    -11582 to -16156 raw (varies per boot - always self-derived)
-  Noise STD:     1.81g WITH BLE running (E-003 - production value)
-  Threshold:     7.24g WITH BLE running (4 x 1.81g - production value)
-  Note: E-002 values (STD 0.67g, threshold 2.67g) were BLE-off - superseded for production
+Noise floor: NOT YET MEASURED on 3-cell platform with BLE running.
+  E-003 value (STD=1.81g threshold=7.24g) is VOID - single-cell AQ3 only.
 
-Hub install:
-  pip3 install -r hub/requirements.txt --break-system-packages
-  bleak service_uuids filter ignored on QRB2210 - name filter used in app layer (see L-020)
-  BlueZ scan transport: "le" only - "auto" kills QRB2210 adapter
+Transport: BLE-only. WiFi removed entirely. ESP32 advertises, hub scans/connects/subscribes.
+Seam: node outputs {grams, quality, sigma} only. Hub stamps timestamp, computes gas%.
 
-Current position: E-003 PASSED. Next: modular refactor (production node sketch).
-Next action:      Design modular sketch structure in chat. Implement via Claude Code CLI.
-                  After refactor: App Lab migration with socat D-Bus forwarding.
-```
+Current position: Group 1, 3E-002 - noise floor characterisation on 3-cell platform.
+Next action: Design 3E-002 in chat. Sketch measures noise STD with BLE off, then BLE on.
+  Print grams using locked cal_factor=36.1 (labelled LOCKED 2026-06-12 in comment).
+  Derive detection threshold = 4 x STD_grams.
 
 ---
 

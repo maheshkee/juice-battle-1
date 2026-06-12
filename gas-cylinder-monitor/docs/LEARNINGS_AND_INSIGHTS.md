@@ -724,3 +724,57 @@ If the BLE code has a bug AND the socat setup is wrong simultaneously,
 you cannot tell which one caused the failure.
 Correct order: plain Python script on host → proven working → then migrate
 into App Lab container with socat. E-003 followed this correctly.
+
+---
+
+## Session 2026-06-12 - 3E-001 cal_factor characterisation
+
+### L-ESP32-001: Phase 0 settling monitor is mandatory before noise characterisation
+Date: 2026-06-12
+At cold boot the wooden platform and load cell beams creep under their own weight. Block STD during this drift is 300 to 5000 raw (drift-dominated), not the true hardware noise floor of 70 to 190 raw when settled. Running Phase 1 during Phase 0 drift measures drift rate not noise - all gates derived from it are wrong.
+Fix: Phase 0 collects 200-sample blocks and requires 3 consecutive blocks with block_std < 500 raw AND inter-block drift < 500 raw before Phase 1 runs.
+Verified: cold boot with shared plate took 60 to 161s to settle on hardware.
+
+### L-ESP32-002: Serial gate skip bug - stale Enter byte in buffer
+Date: 2026-06-12
+readStringUntil('\n') returns immediately if a newline already sits in the Serial buffer from a prior step. If the stability gate passes quickly after weight removal while you are still pressing Enter from the removal prompt, that byte skips the next placement gate - sketch samples with no weight and produces negative cal_factor.
+Fix: mandatory 2000ms delay() before every flush-and-wait gate. Gate cannot open in the first 2s regardless of buffer state. Then double flush: clear buffer → print prompt → block until keypress → clear buffer again.
+Verified: all Stage 1/2/3 runs completed with zero gate skips after fix.
+
+### L-ESP32-003: Stability gate must work in raw counts not grams
+Date: 2026-06-12
+Gram thresholds secretly depend on cal_factor. On 3-cell, cal_factor is ~36 raw/g. On single-cell it is ~107 raw/g. A spread gate of 2.5g equals 267 raw on single-cell but only 90 raw on 3-cell - same gram threshold is 3x tighter raw gate, impossible to pass on equivalent hardware.
+Fix: all stability gates in raw counts only. spread_gate = 1.5 x noise_std_raw, drift_gate = 1.0 x noise_std_raw.
+Verified: 3-cell platform passes cleanly. Previous gram-based gates on 4-cell platform never converged.
+
+### L-ESP32-004: Window STD not max-min for stability gate
+Date: 2026-06-12
+Max-min spread is dominated by the single largest outlier in a 20-sample window. One transient causes a reset even when 19 of 20 samples are clean. STD averages squared deviations - one outlier contributes only 1/N of total variance.
+Fix: stability gates use window STD via sqrtf(variance) not max-min.
+Verified: clean gate convergence in all runs. Previous max-min on 4-cell caused gate to never converge.
+
+### L-ESP32-005: cal_factor scales with cell count - always re-derive
+Date: 2026-06-12
+Parallel wiring averages signals. N cells in parallel means HX711 bus signal equals average of individual cell outputs. Sensitivity = 1/N of single-cell. This follows from Kirchhoff's Current Law on the Wheatstone bridge outputs.
+Measured: single cell ~106.7 raw/g. 3-cell 36.1 raw/g. Predicted 106.7/3 = 35.6. Matches within mounting variation.
+Rule: never carry cal_factor across topology changes. Always re-derive after any wiring change.
+
+### L-ESP32-006: SNR minimum 20x for reliable cal_factor derivation
+Date: 2026-06-12
+cal_factor = stable_delta / ref_weight_g. Error comes from tare noise. Effective noise on a 50-sample mean = noise_std_raw / sqrt(50). At SNR = 20x, percentage error in cal_factor is approximately 5%. Below 20x, individual readings become unreliable.
+Hardware confirmation: 100g readings showed ±25% scatter. 200g+ showed ±5 to 8%. The 20x threshold correctly predicted the failure boundary.
+Minimum reliable weight: ~150g on this platform.
+
+### L-ESP32-007: Viscoelastic beam recovery time scales with load magnitude
+Date: 2026-06-12
+YZC-161A beams deform under sustained load and recover slowly after removal - more load means more deformation and longer recovery. This is a material property of the alloy.
+Measured: 200g → ~6s recovery. 300g → 10 to 38s. 500g → 24 to 86s.
+Production implication: after cylinder replacement, wait at least 90 to 120s before trusting the new tare. Phase 0 + Phase 1 enforce this automatically.
+
+### L-ESP32-008: 3-cell platform is linear 200g to 1800g
+Date: 2026-06-12
+3 runs, ~80 clean readings from 200g to 1800g, CV = 4.1%. No systematic trend in cal_factor with weight. One cal_factor constant is valid for the entire cylinder weight range (15.5kg to 29.7kg).
+
+### L-ESP32-009: Boot settling time is mass-dependent
+Date: 2026-06-12
+More mass on the platform means more creep force on the beams and longer time to reach equilibrium. Without plate: 3 to 12s cold settle. With plate: 60 to 161s. Phase 0 handles this automatically - never assume a fixed settle time.

@@ -198,3 +198,46 @@ Modular refactor: hx711.h/.cpp, tare.h/.cpp, noise.h/.cpp, weight.h/.cpp, ble.h/
 sketch.ino becomes pure orchestrator.
 Gate: behaviour identical to E-003 single file.
 After refactor: App Lab migration with socat D-Bus forwarding.
+
+---
+
+## Session 003 - 2026-06-12 - 3E-001 cal_factor full characterisation
+
+### Goal
+Derive and validate cal_factor for 3-cell YZC-161A parallel platform across three stages:
+Stage 1 (individual cells), Stage 2 (shared plate), Stage 3 (multi-weight linearity sweep).
+
+### What happened
+- Renamed experiment series from 4E to 3E (3-cell is the production platform - cost decision)
+- Fixed serial gate skip bug: mandatory 2s dwell + double flush in waitForEnter()
+- Stability gate moved to raw counts - gram-based gates had hidden cal_factor dependency
+- Phase 0 settling monitor confirmed as mandatory before any noise characterisation
+- Built 3E001_cal_factor_v5, v5_1 (wall-clock timing), v5_2 (per-iteration weight entry)
+- Stage 1: 4 runs, fan on/off, power cycle, re-upload - weight on individual cells
+- Stage 2: 4 runs, same conditions - shared plate on all 3 cells
+- Stage 3: 3 runs, 100g to 1800g linearity sweep - confirmed linear across 9x range
+- All settling times derived from v5_1 timing instrumentation (real wall-clock seconds)
+
+### Real hardware outputs
+
+| Parameter | Value | Method |
+|---|---|---|
+| cal_factor (3-cell, shared plate) | 36.1 raw/g | 80+ clean readings, 3 stages |
+| Linear range | 200g to 1800g | Stage 3, 3 runs, CV 4.1% |
+| Min reliable weight | ~150g | SNR floor hardware-confirmed |
+| Cold boot settle, no plate | 3 to 12s | Stage 1 v5_1 timing |
+| Cold boot settle, with plate | 60 to 161s | Stage 2 v5_1 timing |
+| Placement settle | 10s sufficient | All loaded_std at or below noise_std |
+| Removal re-tare, fast path | 5.9s | Stage 2/3 timing |
+| Removal re-tare, after 500g | up to 86s | Stage 3 viscoelastic recovery |
+
+### Sketches built
+
+| Sketch | Location | Purpose |
+|---|---|---|
+| 3E001_cal_factor_v5 | node/3E001_cal_factor_v5/ | Self-characterising, fixed ref weight |
+| 3E001_cal_factor_v5_1 | node/3E001_cal_factor_v5_1/ | Plus wall-clock timing |
+| 3E001_cal_factor_v5_2 | node/3E001_cal_factor_v5_2/ | Plus per-iteration weight entry |
+
+### Gate
+3E-001 PASSED. cal_factor = 36.1 raw/g locked. Linear 200g to 1800g confirmed.
