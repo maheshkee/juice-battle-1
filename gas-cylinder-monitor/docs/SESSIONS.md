@@ -305,3 +305,49 @@ wires → cancels at differential HX711 input.
 - WebUI not started
 - Modular sketch architecture not yet started
 - Demo not yet built
+
+---
+## Session 2026-06-16 — Accuracy Investigation + 3E-004
+
+### Goal
+Find root cause of systematic weight reading errors. Achieve accurate readings.
+
+### Experiments run
+- 3E003 re-runs with various weights — diagnosed two compounding errors
+- E-005 linearity experiment — confirmed system is linear
+- 3E004 cal+run — combined calibration and running in one boot
+
+### Root causes found
+1. cal_factor derived in one boot used in different boot — invalid. Platform physical
+   state and supply voltage differ between boots causing different tare_raw baselines.
+   cal_factor must be derived in same boot as measurement.
+2. tare_raw_g set from Phase 1 20-sample window mean instead of Phase 2 200-sample
+   mean. 200-sample mean has 3× lower uncertainty: std/sqrt(200)=11.8 vs std/sqrt(20)=37.4 counts.
+
+### Key measured values (3E-004, 2026-06-16)
+| Parameter | Value |
+|---|---|
+| cal_factor (derived this boot) | 35.98 raw/g |
+| tare_raw_boot (s2_mean) | −106392.7 |
+| noise_std_raw | 173.98 raw |
+| noise_std_g | 4.84g |
+| threshold_g | 19.34g |
+| Zero reading (empty platform) | −3.6g, −2.1g |
+| 200g reading | 200.6g, 206.4g (avg +3g) |
+| 700g reading | 699.1g, 705.8g (avg +2g) |
+| 1700g reading | 1707.2g, 1702.2g (avg +5g) |
+| 1800g reading | 1801.8g (+2g) |
+
+### Gate result
+3E-004 PASSED — ±7g accuracy across 200g–1700g verified
+
+### Sketches built
+| Sketch | Location |
+|---|---|
+| E005_linearity | node/E005_linearity/E005_linearity.ino |
+| 3E004_cal_and_run | node/3E004_cal_and_run/3E004_cal_and_run.ino |
+
+### What was NOT done
+- Session close docs from previous session (2026-06-15) still pending
+- Self-deriving cal_factor (no user input) not yet built
+- cal_factor not yet saved to config.json on hub

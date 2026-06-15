@@ -177,11 +177,26 @@ LOCKED CONSTANTS (hardware-verified, never change without re-deriving):
   Linear range: 200g - 1800g (verified 3E-001 Stage 3)
   Min reliable weight: ~150g
 
-Current position: 3E-003 COMPLETE AND PASSED. Demo achieved. Next = accuracy investigation + timestamps + logging.
+## Current Position
+Date: 2026-06-16
+Experiment: 3E-004 COMPLETE AND PASSED
+Status: Accuracy investigation complete. Self-calibrating boot sketch working.
+Next: Self-deriving cal_factor without user input (auto-cal on boot)
 
-Next action: Accuracy investigation with known weights. Then timestamps, logging, modular refactor.
+## What was completed 2026-06-16
+- 3E-004 cal+run sketch built: node/3E004_cal_and_run/3E004_cal_and_run.ino
+- Root cause of accuracy problem found and fixed
+- cal_factor must be derived in same boot as measurement — cross-boot cal is invalid
+- tare_raw_g must use s2_mean (200-sample Phase 2 mean), not Phase 1 tare_raw
+- With both fixes: ±7g accuracy across 200g–1700g verified on real hardware
 
-Open issue: systematic offset in readings — tare drift suspected, needs known weight data.
+## Locked values updated 2026-06-16
+- cal_factor: NOT hardcoded — derived every boot in Phase 3 of 3E004
+- tare source: s2_mean (200-sample mean) — not Phase 1 20-sample window mean
+- Zero accuracy: ±4g
+- Weight accuracy: ±7g across 200g–1700g (0.4% of full scale)
+- noise_std_g: 4.84g (this session)
+- threshold_g: 19.34g (4 × STD, this session)
 
 ---
 

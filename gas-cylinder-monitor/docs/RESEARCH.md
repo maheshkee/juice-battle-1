@@ -492,3 +492,24 @@ Threshold: ~150g (SNR = 150g x 36.1 / 150 raw noise ~ 36x, above 20x minimum)
 | 2026-06-08 | E-002 noise floor confirmed on ESP32-C3. STD 0.62-0.67g. Threshold 2.67g locked. Dynamic stability detection parameters locked. |
 | 2026-06-08 | Added section 13 - BLE transport QRB2210 platform findings (E-003) |
 | 2026-06-12 | Section 13 added - 3-cell platform hardware characterisation complete |
+
+---
+## 3-Cell Platform Accuracy — Confirmed 2026-06-16
+
+### Finding
+With cal_factor and tare derived in the same boot (3E004 sketch):
+- Zero accuracy: ±4g (empty platform reads −3.6g to −2.1g)
+- Weight accuracy: ±7g across 200g–1700g
+- 700g: reads 699–706g (±5g, 0.7%)
+- 1700g: reads 1702–1707g (±5g, 0.3%)
+- 1800g: reads 1802g (+2g, 0.1%)
+
+### Cal_factor this session
+35.98 raw/g — derived from 1000g reference weight, same boot as measurement.
+Previous locked value of 36.1 (2026-06-12) was consistent — within 0.3%.
+Previous value of 31.51 was derived from a different boot — invalid cross-boot use.
+
+### Noise floor this session
+noise_std_raw: 173.98 counts
+noise_std_g:   4.84g
+threshold_g:   19.34g (4 × STD)

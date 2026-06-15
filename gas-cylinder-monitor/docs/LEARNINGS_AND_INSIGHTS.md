@@ -900,3 +900,69 @@ If Raw Stability CV > 0.5%, the connection is still bad.
 look inconsistent across iterations. Raw Stability CV < 0.2% = healthy connection.
 
 **Verified:** 2026-06-15 - hardware fault reproduced then fixed by re-seating.
+
+---
+### L-034: cal_factor must be derived in the same boot as measurement
+Date: 2026-06-16
+
+cal_factor is a ratio: raw_delta / known_weight = (raw_loaded - raw_tare) / grams.
+It should be supply-voltage-independent because V_excitation cancels in the delta.
+However, the platform physical state (cell preload, plate position, contact geometry)
+can differ between power cycles. This shifts the entire raw baseline by thousands of
+counts. A cal_factor derived in boot A and used in boot B is invalid if the platform
+state changed. The only safe approach: derive cal_factor and tare in the same boot,
+from the same physical state, with the same supply voltage settling.
+Verified: cross-boot cal_factor of 31.51 gave 13% error; same-boot cal_factor of
+35.98 gave ±0.4% error on identical hardware.
+
+---
+### L-035: tare_raw must come from s2_mean not Phase 1 window mean
+Date: 2026-06-16
+
+The tare zero reference accuracy determines the floor for all grams readings.
+Error of mean = noise_std / sqrt(N). With noise_std_raw = 167 counts:
+  Phase 1 window (N=20):  uncertainty = 167/sqrt(20)  = 37.4 counts = ±1.18g
+  Phase 2 mean   (N=200): uncertainty = 167/sqrt(200) = 11.8 counts = ±0.37g
+Phase 2 already collects 200 valid samples for noise characterisation.
+Its mean (s2_mean) is the best zero estimate available at boot — 3× more accurate
+than the Phase 1 window mean. Using tare_raw (Phase 1) instead of s2_mean throws
+away a free 3× accuracy improvement. Fix: tare_raw_g = s2_mean in handleNoiseCapture().
+
+---
+### L-036: E-005 linearity confirmed — 3-cell YZC-161A platform is linear
+Date: 2026-06-16
+
+Single-tare experiment with weights at 200g, 700g, 1700g:
+  700g:  implied_cf = 31.48 raw/g
+  1700g: implied_cf = 31.54 raw/g  (0.19% difference)
+The system is linear across 700g–1700g. One cal_factor covers the full cylinder
+operating range. Non-linearity was ruled out as a source of error.
+200g point excluded — below reliable SNR floor (SNR=24.9 vs 91.8 at 700g).
+Minimum reliable weight for cal_factor derivation: 500g or above.
+
+---
+### L-037: Minimum reference weight for cal_factor derivation is 500g
+Date: 2026-06-16
+
+At noise_std_raw = 167–240 counts:
+  SNR at 200g  (raw_delta ~6000):  SNR = 25  — marginal, unreliable
+  SNR at 500g  (raw_delta ~16000): SNR = 67  — acceptable
+  SNR at 1000g (raw_delta ~32000): SNR = 133 — excellent
+Below 500g, noise is a significant fraction of signal. cal_factor measurements
+scatter widely (27–37 raw/g observed at 50–190g reference weights).
+Above 500g, scatter collapses to <2% across repeated measurements.
+Rule: always use ≥500g reference weight for cal_factor derivation.
+Ideal: use 1000g for maximum SNR and repeatability.
+
+---
+### L-038: Self-calibrating boot architecture — tare + cal_factor in one session
+Date: 2026-06-16
+
+A weight measurement system has three unknowns per boot: tare, noise, cal_factor.
+Tare and noise must be re-derived every boot (supply voltage variation changes zero).
+Cal_factor is physically stable (it is a ratio, cancels supply variation) but only
+valid when the platform physical state matches the state during derivation.
+The safest architecture: derive all three in one continuous boot sequence.
+Phase 0+1+2: tare and noise. Phase 3: cal_factor. Phase 4: running.
+This guarantees all three values are consistent with each other and with the
+current physical state of the platform. No cross-boot assumptions needed.

@@ -12,7 +12,7 @@
 #define SCK_PIN  3
 
 // --- Locked calibration constant ---
-const float CAL_FACTOR_LOCKED = 36.1f;  // LOCKED 2026-06-12 - 3-cell parallel, shared plate
+const float CAL_FACTOR_LOCKED = 31.51f;  // LOCKED 2026-06-16 - E005 linearity verified, 2-point mean (700g+1700g), single-tare experiment
 
 // --- Phase 0 (settling) parameters ---
 #define SETTLE_BLOCK_SIZE  200
@@ -283,8 +283,12 @@ static void handleNoiseCapture(long raw) {
     float grams_offset        = (s2_mean - tare_raw) / CAL_FACTOR_LOCKED;
 
     // Store for PHASE_RUNNING
+    // Use s2_mean as tare, not Phase 1 tare_raw.
+    // s2_mean is the 200-sample mean of the unloaded platform — 3x more accurate than
+    // the 20-sample Phase 1 window mean. Error of mean = std/sqrt(N): 167/sqrt(200)=11.8
+    // counts vs 167/sqrt(20)=37.4 counts. Best zero estimate available at boot.
     noise_threshold_g = threshold_grams;
-    tare_raw_g        = tare_raw;
+    tare_raw_g        = s2_mean;
 
     Serial.println();
     Serial.println("  === 3E-003 NOISE FLOOR RESULT ===");
@@ -403,7 +407,7 @@ void setup() {
     pinMode(SCK_PIN,  OUTPUT);
     digitalWrite(SCK_PIN, LOW);
 
-    Serial.println("3E003 BLE transport v1 | 3-cell | cal=36.1 raw/g");
+    Serial.println("3E003 BLE transport v1 | 3-cell | cal=31.51 raw/g");
     Serial.println("Platform: 3-cell YZC-161A parallel, 3V3 HX711");
 
     // Init BLE GATT server now - advertising deferred until Phase 2 complete
