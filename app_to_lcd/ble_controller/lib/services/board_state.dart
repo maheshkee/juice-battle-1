@@ -25,6 +25,9 @@ class BoardState extends ChangeNotifier {
   bool _scheduleDirty = false;
   bool get scheduleDirty => _scheduleDirty;
 
+  int  whistleCount  = 0;
+  bool whistleActive = false;
+
   BoardState() {
     _loadBtConnected();
     _loadSchedule();
@@ -121,6 +124,8 @@ class BoardState extends ChangeNotifier {
               .map((e) => ScheduleEntry.fromJson(e)).toList();
         final np = (d['now_playing'] ?? '') as String;
         nowPlaying = np.isNotEmpty ? np : nowPlaying;
+        whistleCount  = d['whistle_count']  ?? whistleCount;
+        whistleActive = d['whistle_active'] ?? whistleActive;
         break;
       case 'led_status':
         ledOn = d['state'] ?? ledOn;
@@ -209,7 +214,10 @@ class BoardState extends ChangeNotifier {
               {'mac': e['mac'], 'name': e['name']}));
         break;
       case 'playlist_update':
-        // handled in hub_screen via ble.events
+        break;
+      case 'whistle_count':
+        whistleCount  = d['count']  ?? whistleCount;
+        whistleActive = d['active'] ?? whistleActive;
         break;
     }
     notifyListeners();

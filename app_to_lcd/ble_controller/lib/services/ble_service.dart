@@ -180,6 +180,9 @@ class BleService {
   Future<void> watchLaterRemove(String url)               => _write('WATCHLATER_REMOVE:$url');
   Future<void> watchLaterAdd(String url, String title, String videoId) =>
       _write('WATCHLATER_ADD:$url||$title||$videoId');
+  Future<void> whistleStart()                             => _write('CMD:WHISTLE_START');
+  Future<void> whistleStop()                              => _write('CMD:WHISTLE_STOP');
+  Future<void> whistleReset()                             => _write('CMD:WHISTLE_RESET');
 
   Future<void> sendQueue(List<QueueItem> items) async {
     final payload = jsonEncode(items.map((e) => e.toJson()).toList());

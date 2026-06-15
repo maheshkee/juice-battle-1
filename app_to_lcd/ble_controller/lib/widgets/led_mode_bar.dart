@@ -8,11 +8,13 @@ class LedModeBar extends StatefulWidget {
   final VoidCallback onModeIdle;
   final VoidCallback onModeClock;
   final VoidCallback onSchedule;
+  final VoidCallback onWhistle;
 
   const LedModeBar({super.key,
     required this.ledOn, required this.mode, required this.enabled,
     required this.onLedToggle, required this.onModeIdle,
-    required this.onModeClock, required this.onSchedule});
+    required this.onModeClock, required this.onSchedule,
+    required this.onWhistle});
 
   @override
   State<LedModeBar> createState() => _LedModeBarState();
@@ -23,10 +25,8 @@ class _LedModeBarState extends State<LedModeBar>
 
   late AnimationController _idlePulse;
   late AnimationController _clockPulse;
-  late AnimationController _ledPulse;
   late Animation<double> _idleAnim;
   late Animation<double> _clockAnim;
-  late Animation<double> _ledAnim;
 
   @override
   void initState() {
@@ -35,15 +35,11 @@ class _LedModeBarState extends State<LedModeBar>
       duration: const Duration(milliseconds: 1200));
     _clockPulse = AnimationController(vsync: this,
       duration: const Duration(milliseconds: 1200));
-    _ledPulse   = AnimationController(vsync: this,
-      duration: const Duration(milliseconds: 1000));
 
     _idleAnim  = Tween<double>(begin: 0.5, end: 1.0).animate(
       CurvedAnimation(parent: _idlePulse,  curve: Curves.easeInOut));
     _clockAnim = Tween<double>(begin: 0.5, end: 1.0).animate(
       CurvedAnimation(parent: _clockPulse, curve: Curves.easeInOut));
-    _ledAnim   = Tween<double>(begin: 0.4, end: 1.0).animate(
-      CurvedAnimation(parent: _ledPulse,   curve: Curves.easeInOut));
 
     _syncAnimations();
   }
@@ -51,7 +47,7 @@ class _LedModeBarState extends State<LedModeBar>
   @override
   void didUpdateWidget(LedModeBar old) {
     super.didUpdateWidget(old);
-    if (old.mode != widget.mode || old.ledOn != widget.ledOn) {
+    if (old.mode != widget.mode) {
       _syncAnimations();
     }
   }
@@ -69,19 +65,12 @@ class _LedModeBarState extends State<LedModeBar>
       _clockPulse.stop();
       _clockPulse.value = 0.5;
     }
-    if (widget.ledOn) {
-      _ledPulse.repeat(reverse: true);
-    } else {
-      _ledPulse.stop();
-      _ledPulse.value = 0.4;
-    }
   }
 
   @override
   void dispose() {
     _idlePulse.dispose();
     _clockPulse.dispose();
-    _ledPulse.dispose();
     super.dispose();
   }
 
@@ -94,83 +83,26 @@ class _LedModeBarState extends State<LedModeBar>
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFF1E3048))),
       child: Row(children: [
-        // LED toggle
-        _buildLed(),
-        const SizedBox(width: 10),
-        Expanded(child: Row(children: [
-          _buildModeBtn(
-            label: 'IDLE',
-            icon: Icons.hourglass_bottom_rounded,
-            active: widget.mode == 'idle',
-            color: const Color(0xFF7C3AED),
-            pulseAnim: _idleAnim,
-            onTap: widget.enabled ? widget.onModeIdle : null),
-          const SizedBox(width: 7),
-          _buildModeBtn(
-            label: 'CLOCK',
-            icon: Icons.access_time_rounded,
-            active: widget.mode == 'clock',
-            color: const Color(0xFF0EA5E9),
-            pulseAnim: _clockAnim,
-            onTap: widget.enabled ? widget.onModeClock : null),
-          const SizedBox(width: 7),
-          _buildSchedBtn(),
-        ])),
+        Expanded(child: _buildModeBtn(
+          label: 'IDLE',
+          icon: Icons.hourglass_bottom_rounded,
+          active: widget.mode == 'idle',
+          color: const Color(0xFF7C3AED),
+          pulseAnim: _idleAnim,
+          onTap: widget.enabled ? widget.onModeIdle : null)),
+        const SizedBox(width: 7),
+        Expanded(child: _buildModeBtn(
+          label: 'CLOCK',
+          icon: Icons.access_time_rounded,
+          active: widget.mode == 'clock',
+          color: const Color(0xFF0EA5E9),
+          pulseAnim: _clockAnim,
+          onTap: widget.enabled ? widget.onModeClock : null)),
+        const SizedBox(width: 7),
+        _buildSchedBtn(),
+        const SizedBox(width: 7),
+        _buildWhistleBtn(),
       ]),
-    );
-  }
-
-  Widget _buildLed() {
-    const onColor  = Color(0xFF34C759);
-    const offColor = Color(0xFF4A6080);
-    return GestureDetector(
-      onTap: widget.enabled ? widget.onLedToggle : null,
-      child: AnimatedBuilder(
-        animation: _ledAnim,
-        builder: (_, __) => Container(
-          width: 52, height: 30,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(15),
-            color: widget.ledOn
-              ? onColor.withOpacity(0.15)
-              : const Color(0xFF111D2E),
-            border: Border.all(
-              color: widget.ledOn
-                ? onColor.withOpacity(0.4 + _ledAnim.value * 0.4)
-                : const Color(0xFF2D4060),
-              width: 1.5),
-            boxShadow: widget.ledOn ? [
-              BoxShadow(
-                color: onColor.withOpacity(_ledAnim.value * 0.4),
-                blurRadius: 12, spreadRadius: 0)
-            ] : []),
-          child: Stack(children: [
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeInOutCubic,
-              left: widget.ledOn ? 24 : 2,
-              top: 2,
-              child: Container(
-                width: 24, height: 24,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: widget.ledOn ? onColor : offColor,
-                  boxShadow: widget.ledOn ? [
-                    BoxShadow(
-                      color: onColor.withOpacity(_ledAnim.value * 0.8),
-                      blurRadius: 10)
-                  ] : []),
-                child: Icon(
-                  widget.ledOn
-                    ? Icons.lightbulb_rounded
-                    : Icons.lightbulb_outline_rounded,
-                  size: 13,
-                  color: widget.ledOn ? Colors.black : const Color(0xFF1E3048)),
-              ),
-            ),
-          ]),
-        ),
-      ),
     );
   }
 
@@ -182,7 +114,7 @@ class _LedModeBarState extends State<LedModeBar>
     required Animation<double> pulseAnim,
     required VoidCallback? onTap,
   }) =>
-    Expanded(child: GestureDetector(
+    GestureDetector(
       onTap: onTap,
       child: AnimatedBuilder(
         animation: pulseAnim,
@@ -221,7 +153,7 @@ class _LedModeBarState extends State<LedModeBar>
           ]),
         ),
       ),
-    ));
+    );
 
   Widget _buildSchedBtn() {
     const color = Color(0xFFFF9F0A);
@@ -242,6 +174,32 @@ class _LedModeBarState extends State<LedModeBar>
           const Icon(Icons.calendar_month_rounded, size: 16, color: color),
           const SizedBox(height: 4),
           const Text('SCHED', style: TextStyle(
+            fontSize: 9, fontWeight: FontWeight.w700,
+            color: color, letterSpacing: 0.5)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildWhistleBtn() {
+    const color = Color(0xFF00E5FF);
+    return GestureDetector(
+      onTap: widget.onWhistle,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(color: color.withOpacity(0.4)),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.15),
+              blurRadius: 8, offset: const Offset(0, 2))
+          ]),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('📣', style: TextStyle(fontSize: 14)),
+          const SizedBox(height: 2),
+          const Text('WHISTLE', style: TextStyle(
             fontSize: 9, fontWeight: FontWeight.w700,
             color: color, letterSpacing: 0.5)),
         ]),
