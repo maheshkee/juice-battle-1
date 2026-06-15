@@ -116,6 +116,65 @@
             transform: translateX(-50%) translateY(0);
             opacity: 1;
         }
+
+        /* Whistle overlay */
+        #whistle-overlay {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+            pointer-events: none;
+            transition: opacity 0.4s;
+        }
+        #whistle-overlay.hidden { opacity: 0; }
+        .whistle-badge {
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 229, 255, 0.25);
+            border-radius: 12px;
+            padding: 8px 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .whistle-badge.active {
+            border-color: rgba(52, 199, 89, 0.5);
+            box-shadow: 0 0 12px rgba(52, 199, 89, 0.15);
+        }
+        .whistle-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #4a5568;
+            flex-shrink: 0;
+        }
+        .whistle-dot.pulse {
+            background: #34C759;
+            animation: dot-pulse 1.5s ease-in-out infinite;
+        }
+        .whistle-count {
+            font-size: 1.4rem;
+            font-weight: 100;
+            color: #fff;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.02em;
+            line-height: 1;
+        }
+        .whistle-label {
+            font-size: 0.55rem;
+            color: rgba(255,255,255,0.3);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+        }
+
+        @keyframes dot-pulse {
+            0%,100% { opacity: 1; transform: scale(1); }
+            50%      { opacity: 0.4; transform: scale(0.7); }
+        }
         @keyframes pulse-logo {
             0%,100% { transform: scale(1);    opacity: 0.9; }
             50%      { transform: scale(1.06); opacity: 1;   }
@@ -151,6 +210,17 @@
     </div>
     <div class="clock-date" id="clock-date"></div>
     <div class="clock-seconds-bar" id="sec-bar"></div>
+</div>
+
+<!-- Whistle overlay - always visible top-right -->
+<div id="whistle-overlay" class="hidden">
+    <div class="whistle-badge" id="whistle-badge">
+        <div class="whistle-dot" id="whistle-dot"></div>
+        <div>
+            <div class="whistle-count" id="whistle-count">0</div>
+            <div class="whistle-label">whistles</div>
+        </div>
+    </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -217,6 +287,30 @@ function tickClock() {
 }
 setInterval(tickClock, 1000);
 tickClock();
+
+function updateWhistleOverlay(count, active) {
+    const overlay = document.getElementById('whistle-overlay');
+    const badge   = document.getElementById('whistle-badge');
+    const dot     = document.getElementById('whistle-dot');
+    const countEl = document.getElementById('whistle-count');
+
+    countEl.textContent = count;
+
+    if (active) {
+        overlay.classList.remove('hidden');
+        badge.classList.add('active');
+        dot.classList.add('pulse');
+    } else {
+        // show overlay only if count > 0 when inactive
+        if (count > 0) {
+            overlay.classList.remove('hidden');
+        } else {
+            overlay.classList.add('hidden');
+        }
+        badge.classList.remove('active');
+        dot.classList.remove('pulse');
+    }
+}
 
 let ytPlayer     = null;
 let ytReady      = false;
@@ -388,7 +482,6 @@ socket.on('display_cmd', (data) => {
     }
     if (cmd === 'set_mode' && mode) {
         if (mode === currentMode && lastVideoId && ytPlayer) {
-            // tapping same mode again — go back to video
             loadAndPlay(lastVideoId);
         } else {
             showScreen(mode);
@@ -400,6 +493,10 @@ socket.on('display_cmd', (data) => {
 
 socket.on('queue_status', (data) => {
     queueActive = data.active === true;
+});
+
+socket.on('whistle_overlay', (data) => {
+    updateWhistleOverlay(data.count || 0, data.active || false);
 });
 </script>
 </body>

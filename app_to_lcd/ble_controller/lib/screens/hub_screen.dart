@@ -17,6 +17,7 @@ import '../services/bt_audio_service.dart';
 import '../screens/bt_devices_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/playlists_screen.dart';
+import '../screens/whistle_screen.dart';
 import '../services/playlist_service.dart';
 import '../main.dart' show startKeepAlive, stopKeepAlive;
 
@@ -137,6 +138,11 @@ class _HubScreenState extends State<HubScreen> {
     ));
   }
 
+  void _openWhistle() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const WhistleScreen()));
+  }
+
   @override
   Widget build(BuildContext context) {
     final ble       = context.watch<BleService>();
@@ -191,6 +197,7 @@ class _HubScreenState extends State<HubScreen> {
                         board.notifyListeners();
                       },
                       onSchedule: _openSchedule,
+                      onWhistle:  _openWhistle,
                     );
                   },
                 ),

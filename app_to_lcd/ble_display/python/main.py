@@ -7,7 +7,11 @@ import threading
 import datetime
 import re
 import json
+import numpy as np
 
+sys.path.insert(0, '/app/wheels')
+
+os.environ['ALSA_CARD'] = '0'
 os.environ['GI_TYPELIB_PATH'] = '/app/typelibs'
 
 for lib in [
@@ -56,6 +60,15 @@ PHONE_SVC_UUID = 'a00b0000-0000-0000-0000-000000000000'
 PHONE_CMD_UUID = 'a00b0002-0000-0000-0000-000000000000'
 PHONE_EVT_UUID = 'a00b0003-0000-0000-0000-000000000000'
 
+WHISTLE_MODEL_PATH  = '/app/models/whistle.eim'
+WHISTLE_THRESHOLD   = 0.95
+WHISTLE_CONSECUTIVE = 5
+WHISTLE_COOLDOWN    = 4.0
+WHISTLE_GAP         = 2.0
+WHISTLE_MIC_RATE    = 44100
+WHISTLE_MODEL_RATE  = 16000
+WHISTLE_STRIDE      = 4000
+
 ui               = WebUI()
 led_state        = False
 current_url      = None
@@ -95,6 +108,13 @@ _playlist_chunk_time = 0
 
 playlists = []
 
+whistle_count      = 0
+whistle_consec     = 0
+whistle_active     = False
+whistle_last_action = -999.0
+whistle_last_detect = -999.0
+whistle_lock       = threading.Lock()
+
 
 def now_str():
     return datetime.datetime.now().strftime("%H:%M:%S")
@@ -124,6 +144,119 @@ def extract_video_id(url: str):
 
 def is_youtube_url(url: str) -> bool:
     return 'youtube.com' in url or 'youtu.be' in url
+
+
+def push_whistle_state():
+    payload = {
+        'count':  whistle_count,
+        'active': whistle_active,
+        'time':   now_str(),
+    }
+    GLib.idle_add(lambda: push_to_phone('whistle_count', payload) or False)
+    ui.send_message('whistle_overlay', payload)
+
+
+def _whistle_resample(data, from_rate, to_rate):
+    if from_rate == to_rate:
+        return data
+    new_len = int(len(data) * to_rate / from_rate)
+    indices = np.linspace(0, len(data) - 1, new_len)
+    return np.interp(indices, np.arange(len(data)), data).astype(np.int16)
+
+
+def _whistle_on_detection():
+    global whistle_count, whistle_consec, whistle_active
+    global whistle_last_action, whistle_last_detect
+    with whistle_lock:
+        now = time.time()
+        if now - whistle_last_detect > WHISTLE_GAP:
+            whistle_consec = 0
+        whistle_last_detect = now
+        if not whistle_active:
+            return
+        if now - whistle_last_action < WHISTLE_COOLDOWN:
+            whistle_consec = 0
+            return
+        whistle_consec += 1
+        print(f'[WHISTLE] detection {whistle_consec}/{WHISTLE_CONSECUTIVE}', flush=True)
+        if whistle_consec >= WHISTLE_CONSECUTIVE:
+            whistle_consec      = 0
+            whistle_last_action = now
+            whistle_count      += 1
+            log(f'[WHISTLE] CONFIRMED -- total = {whistle_count}')
+            push_whistle_state()
+
+
+def whistle_audio_loop():
+    try:
+        import pyaudio
+        from edge_impulse_linux.runner import ImpulseRunner
+    except Exception as e:
+        print(f'[WHISTLE] Import failed: {e}', flush=True)
+        return
+
+    print(f'[WHISTLE] Loading model: {WHISTLE_MODEL_PATH}', flush=True)
+    try:
+        runner     = ImpulseRunner(WHISTLE_MODEL_PATH)
+        model_info = runner.init()
+        n_features = model_info['model_parameters']['input_features_count']
+        labels     = model_info['model_parameters']['labels']
+        print(f'[WHISTLE] Model loaded. Labels: {labels}', flush=True)
+    except Exception as e:
+        print(f'[WHISTLE] Model load failed: {e}', flush=True)
+        return
+
+    pa = pyaudio.PyAudio()
+    usb_index = None
+    for i in range(pa.get_device_count()):
+        info = pa.get_device_info_by_index(i)
+        if info['maxInputChannels'] > 0:
+            if 'usb' in info['name'].lower() or 'USB' in info['name']:
+                usb_index = i
+                break
+
+    mic_stride  = int(WHISTLE_MIC_RATE * WHISTLE_STRIDE / WHISTLE_MODEL_RATE)
+    rolling_buf = np.zeros(n_features, dtype=np.int16)
+
+    stream = pa.open(
+        format=pyaudio.paInt16,
+        channels=1,
+        rate=WHISTLE_MIC_RATE,
+        input=True,
+        input_device_index=usb_index,
+        frames_per_buffer=mic_stride
+    )
+
+    print('[WHISTLE] Listening...', flush=True)
+
+    try:
+        while True:
+            raw   = stream.read(mic_stride, exception_on_overflow=False)
+            chunk = np.frombuffer(raw, dtype=np.int16)
+            chunk = _whistle_resample(chunk, WHISTLE_MIC_RATE, WHISTLE_MODEL_RATE)[:WHISTLE_STRIDE]
+
+            rolling_buf[:-WHISTLE_STRIDE] = rolling_buf[WHISTLE_STRIDE:]
+            rolling_buf[-WHISTLE_STRIDE:] = chunk
+
+            result = runner.classify(rolling_buf.tolist())
+            if not result or 'result' not in result:
+                continue
+            if 'classification' not in result['result']:
+                continue
+
+            cls     = result['result']['classification']
+            wh_conf = cls.get('cooker_whistle', 0)
+
+            if wh_conf >= WHISTLE_THRESHOLD:
+                _whistle_on_detection()
+
+    except Exception as e:
+        print(f'[WHISTLE] Loop error: {e}', flush=True)
+    finally:
+        stream.stop_stream()
+        stream.close()
+        pa.terminate()
+        runner.stop()
 
 
 def load_trusted():
@@ -417,7 +550,6 @@ def _queue_play_current():
         title = item.get('title', '')
         url   = item.get('url', f'https://www.youtube.com/watch?v={vid}')
         log(f'[QUEUE] [{queue_index+1}/{len(queue)}] {title or vid}')
-        # add to history
         url_history.insert(0, {'url': url, 'video_id': vid,
             'title': title, 'time': now_str()})
         if len(url_history) > MAX_HISTORY: url_history.pop()
@@ -472,7 +604,6 @@ def _bt_connect(mac: str):
         except Exception: pass
         push_to_phone('bt_audio_connected', {'mac': mac, 'name': name, 'time': now_str()})
         log(f'[BT] Connected: {mac} ({name})')
-
     else:
         push_to_phone('bt_audio_error', {'mac': mac, 'time': now_str()})
         log(f'[BT] Connect failed: {mac}')
@@ -497,7 +628,9 @@ def _bt_forget(mac: str):
     push_to_phone('bt_forgotten', {'mac': mac, 'time': now_str()})
 
 def handle_phone_command(text: str):
-    global led_state, schedule
+    global led_state, schedule, whistle_count, whistle_consec
+    global whistle_active, whistle_last_action, whistle_last_detect
+    global queue_loop, queue_repeat
     text = text.strip()
     log(f'[PHONE] {text[:80]}')
 
@@ -652,14 +785,12 @@ def handle_phone_command(text: str):
         elif cmd == 'QUEUE_REPLAY': GLib.idle_add(queue_replay)
         elif cmd == 'QUEUE_STOP':   GLib.idle_add(queue_stop)
         elif cmd == 'QUEUE_LOOP_ON':
-            global queue_loop
             queue_loop = True
             push_to_phone('queue_mode', {'loop': queue_loop, 'repeat': queue_repeat, 'time': now_str()})
         elif cmd == 'QUEUE_LOOP_OFF':
             queue_loop = False
             push_to_phone('queue_mode', {'loop': queue_loop, 'repeat': queue_repeat, 'time': now_str()})
         elif cmd == 'QUEUE_REPEAT_ON':
-            global queue_repeat
             queue_repeat = True
             push_to_phone('queue_mode', {'loop': queue_loop, 'repeat': queue_repeat, 'time': now_str()})
         elif cmd == 'QUEUE_REPEAT_OFF':
@@ -721,6 +852,28 @@ def handle_phone_command(text: str):
                         if name and name != mac:
                             devices.append({'mac': mac, 'name': name})
             push_to_phone('bt_paired_devices', {'devices': devices, 'time': now_str()})
+        elif cmd == 'WHISTLE_START':
+            with whistle_lock:
+                whistle_count      = 0
+                whistle_consec     = 0
+                whistle_last_action = -999.0
+                whistle_last_detect = -999.0
+                whistle_active     = True
+            log('[WHISTLE] Counting STARTED')
+            push_whistle_state()
+        elif cmd == 'WHISTLE_STOP':
+            with whistle_lock:
+                whistle_active = False
+            log(f'[WHISTLE] Counting STOPPED -- final = {whistle_count}')
+            push_whistle_state()
+        elif cmd == 'WHISTLE_RESET':
+            with whistle_lock:
+                whistle_count      = 0
+                whistle_consec     = 0
+                whistle_last_action = -999.0
+                whistle_last_detect = -999.0
+            log('[WHISTLE] Count RESET')
+            push_whistle_state()
         else: log(f'[CMD] Unknown: {cmd}')
 
 def _get_bt_connected():
@@ -754,6 +907,11 @@ def _push_full_status_to_phone():
         for mac, d in scan_results.items()]})
     push_to_phone('trusted_devices', {'devices': [
         {'mac': mac, 'name': name} for mac, name in trusted.items()]})
+    push_to_phone('whistle_count', {
+        'count':  whistle_count,
+        'active': whistle_active,
+        'time':   now_str(),
+    })
     bt_mac, bt_name = _get_bt_connected()
     if bt_mac:
         def _push_bt():
@@ -1169,6 +1327,8 @@ def on_get_initial_state(client, data):
                 for u, c in d.get('characteristics', {}).items()]}
             for mac, d in connected.items()],
         'trusted': [{'mac': mac, 'name': name} for mac, name in trusted.items()],
+        'whistle_count':  whistle_count,
+        'whistle_active': whistle_active,
     }, client)
 
 ui.on_message('send_url',          on_send_url)
@@ -1195,4 +1355,5 @@ def _schedule_loop():
 
 threading.Thread(target=_schedule_loop, daemon=True).start()
 threading.Thread(target=ble_main, daemon=True).start()
+threading.Thread(target=whistle_audio_loop, daemon=True).start()
 App.run()
