@@ -122,22 +122,20 @@ Do not touch code until all eight are read.
 
 ---
 
-## Phase Dependencies — Do NOT Duplicate
+## Hub Self-Contained Rule
 
-Wheels, typelibs, and socket.io.min.js live in `home-hub/` and are one `cp` away:
+Hub wheels/, typelibs/, and socket.io.min.js are built/copied by hub/setup.sh
+from system sources only. No dependency on other projects.
+Never copy from home-hub or youtube-display — those may not exist in production.
+Do not commit wheels/ to git (.gitignore covers it).
 
-```bash
-cp -r ~/ArduinoApps/home-hub/wheels/     hub/wheels/
-cp -r ~/ArduinoApps/home-hub/typelibs/   hub/typelibs/
-cp ~/ArduinoApps/home-hub/assets/socket.io.min.js  hub/assets/
-```
-
-Copy only when the WebUI phase (Group 7) begins. Never commit wheels/ to git.
+NOTE 2026-06-15: hub/ is now self-contained. setup.sh builds wheels from source.
+The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ---
 
 ## Current State - 2026-06-15
-Status:         3E-002 COMPLETE AND PASSED (2026-06-15)
+Status:         3E-003 COMPLETE AND PASSED (2026-06-15)
 
 3E-001 COMPLETE AND PASSED (2026-06-12)
 Experiment series complete:
@@ -148,14 +146,15 @@ Experiment series complete:
   E-003  PASSED 2026-06-08  BLE transport single-cell (patterns reused)
   3E-001 PASSED 2026-06-12  cal_factor 3-cell = 36.1 raw/g LOCKED
   3E-002 PASSED 2026-06-15  noise floor 3-cell BLE-off and BLE-on LOCKED
+  3E-003 PASSED 2026-06-15  BLE transport 3-cell — ESP32→BLE→Hub→WebUI end-to-end
 
 node/ sketches built:
   E000_raw_read, E001_tare_cal_grams, E002_noise_floor,
   E003_ble_transport, 3E001_cal_factor_v5, 3E001_cal_factor_v5_1,
   3E001_cal_factor_v5_2, 3E002_noise_floor_v1, 3E002_noise_floor_v1_ble,
-  HW_VERIFY_3CELL, STOP, HW_VERIFY
+  HW_VERIFY_3CELL, STOP, HW_VERIFY, 3E003_ble_transport_v1
 
-hub/: empty - not yet started
+hub/: COMPLETE AND DEPLOYED (user:gas-cylinder-monitor/hub, WebUI: http://AQ3:7000)
 
 Wiring locked (do not change without re-verifying):
   ESP32-C3 GPIO4 = DOUT (INPUT_PULLUP), GPIO3 = SCK
@@ -178,16 +177,11 @@ LOCKED CONSTANTS (hardware-verified, never change without re-deriving):
   Linear range: 200g - 1800g (verified 3E-001 Stage 3)
   Min reliable weight: ~150g
 
-Current position: 3E-002 COMPLETE. Ready for 3E-003.
+Current position: 3E-003 COMPLETE AND PASSED. Demo achieved. Next = accuracy investigation + timestamps + logging.
 
-Next action:
-  Design modular sketch architecture in chat (hx711, tare, noise, weight, ble modules)
-  Build 3E-003 BLE transport - ESP32 sends {grams, quality, sigma} to AQ3 hub
-  Build hub Python BLE subscriber (bleak, socat pattern from motion-sensor-webui)
-  Build minimal WebUI - show weight in grams on screen
-  DEMO: boss places weight → hub receives → WebUI shows grams
+Next action: Accuracy investigation with known weights. Then timestamps, logging, modular refactor.
 
-Target: demo working within 2 days
+Open issue: systematic offset in readings — tare drift suspected, needs known weight data.
 
 ---
 
@@ -213,3 +207,8 @@ Target: demo working within 2 days
 | Hardcode device MAC address | Breaks on hardware replacement/repair | Store in config.json, self-provision |
 | Use "auto" BLE scan transport on QRB2210 | Kills Bluetooth adapter | Use "le" only |
 | Start hub Python before BlueZ ready | BLE scan fails silently | Use After=bluetooth.target in systemd |
+| RemoveDevice before Connect on fresh BLE discovery | Deletes the D-Bus object → UnknownObject error | BlueZ QRB2210 |
+| "auto" transport in SetDiscoveryFilter | Kills BT adapter on QRB2210 | Hardware bug |
+| deploy app without restarting socat service | dbus.sock may not exist | Hub |
+| Hardcode APP_NAME in hub scripts | Read from app.yaml — folder name ≠ app name | Hub |
+| List package names in requirements.txt for wheels | Must be /app/wheels/ file paths | Hub |

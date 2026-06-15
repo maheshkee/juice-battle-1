@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gas Cylinder Monitor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f0f0f;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .weight-row {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .grams {
+      font-size: 120px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -4px;
+      color: #ffffff;
+    }
+
+    .unit {
+      font-size: 48px;
+      font-weight: 400;
+      color: #9ca3af;
+    }
+
+    .badge {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      padding: 6px 20px;
+      border-radius: 999px;
+      background: #6b7280;
+      color: #ffffff;
+      text-transform: uppercase;
+      transition: background 0.3s;
+    }
+
+    .badge.good     { background: #22c55e; }
+    .badge.degraded { background: #f59e0b; }
+    .badge.failed   { background: #ef4444; }
+    .badge.waiting  { background: #6b7280; }
+
+    .meta {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .sigma {
+      font-size: 15px;
+      color: #9ca3af;
+    }
+
+    .ts {
+      font-size: 13px;
+      color: #4b5563;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="weight-row">
+      <span class="grams" id="grams">--</span>
+      <span class="unit">g</span>
+    </div>
+    <div class="badge waiting" id="badge">WAITING</div>
+    <div class="meta">
+      <div class="sigma" id="sigma"></div>
+      <div class="ts" id="ts"></div>
+    </div>
+  </div>
+
+  <script src="/socket.io.min.js"></script>
+  <script>
+    var gramsEl = document.getElementById('grams');
+    var badgeEl = document.getElementById('badge');
+    var sigmaEl = document.getElementById('sigma');
+    var tsEl    = document.getElementById('ts');
+
+    var qualityClass = { GOOD: 'good', DEGRADED: 'degraded', FAILED: 'failed', WAITING: 'waiting' };
+
+    function applyUpdate(data) {
+      gramsEl.textContent = data.quality === 'WAITING' ? '--' : Math.round(data.grams);
+      var cls = qualityClass[data.quality] || 'waiting';
+      badgeEl.className = 'badge ' + cls;
+      badgeEl.textContent = data.quality;
+      sigmaEl.textContent = data.quality === 'WAITING' ? '' : '±' + parseFloat(data.sigma).toFixed(2) + 'g';
+      tsEl.textContent = data.ts || '';
+    }
+
+    var socket = io();
+
+    socket.on('weight_update', function(data) {
+      applyUpdate(data);
+    });
+  </script>
+</body>
+</html>

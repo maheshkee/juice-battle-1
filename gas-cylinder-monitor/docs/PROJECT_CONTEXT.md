@@ -60,9 +60,11 @@ Experiments:
   Next: modular refactor → App Lab migration
 
 Hub files:
-  hub/e003_ble_test.py     - BLE subscriber, self-provisioning, MAC cache
-  hub/config.json          - device config (MAC auto-populated on first run)
-  hub/requirements.txt     - bleak>=0.21.0
+  hub/ COMPLETE AND DEPLOYED — App Lab ID: user:gas-cylinder-monitor/hub, WebUI: http://AQ3:7000
+  hub/python/main.py           - Flask + Socket.IO server
+  hub/python/ble_subscriber.py - BlueZ BLE subscriber, self-provisioning
+  hub/assets/index.html        - WebUI showing live grams
+  hub/app.yaml, setup.sh, deploy.sh
 ```
 
 ---
@@ -81,6 +83,7 @@ Hub files:
 | 8 | Minimum detectable cooking event (real measurement) | PENDING E-006B post-install |
 | 9 | BLE GATT UUIDs (service + characteristic) | RESOLVED E-003: service aa206b91-..., char b9b25bb1-... |
 | 10 | Hub discovery without hardcoded MAC | RESOLVED E-003: self-provisioning via name filter + config.json cache |
+| 11 | Accuracy offset — readings proportional but offset from known weights | 2026-06-15 | ❓ Pending |
 
 ---
 
@@ -110,10 +113,12 @@ ESP32-C3 SuperMini sensor node + Arduino UNO Q AQ3 hub.
 | E-002 noise floor single cell | PASSED 2026-06-08 | STD 0.67g BLE-off (VOID on 3-cell) |
 | E-003 BLE transport single cell | PASSED 2026-06-08 | STD 1.81g BLE-on (VOID on 3-cell) |
 | 3E-001 cal_factor 3-cell | PASSED 2026-06-12 | 36.1 raw/g locked, linear 200g to 1800g |
-| 3E-002 noise floor 3-cell | NEXT | BLE off then BLE on |
+| 3E-002 noise floor 3-cell | PASSED 2026-06-15 | noise_std_g BLE-off=4.93g, BLE-on=4.64g LOCKED |
+| 3E-003 BLE transport (3-cell) | ✅ PASSED 2026-06-15 | ESP32→BLE→Hub→WebUI end-to-end |
+| 3E-004 accuracy investigation | ⏳ NEXT | Known weight vs measured, diagnose offset |
 
 ### Locked values
 cal_factor = 36.1 raw/g | GPIO4 = DOUT, GPIO3 = SCK | HX711 VCC = 3.3V only
 
 ### Next action
-Design 3E-002 in chat. Implement via Claude Code CLI on AQ3.
+Accuracy investigation (3E-004): place known weights, record actual vs measured, diagnose offset.
