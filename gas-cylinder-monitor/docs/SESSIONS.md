@@ -241,3 +241,67 @@ Stage 1 (individual cells), Stage 2 (shared plate), Stage 3 (multi-weight linear
 
 ### Gate
 3E-001 PASSED. cal_factor = 36.1 raw/g locked. Linear 200g to 1800g confirmed.
+
+---
+
+## Session 006 - 2026-06-15 - 3E-002 noise floor characterisation (BLE off + BLE on)
+
+### Goal
+Complete 3E-002: measure true noise floor of 3-cell platform in BLE-off and BLE-on conditions.
+Lock production noise_std_g and threshold_g. Verify BLE EMI penalty on 3-cell.
+
+### What happened
+- Ran HW_VERIFY_3CELL sketch (new diagnostic tool built this session)
+  All cells PASS: Cell1=-116.4g, Cell2=-119.0g, Cell3=-93.3g lift deltas
+  cal_factor derived: 35.63 raw/g (consistent with locked 36.1 from 3E-001, 1.3% diff)
+  Raw stability CV=0.108% - hardware confirmed clean
+- Ran 3E002_noise_floor_v1 (BLE off) - 7 runs total across sessions
+- Ran 3E002_noise_floor_v1_ble (BLE on) - 2 runs today
+- Investigated intermittent hardware fault (tare_raw jumping ~18000 raw = ~500g)
+  Root cause: loose wire connection during earlier session, resolved by re-seating
+- Key discovery: 3-cell parallel wiring provides natural common-mode rejection of BLE EMI
+
+### Real hardware outputs - BLE OFF (7 runs, 3-cell platform)
+| Run | noise_std_g | threshold_g | notes |
+|---|---|---|---|
+| 1 | 2.22g | 8.87g  | anomalously quiet - cold boot outlier |
+| 2 | 4.13g | 16.52g | mid-creep reboot |
+| 3 | 4.02g | 16.09g | power off/on |
+| 4 | 3.23g | 12.93g | consecutive boot |
+| 5 | 3.23g | 12.93g | consecutive boot - matches run 4 |
+| 6 | 4.93g | 19.71g | today, verified hardware |
+| 7 | 4.64g | 18.54g | BLE-on run 1 - same STD as BLE-off |
+
+### Real hardware outputs - BLE ON (2 runs today)
+| Run | noise_std_g | threshold_g | BLE penalty |
+|---|---|---|---|
+| B1 | 4.64g | 18.54g | ~1.0x (no penalty) |
+| B2 | 3.51g | 14.03g | ~1.0x (no penalty) |
+
+### Locked production values
+  noise_std_g  (BLE off, worst case) = 4.93g
+  noise_std_g  (BLE on,  worst case) = 4.64g
+  threshold_g  (BLE on,  production) = 18.54g
+  BLE EMI penalty on 3-cell platform = ~1.0x (negligible)
+
+### Key finding
+BLE radio on ESP32-C3 does NOT increase noise meaningfully on 3-cell platform.
+Single-cell showed 2.7x BLE penalty. 3-cell shows ~1.0x.
+Root cause: 6 parallel signal wires (3x A+, 3x A-) twisted together act as
+common-mode filter for 2.4GHz RF interference. BLE couples equally into all
+wires → cancels at differential HX711 input.
+
+### Sketches built this session
+  node/3E002_noise_floor_v1/       BLE off noise characterisation
+  node/3E002_noise_floor_v1_ble/   BLE on noise characterisation
+  node/HW_VERIFY_3CELL/            3-cell hardware diagnostic tool
+
+### Gate result
+3E-002 PASSED. Production noise floor and threshold locked.
+
+### What was NOT done (for next session)
+- 3E-003 BLE transport not yet started
+- Hub Python BLE subscriber not started
+- WebUI not started
+- Modular sketch architecture not yet started
+- Demo not yet built

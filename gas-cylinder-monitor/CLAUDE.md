@@ -136,41 +136,58 @@ Copy only when the WebUI phase (Group 7) begins. Never commit wheels/ to git.
 
 ---
 
-## Current State - 2026-06-12
+## Current State - 2026-06-15
+Status:         3E-002 COMPLETE AND PASSED (2026-06-15)
 
-Status: 3E-001 cal_factor COMPLETE AND PASSED. Stages 1, 2, 3 all passed.
-Platform: 3-cell YZC-161A parallel (NOT 4-cell - cost decision locked 2026-06-12)
+3E-001 COMPLETE AND PASSED (2026-06-12)
+Experiment series complete:
 
-Sketches on board:
-  node/3E001_cal_factor_v5/        self-characterising, fixed ref weight, human gate
-  node/3E001_cal_factor_v5_1/      v5 + wall-clock timing instrumentation
-  node/3E001_cal_factor_v5_2/      v5.1 + per-iteration weight entry (Stage 3)
+  E-000  PASSED 2026-06-04  raw bit-bang proven
+  E-001  PASSED 2026-06-05  cal_factor single-cell ~106.7 raw/g (VOID on 3-cell)
+  E-002  PASSED 2026-06-08  noise floor single-cell BLE-off (VOID on 3-cell)
+  E-003  PASSED 2026-06-08  BLE transport single-cell (patterns reused)
+  3E-001 PASSED 2026-06-12  cal_factor 3-cell = 36.1 raw/g LOCKED
+  3E-002 PASSED 2026-06-15  noise floor 3-cell BLE-off and BLE-on LOCKED
 
-Locked values (hardware-verified 2026-06-12):
-  cal_factor:              36.1 raw/g (3-cell platform, shared plate)
-  Linear range:            200g to 1800g confirmed (9x weight span, CV 4.1%)
-  Min reliable weight:     ~150g (SNR floor - tare walk dominates below this)
-  GPIO4 = DOUT, GPIO3 = SCK (unchanged from single-cell era)
-  HX711 VCC = 3.3V only (unchanged)
-  3 reds → E+, 3 blacks → E-, 3 greens → A+, 3 whites → A-
+node/ sketches built:
+  E000_raw_read, E001_tare_cal_grams, E002_noise_floor,
+  E003_ble_transport, 3E001_cal_factor_v5, 3E001_cal_factor_v5_1,
+  3E001_cal_factor_v5_2, 3E002_noise_floor_v1, 3E002_noise_floor_v1_ble,
+  HW_VERIFY_3CELL, STOP, HW_VERIFY
 
-Timing locked from hardware (2026-06-12):
-  Cold boot settle, no plate:    3-12s
-  Cold boot settle, with plate:  60-161s depending on thermal state
-  Placement → stable:            10s sufficient (all loaded_std < noise_std confirmed)
-  Removal → re-tare, fast:       ~6s
-  Removal → re-tare, after 500g: up to 86s (viscoelastic recovery)
+hub/: empty - not yet started
 
-Noise floor: NOT YET MEASURED on 3-cell platform with BLE running.
-  E-003 value (STD=1.81g threshold=7.24g) is VOID - single-cell AQ3 only.
+Wiring locked (do not change without re-verifying):
+  ESP32-C3 GPIO4 = DOUT (INPUT_PULLUP), GPIO3 = SCK
+  HX711 VDD = 3V3 ONLY - never 5V
+  3-cell parallel: all reds → E+, all blacks → E-, all greens → A+, all whites → A-
+  Twisted/soldered direct to HX711 terminals - NOT breadboard
 
-Transport: BLE-only. WiFi removed entirely. ESP32 advertises, hub scans/connects/subscribes.
-Seam: node outputs {grams, quality, sigma} only. Hub stamps timestamp, computes gas%.
+Arduino IDE locked:
+  esp32 by Espressif v3.0.7, Board: ESP32C3 Dev Module
+  Port: COM11, USB CDC On Boot: ENABLED
+  SCP to: C:\Users\mahes\Documents\Arduino\
 
-Current position: Group 1, 3E-002 - noise floor characterisation on 3-cell platform.
-Next action: Design 3E-002 in chat. Sketch measures noise STD with BLE off, then BLE on.
-  Print grams using locked cal_factor=36.1 (labelled LOCKED 2026-06-12 in comment).
-  Derive detection threshold = 4 x STD_grams.
+LOCKED CONSTANTS (hardware-verified, never change without re-deriving):
+  cal_factor (3-cell parallel, shared plate) = 36.1 raw/g  LOCKED 2026-06-12
+  noise_std_g  (BLE off, worst case)         = 4.93g        LOCKED 2026-06-15
+  noise_std_g  (BLE on,  worst case)         = 4.64g        LOCKED 2026-06-15
+  threshold_g  (BLE on,  production)         = 18.54g       LOCKED 2026-06-15
+  BLE EMI penalty on 3-cell platform         = ~1.0x        LOCKED 2026-06-15
+  tare_raw: NEVER hardcode - re-derived every boot
+  Linear range: 200g - 1800g (verified 3E-001 Stage 3)
+  Min reliable weight: ~150g
+
+Current position: 3E-002 COMPLETE. Ready for 3E-003.
+
+Next action:
+  Design modular sketch architecture in chat (hx711, tare, noise, weight, ble modules)
+  Build 3E-003 BLE transport - ESP32 sends {grams, quality, sigma} to AQ3 hub
+  Build hub Python BLE subscriber (bleak, socat pattern from motion-sensor-webui)
+  Build minimal WebUI - show weight in grams on screen
+  DEMO: boss places weight → hub receives → WebUI shows grams
+
+Target: demo working within 2 days
 
 ---
 

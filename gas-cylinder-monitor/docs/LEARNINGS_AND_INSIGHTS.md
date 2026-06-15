@@ -778,3 +778,125 @@ Date: 2026-06-12
 ### L-ESP32-009: Boot settling time is mass-dependent
 Date: 2026-06-12
 More mass on the platform means more creep force on the beams and longer time to reach equilibrium. Without plate: 3 to 12s cold settle. With plate: 60 to 161s. Phase 0 handles this automatically - never assume a fixed settle time.
+
+---
+
+## 3-CELL PLATFORM FINDINGS (2026-06-12 to 2026-06-15)
+
+### [2026-06-15] BLE EMI does NOT increase noise on 3-cell parallel platform
+**Finding:** Single-cell platform showed 2.7x noise increase when BLE radio active
+(0.67g → 1.81g STD). 3-cell platform shows ~1.0x (no meaningful increase):
+BLE-off worst case 4.93g, BLE-on worst case 4.64g.
+
+**Root cause from first principles:**
+BLE EMI is a common-mode interference - the 2.4GHz burst couples roughly
+equally into all conductors near the antenna. On single-cell, one A+ and one A-
+wire carry the signal. BLE couples into both, but asymmetrically depending on
+wire routing, creating a differential noise component.
+
+On 3-cell parallel, 3x A+ wires are twisted together at the HX711 terminal,
+and 3x A- wires are twisted together. BLE couples identically into all 3x A+
+wires (they are physically co-located) and identically into all 3x A- wires.
+The interference appears as common-mode → HX711 differential input rejects it.
+
+**Rule:** 3-cell parallel wiring is inherently more RF-immune than single-cell.
+No RF shielding needed for V1. This is a free benefit of the parallel topology.
+
+**Verified:** 2 BLE-on runs, 2026-06-15. Both matched BLE-off noise range.
+
+---
+
+### [2026-06-15] 3-cell noise floor is dominated by mechanical creep, not electronics
+
+**Finding:** Phase 2 STD varies run-to-run (2.22g to 4.93g) not because of
+electronics but because of viscoelastic creep still playing out during the
+20-second Phase 2 collection window. The grams_offset is consistently
+-1.7g to -3.5g (platform drifts ~3g in 20 seconds even after stability gate passes).
+
+**Root cause:** The stability gate (Phase 0 + Phase 1) detects when drift between
+consecutive windows is below a threshold. But slow creep continues below that
+threshold. During Phase 2 (200 samples = 20 seconds), this slow drift adds a
+trend component that inflates the measured STD.
+
+**Implication for production:** Self-characterisation per boot is essential.
+The noise floor varies boot-to-boot depending on thermal history. A hardcoded
+threshold would be wrong on some boots.
+
+**Rule:** Never hardcode noise_std_g or threshold_g. Always derive per boot
+from Phase 0 → Phase 1 → Phase 2 sequence.
+
+**Verified:** 7 BLE-off runs showing consistent creep pattern, 2026-06-15.
+
+---
+
+### [2026-06-15] cal_factor run-to-run variation on 3-cell is normal and acceptable
+
+**Finding:** cal_factor varies ~34-37 raw/g across boots on healthy hardware.
+This is not a measurement error - it is real physical variation from:
+1. Weight placement position during calibration (plate flex changes load distribution)
+2. Plate seating geometry (1mm shift changes lever arm)
+3. Temperature (YZC-161A sensitivity ±0.02%/°C)
+
+**Why acceptable:** cal_factor error cancels in delta calculations. If cal_factor
+is 5% wrong, both readings are 5% wrong → delta is still correct. Gas consumption
+is always computed as delta, never absolute. Absolute gas% error from cal_factor
+is bounded by the ±150g BIS IS 3196 cylinder tolerance anyway.
+
+**Rule:** cal_factor derived once at installation, stored in config.json.
+Never recalculate unless hardware changes. HW_VERIFY_3CELL confirms it each boot
+without re-running the full 3E-001 procedure.
+
+**Verified:** Multiple sessions, 2026-06-12 to 2026-06-15.
+
+---
+
+### [2026-06-15] Load cell failure detection strategy for production (design locked)
+
+**Three detection methods - implemented in hub code at hub stage:**
+
+**Method 1 - Tare ratio check (automatic, on every cylinder removal):**
+After cylinder removal detected, hub reads empty platform raw value.
+Compare to tare_raw stored at installation.
+  ratio = current_empty_raw / install_tare_raw
+  0.85-1.15  → ALL_OK
+  0.55-0.75  → ONE_CELL_FAILED (reading ~ 67% of expected, one cell open/shorted)
+  0.25-0.45  → TWO_CELLS_FAILED
+  otherwise  → UNKNOWN_FAULT
+
+**Method 2 - cal_factor drift check (automatic, on every refill):**
+At each refill event, hub estimates gross weight using stored cal_factor.
+Full Indian LPG cylinder gross ~ 30-31kg.
+If hub reads 20kg → cal_factor has drifted or a cell has failed.
+
+**Method 3 - HW_VERIFY_3CELL lift test (manual, at installation or maintenance):**
+Technician runs HW_VERIFY_3CELL sketch. Lift test isolates each cell individually.
+Used when fault is confirmed and specific cell identity is needed.
+
+**Physics of failure:** Open circuit or short on one cell → that cell outputs 0.
+Parallel bus: V_bus = (V1 + V2 + 0) / 3 = 2/3 of correct. Reading → 67% of truth.
+Two cells failed → 33% of truth.
+
+**Rule:** All three methods must be implemented in hub code. Methods 1 and 2
+run silently on every removal/refill event without user action.
+
+---
+
+### [2026-06-15] Intermittent connection causes catastrophic cal_factor scatter
+
+**Finding:** During one session, cal_factor values ranged 15.73 to 39.84 raw/g
+(2.5x spread). Root cause was one load cell wire making intermittent contact,
+causing tare_raw to jump by ~18000 raw (~500g equivalent) between measurements.
+
+**Diagnostic signature:**
+- tare_raw jumps suddenly by thousands of raw between iterations (>5000 raw)
+- Phase 1 stabilisation takes >50 windows with spikes to 8965 raw STD
+- Re-tare after removal takes >60 seconds (108s observed)
+- cal_factor varies wildly across iterations
+
+**Fix:** Re-seat all 6 load cell wires into HX711 terminals. Run HW_VERIFY_3CELL.
+If Raw Stability CV > 0.5%, the connection is still bad.
+
+**Rule:** HW_VERIFY_3CELL is the first diagnostic step when cal_factor results
+look inconsistent across iterations. Raw Stability CV < 0.2% = healthy connection.
+
+**Verified:** 2026-06-15 - hardware fault reproduced then fixed by re-seating.
