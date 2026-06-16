@@ -133,15 +133,17 @@ Updated: 2026-06-16 | This section supersedes all prior state sections.
 ### Architecture confirmed
 Transport: BLE only — locked, validated end-to-end
 Platform: 3-cell (3× YZC-161A 20kg, shared fibre plate)
-cal_factor: ~36 raw/g nominal, derived every boot (self-calibrating boot)
-Production sketch: 3E004_cal_and_run.ino
+cal_factor: 37.06 raw/g (2026-06-16, derived every boot — not hardcoded)
+sigma: 2.64g (2026-06-16, recomputed in grams post-CAL)
+Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino
+Next action: 1B — load cell health detection module (design session first)
 
 ### Backlog audit complete — full ordered backlog
 
 **1A-1D: Modular sketch series (immediate next)**
 | Chunk | Task | Status |
 |-------|------|--------|
-| 1A | Modular sketch port to 3-cell ESP32-C3 (hx711.cpp, tare.cpp, cal.cpp, weight.cpp) | NEXT ACTION |
+| 1A | Modular sketch port to 3-cell ESP32-C3 (hx711.cpp, tare.cpp, cal.cpp, weight.cpp) | COMPLETE 2026-06-16 |
 | 1B | Structured Serial journal (machine-parseable [BOOT][CAL][TARE][WEIGHT][ERR] prefixes) | Queued |
 | 1C | Timing instrumentation — log read latency and state machine cycle times | Queued |
 | 1D | Noise floor recheck on 3-cell platform (repeat 3E-002 procedure post-modular port) | Queued |

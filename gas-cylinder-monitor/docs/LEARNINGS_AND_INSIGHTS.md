@@ -995,3 +995,42 @@ used = weight_earlier - weight_now. Steel S appears in both terms and cancels. B
 Date: 2026-06-16
 
 Two failure modes: false pessimism (tell user less gas than actual) and false optimism (tell user more gas than actual). False pessimism causes the user to order gas slightly early — minor inconvenience. False optimism causes a gas outage mid-cooking — a major product failure and safety concern. The product must never tell the user they have more gas than they actually do. When uncertain (during V3 self-heal ramp-up, partial cylinder scenarios), round the gas estimate downward. Optimism is always the wrong direction for this product.
+
+---
+## L-044 - noise_recompute_sigma(): linear rescaling of stored raw samples
+Date: 2026-06-16
+
+When noise characterisation runs before cal_factor is known (boot order:
+NOISE before CAL), samples are stored in net raw counts (tare subtracted,
+cal_factor not applied). After CAL derives cal_factor, sigma can be
+recomputed without re-running hardware measurement.
+
+Why it works: dividing each sample by cal_factor is a linear rescaling.
+Var(X/c) = Var(X)/c², so σ(X/c) = σ(X)/c. The sigma computed from
+rescaled samples is algebraically identical to what hardware measurement
+would produce with cal_factor known upfront.
+
+Cost: two array passes, ~microseconds. Boot time unchanged.
+
+Assumption: only valid when cal_factor=0 path ran during noise char.
+If noise_init() ever called after cal_factor is set, stored samples will
+already be in grams - calling recompute again would double-divide.
+Documented in CLAUDE.md Known assumptions and noise.cpp comment block.
+Verified: sigma recomputed = 2.64g consistent with hardware noise floor.
+
+---
+## L-045 - Arduino sketch library dependencies must be explicitly documented
+Date: 2026-06-16
+
+Arduino IDE does not have a package manager like pip or npm. Missing
+libraries produce fatal compile errors with no install guidance. Every
+sketch that uses non-core libraries must document them in two places:
+1. README.md in the sketch folder - table of library name, author, purpose
+2. Comment block at top of .ino - one line per library
+
+This is the Arduino equivalent of requirements.txt.
+
+Required for gas_monitor_v1:
+- NimBLE-Arduino by h2zero (BLE GATT server)
+- ArduinoJson by Benoit Blanchon (SPIFFS config.json)
+- SPIFFS - built into ESP32 core, no install needed

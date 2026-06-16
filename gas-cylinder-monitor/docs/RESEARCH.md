@@ -513,3 +513,27 @@ Previous value of 31.51 was derived from a different boot — invalid cross-boot
 noise_std_raw: 173.98 counts
 noise_std_g:   4.84g
 threshold_g:   19.34g (4 × STD)
+
+---
+
+## 2026-06-16 - gas_monitor_v1 modular sketch verified
+
+Platform: 3-cell YZC-161A parallel, GISLAB HX711, ESP32-C3 SuperMini
+
+Confirmed values this session:
+- cal_factor: 37.06 raw/g (3-cell, consistent with 3E-001 ~36 raw/g)
+- sigma: 2.64g (recomputed post-CAL from boot-time noise samples)
+- Boot sequence: SETTLE(2s) → TARE(200-sample) → NOISE(200-sample) →
+  CAL(50-sample) → RUNNING confirmed working end-to-end
+
+Arduino library dependencies confirmed required:
+- NimBLE-Arduino by h2zero
+- ArduinoJson by Benoit Blanchon
+
+Known: NOISE WARNING "sigma too high" fires at boot - raw-unit sigma
+(~95 raw) exceeds 20g gram-unit guard. Orchestrator correctly ignores
+and continues. Log clarity issue, not functional bug.
+
+| Date | Change |
+|------|--------|
+| 2026-06-16 | gas_monitor_v1 modular sketch verified on 3-cell hardware |

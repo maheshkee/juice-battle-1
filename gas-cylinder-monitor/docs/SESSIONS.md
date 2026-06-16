@@ -382,3 +382,37 @@ None — design session only. No hardware touched. No sketches built.
 
 ### Gate
 N/A — design session. Architecture and backlog locked. Ready for 1A modular sketch port.
+
+---
+
+## Session - 2026-06-16 (Session 2)
+Goal: 1A - build and verify modular sketch port to 3-cell ESP32-C3
+
+What was built:
+- node/gas_monitor_v1/ - full modular sketch
+  - hx711.h/.cpp - bit-bang, GPIO4=DT GPIO3=SCK, 3 corrupt filters
+  - tare.h/.cpp - 2-phase non-blocking, s2_mean 200 samples
+  - noise.h/.cpp - 200-sample two-pass float variance + noise_recompute_sigma()
+  - cal.h/.cpp - 50-sample derivation, SPIFFS config.json cal_history append
+  - weight.h/.cpp - 20-sample circular buffer, GOOD/DEGRADED/FAILED
+  - ble.h/.cpp - NimBLE GATT, locked UUIDs, snprintf JSON notify
+  - gas_monitor_v1.ino - orchestrator only, state machine, no sensor math
+  - README.md - library dependencies documented
+
+Real hardware outputs (verified on 3-cell platform):
+| Metric | Value |
+|---|---|
+| cal_factor | 37.06 raw/g |
+| sigma (recomputed) | 2.64g |
+| Zero accuracy | ±3g (first stable plateau ~503g vs 500g known) |
+| DEGRADED readings | 19 (buffer fill, correct) |
+| GOOD readings | all subsequent, stable |
+| Boot sequence | SETTLE→TARE→NOISE→CAL→RUNNING all correct |
+
+Gate result: PASSED
+
+Known issue logged: NOISE WARNING fires during boot (sigma in raw units
+exceeds 20g guard before recompute). Not a bug - orchestrator correctly
+continues. Log clarity issue only. Filed for 1B/1C session.
+
+Next: 1B - load cell health detection module design
