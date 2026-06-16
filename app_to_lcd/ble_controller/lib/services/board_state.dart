@@ -29,11 +29,14 @@ class BoardState extends ChangeNotifier {
   bool whistleActive = false;
   int  whistleTarget = 0;
 
+  String displayMode = 'overlay';
+
   void Function(int count, int target)? onWhistleTargetReached;
 
   BoardState() {
     _loadBtConnected();
     _loadSchedule();
+    _loadDisplayMode();
   }
 
   Future<void> _loadBtConnected() async {
@@ -91,6 +94,21 @@ class BoardState extends ChangeNotifier {
   void markScheduleClean() {
     _scheduleDirty = false;
     notifyListeners();
+  }
+
+  Future<void> _loadDisplayMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      displayMode = prefs.getString('display_mode') ?? 'overlay';
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> saveDisplayMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('display_mode', displayMode);
+    } catch (_) {}
   }
 
   void clearHistoryLocally() {
@@ -228,6 +246,13 @@ class BoardState extends ChangeNotifier {
         final c = d['count']  as int? ?? 0;
         final t = d['target'] as int? ?? 0;
         onWhistleTargetReached?.call(c, t);
+        break;
+      case 'display_mode_update':
+        final m = d['mode'] as String? ?? 'overlay';
+        if (m == 'overlay' || m == 'split') {
+          displayMode = m;
+          saveDisplayMode();
+        }
         break;
     }
     notifyListeners();

@@ -151,6 +151,7 @@ class _HubScreenState extends State<HubScreen> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: const Color(0xFF080C14),
+      drawer: _buildDrawer(context, ble, connected),
       body: SafeArea(
         child: Column(children: [
           _buildHeader(ble),
@@ -285,22 +286,127 @@ class _HubScreenState extends State<HubScreen> {
     );
   }
 
+  Widget _buildDrawer(BuildContext context, BleService ble, bool connected) {
+    return Drawer(
+      backgroundColor: const Color(0xFF0D1520),
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              child: Row(children: [
+                Container(
+                  width: 32, height: 32,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft, end: Alignment.bottomRight,
+                      colors: [Color(0xFF00D4FF), Color(0xFF0052D4)]),
+                    borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.hub_rounded, color: Colors.white, size: 16)),
+                const SizedBox(width: 10),
+                const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Display', style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white)),
+                  Text('Choose how the board screen looks', style: TextStyle(
+                    fontSize: 11, color: Color(0xFF3D5068))),
+                ]),
+              ]),
+            ),
+            const Divider(color: Color(0xFF1A2840), height: 1),
+            Selector<BoardState, String>(
+              selector: (_, b) => b.displayMode,
+              builder: (ctx, mode, __) {
+                final isSplit = mode == 'split';
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: Row(children: [
+                    Icon(
+                      isSplit
+                        ? Icons.view_sidebar_rounded
+                        : Icons.picture_in_picture_alt_rounded,
+                      color: isSplit
+                        ? const Color(0xFF30D158)
+                        : const Color(0xFF0052D4),
+                      size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(isSplit ? 'Split screen' : 'Overlay',
+                          style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w500,
+                            color: Colors.white)),
+                        Text(
+                          isSplit
+                            ? 'YouTube left, whistle panel right'
+                            : 'YouTube fullscreen + whistle corner',
+                          style: const TextStyle(
+                            fontSize: 11, color: Color(0xFF3D5068))),
+                      ],
+                    )),
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () {
+                        final board = ctx.read<BoardState>();
+                        final newMode = isSplit ? 'overlay' : 'split';
+                        board.displayMode = newMode;
+                        board.saveDisplayMode();
+                        board.notifyListeners();
+                        if (connected) ble.setDisplayMode(newMode);
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: 44, height: 26,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(13),
+                          color: isSplit
+                            ? const Color(0xFF30D158)
+                            : const Color(0xFF2A3A4A)),
+                        child: AnimatedAlign(
+                          duration: const Duration(milliseconds: 200),
+                          alignment: isSplit
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                          child: Container(
+                            margin: const EdgeInsets.all(3),
+                            width: 20, height: 20,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ]),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader(BleService ble) {
     final live = ble.state == ConnState.connected;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 16, 6),
       child: Row(children: [
-        Container(
-          width: 38, height: 38,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft, end: Alignment.bottomRight,
-              colors: [Color(0xFF00D4FF), Color(0xFF0052D4)]),
-            borderRadius: BorderRadius.circular(11),
-            boxShadow: live ? [BoxShadow(
-              color: const Color(0xFF00D4FF).withOpacity(0.3),
-              blurRadius: 12, offset: const Offset(0, 4))] : []),
-          child: const Icon(Icons.hub_rounded, color: Colors.white, size: 20)),
+        GestureDetector(
+          onTap: () => _scaffoldKey.currentState?.openDrawer(),
+          child: Container(
+            width: 38, height: 38,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
+                colors: [Color(0xFF00D4FF), Color(0xFF0052D4)]),
+              borderRadius: BorderRadius.circular(11),
+              boxShadow: live ? [BoxShadow(
+                color: const Color(0xFF00D4FF).withOpacity(0.3),
+                blurRadius: 12, offset: const Offset(0, 4))] : []),
+            child: const Icon(Icons.hub_rounded, color: Colors.white, size: 20)),
+        ),
         const SizedBox(width: 12),
         const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('BLE HUB', style: TextStyle(
@@ -374,6 +480,74 @@ class _HubScreenState extends State<HubScreen> {
                       shape: BoxShape.circle, color: Color(0xFF34C759)))),
               ])))),
       ]),
+    );
+  }
+}
+
+class _DrawerModeCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool selected;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  const _DrawerModeCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.selected,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selected
+            ? accentColor.withOpacity(0.08)
+            : const Color(0xFF111827),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected
+              ? accentColor.withOpacity(0.4)
+              : const Color(0xFF1A2840),
+            width: selected ? 1.5 : 1.0)),
+        child: Row(children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              color: selected
+                ? accentColor.withOpacity(0.15)
+                : const Color(0xFF1A2840),
+              borderRadius: BorderRadius.circular(10)),
+            child: Icon(icon,
+              color: selected ? accentColor : const Color(0xFF3D5068),
+              size: 20)),
+          const SizedBox(width: 12),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : const Color(0xFF5A7A9A))),
+              const SizedBox(height: 3),
+              Text(subtitle, style: TextStyle(
+                fontSize: 10,
+                color: selected
+                  ? accentColor.withOpacity(0.6)
+                  : const Color(0xFF3D5068))),
+            ],
+          )),
+          if (selected)
+            Icon(Icons.check_circle_rounded, color: accentColor, size: 18),
+        ]),
+      ),
     );
   }
 }

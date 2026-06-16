@@ -184,6 +184,7 @@ class BleService {
   Future<void> whistleStop()                              => _write('CMD:WHISTLE_STOP');
   Future<void> whistleReset()                             => _write('CMD:WHISTLE_RESET');
   Future<void> whistleSetTarget(int n)                    => _write('CMD:WHISTLE_TARGET:$n');
+  Future<void> setDisplayMode(String mode)                => _write('CMD:DISPLAY_MODE:$mode');
 
   Future<void> sendQueue(List<QueueItem> items) async {
     final payload = jsonEncode(items.map((e) => e.toJson()).toList());
