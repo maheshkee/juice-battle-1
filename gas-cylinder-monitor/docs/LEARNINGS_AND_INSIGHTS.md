@@ -966,3 +966,32 @@ The safest architecture: derive all three in one continuous boot sequence.
 Phase 0+1+2: tare and noise. Phase 3: cal_factor. Phase 4: running.
 This guarantees all three values are consistent with each other and with the
 current physical state of the platform. No cross-boot assumptions needed.
+
+---
+
+## Session 2026-06-16 — Design session learnings
+
+### L-039: Threshold derivation principle — set above noise ceiling, not near signal
+Date: 2026-06-16
+
+A jump threshold for event detection must sit just above the noise ceiling (max possible false-event weight), not arbitrarily near the signal of interest. For fresh cylinder detection, 6kg sits above 5kg (max plausible kitchen object placed on platform). 10 or 12kg also work but buy nothing extra — they reduce sensitivity margin for no benefit. The rule: find the highest-possible false-event weight, add a safety margin, stop. No reason to go higher.
+
+### L-040: Two-condition AND gate for anchor event detection
+Date: 2026-06-16
+
+Single threshold on jump size (ΔG > 6kg) fails on partial-cylinder swaps where a half-full replacement still crosses the jump threshold. Single threshold on absolute weight (G_new > 26kg) fails when a cylinder is already present at boot (no jump to observe). Both conditions together — ΔG > 6kg AND G_new > 26kg — are jointly sufficient and necessary to uniquely identify a fresh full domestic cylinder placement. Either condition alone is insufficient.
+
+### L-041: Cold-start problem is mathematically unsolvable from sensor alone
+Date: 2026-06-16
+
+G = S + g is one equation with two unknowns (steel S, gas g). No software can solve it from a single weight reading alone — an external reference is required. The reference is supplied by: BIS law (14.2kg = gas on a fresh full cylinder), stamped tare from the label (V2), or anchor events accumulated across a complete refill cycle (V3 self-heal). Any system claiming to know gas% without a reference has hidden the reference somewhere. V1 deliberately avoids claiming absolute gas% for this reason — only delta tracking, which is reference-free.
+
+### L-042: Delta tracking is immune to unknown steel — works from day 1 in all versions
+Date: 2026-06-16
+
+used = weight_earlier - weight_now. Steel S appears in both terms and cancels. Burn rate, consumption sessions, and days_remaining slope are all derived from delta — all exact immediately without knowing S. Only the absolute gas% gauge requires steel to be known. This means V1 can deliver all analytically useful outputs on day 1, even with no prior history.
+
+### L-043: Conservative bias rule — always report lower gas estimate when uncertain
+Date: 2026-06-16
+
+Two failure modes: false pessimism (tell user less gas than actual) and false optimism (tell user more gas than actual). False pessimism causes the user to order gas slightly early — minor inconvenience. False optimism causes a gas outage mid-cooking — a major product failure and safety concern. The product must never tell the user they have more gas than they actually do. When uncertain (during V3 self-heal ramp-up, partial cylinder scenarios), round the gas estimate downward. Optimism is always the wrong direction for this product.
