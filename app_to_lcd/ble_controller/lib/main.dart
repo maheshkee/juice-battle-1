@@ -8,16 +8,17 @@ import 'services/board_state.dart';
 import 'services/watch_later_service.dart';
 import 'services/bt_audio_service.dart';
 import 'services/playlist_service.dart';
+import 'services/notification_service.dart';
 import 'screens/hub_screen.dart';
 import 'models/board_event.dart';
 
 const _platform = MethodChannel('com.gratian.ble_controller/share');
-
 void startKeepAlive() => _platform.invokeMethod('startKeepAlive').catchError((_) {});
 void stopKeepAlive()  => _platform.invokeMethod('stopKeepAlive').catchError((_) {});
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService.init();
   final wlService  = WatchLaterService();
   final plService  = PlaylistService();
   await wlService.load();
@@ -88,6 +89,13 @@ class _BleHubAppState extends State<BleHubApp> {
         }
       }
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final board = context.read<BoardState>();
+      board.onWhistleTargetReached = (count, target) {
+        NotificationService.showWhistleAlert(count, target);
+      };
+    });
   }
 
   @override
@@ -102,7 +110,6 @@ class _BleHubAppState extends State<BleHubApp> {
         splashFactory: NoSplash.splashFactory,
         highlightColor: Colors.transparent,
         splashColor: Colors.transparent,
-
       ),
       home: const HubScreen(),
     );

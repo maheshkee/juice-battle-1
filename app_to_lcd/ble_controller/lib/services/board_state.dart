@@ -27,6 +27,9 @@ class BoardState extends ChangeNotifier {
 
   int  whistleCount  = 0;
   bool whistleActive = false;
+  int  whistleTarget = 0;
+
+  void Function(int count, int target)? onWhistleTargetReached;
 
   BoardState() {
     _loadBtConnected();
@@ -123,9 +126,10 @@ class BoardState extends ChangeNotifier {
           scheduleEntries = (d['schedule'] as List? ?? [])
               .map((e) => ScheduleEntry.fromJson(e)).toList();
         final np = (d['now_playing'] ?? '') as String;
-        nowPlaying = np.isNotEmpty ? np : nowPlaying;
+        nowPlaying    = np.isNotEmpty ? np : nowPlaying;
         whistleCount  = d['whistle_count']  ?? whistleCount;
         whistleActive = d['whistle_active'] ?? whistleActive;
+        whistleTarget = d['whistle_target'] ?? whistleTarget;
         break;
       case 'led_status':
         ledOn = d['state'] ?? ledOn;
@@ -218,6 +222,12 @@ class BoardState extends ChangeNotifier {
       case 'whistle_count':
         whistleCount  = d['count']  ?? whistleCount;
         whistleActive = d['active'] ?? whistleActive;
+        whistleTarget = d['target'] ?? whistleTarget;
+        break;
+      case 'whistle_target_reached':
+        final c = d['count']  as int? ?? 0;
+        final t = d['target'] as int? ?? 0;
+        onWhistleTargetReached?.call(c, t);
         break;
     }
     notifyListeners();

@@ -183,16 +183,14 @@ class BleService {
   Future<void> whistleStart()                             => _write('CMD:WHISTLE_START');
   Future<void> whistleStop()                              => _write('CMD:WHISTLE_STOP');
   Future<void> whistleReset()                             => _write('CMD:WHISTLE_RESET');
+  Future<void> whistleSetTarget(int n)                    => _write('CMD:WHISTLE_TARGET:$n');
 
   Future<void> sendQueue(List<QueueItem> items) async {
     final payload = jsonEncode(items.map((e) => e.toJson()).toList());
     final full    = 'QUEUE:$payload';
     final bytes   = utf8.encode(full);
     const chunkSize = 450;
-    if (bytes.length <= chunkSize) {
-      await _write(full);
-      return;
-    }
+    if (bytes.length <= chunkSize) { await _write(full); return; }
     final total = (bytes.length / chunkSize).ceil();
     for (int i = 0; i < total; i++) {
       final start = i * chunkSize;
@@ -208,10 +206,7 @@ class BleService {
     final full    = 'PLAYLIST:$payload';
     final bytes   = utf8.encode(full);
     const chunkSize = 450;
-    if (bytes.length <= chunkSize) {
-      await _write(full);
-      return;
-    }
+    if (bytes.length <= chunkSize) { await _write(full); return; }
     final total = (bytes.length / chunkSize).ceil();
     for (int i = 0; i < total; i++) {
       final start = i * chunkSize;
@@ -227,10 +222,7 @@ class BleService {
     final full    = 'SCHEDULE:$payload';
     final bytes   = utf8.encode(full);
     const chunkSize = 450;
-    if (bytes.length <= chunkSize) {
-      await _write(full);
-      return;
-    }
+    if (bytes.length <= chunkSize) { await _write(full); return; }
     final total = (bytes.length / chunkSize).ceil();
     for (int i = 0; i < total; i++) {
       final start = i * chunkSize;
