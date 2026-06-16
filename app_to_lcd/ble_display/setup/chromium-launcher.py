@@ -4,12 +4,37 @@ import socket
 import subprocess
 import threading
 import time
-
 PROJECT_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOCK_PATH      = os.path.join(PROJECT_DIR, 'launcher.sock')
 BT_CMD_FILE    = os.path.join(PROJECT_DIR, 'bt_cmd.txt')
 BT_RESULT_FILE = os.path.join(PROJECT_DIR, 'bt_result.txt')
 XENV           = {**os.environ, 'DISPLAY': ':0', 'XAUTHORITY': '/var/run/lightdm/root/:0'}
+ALARM_PATH     = os.path.join(PROJECT_DIR, 'assets', 'alarm.wav')
+PW_ENV         = {**os.environ,
+                  'DISPLAY':              ':0',
+                  'XAUTHORITY':           '/var/run/lightdm/root/:0',
+                  'XDG_RUNTIME_DIR':      '/run/user/1000',
+                  'PIPEWIRE_RUNTIME_DIR': '/run/user/1000',
+                  'HOME':                 '/home/arduino'}
+
+_alarm_stop   = threading.Event()
+_alarm_thread = None
+
+def _alarm_loop():
+    print('[ALARM] Loop started', flush=True)
+    while not _alarm_stop.is_set():
+        try:
+            p = subprocess.Popen(['pw-play', ALARM_PATH], env=PW_ENV)
+            while p.poll() is None:
+                if _alarm_stop.is_set():
+                    p.terminate()
+                    print('[ALARM] Stopped', flush=True)
+                    return
+                time.sleep(0.1)
+        except Exception as e:
+            print(f'[ALARM] Error: {e}', flush=True)
+            break
+    print('[ALARM] Loop ended', flush=True)
 
 def bt_run(cmd, timeout=15):
     try:
@@ -19,13 +44,23 @@ def bt_run(cmd, timeout=15):
         return f'error:{e}'
 
 def handle_command(cmd: str) -> str:
+    global _alarm_thread
     cmd = cmd.strip()
     if cmd == 'ping':
         return 'pong'
     if cmd.startswith('play:') or cmd.startswith('mode:') or cmd == 'launch':
         return 'ok'
+    if cmd == 'alarm':
+        _alarm_stop.clear()
+        if _alarm_thread is None or not _alarm_thread.is_alive():
+            _alarm_thread = threading.Thread(target=_alarm_loop, daemon=True)
+            _alarm_thread.start()
+        return 'ok'
+    if cmd == 'alarm_stop':
+        _alarm_stop.set()
+        return 'ok'
     if cmd == 'BT_LIST':
-        paired = bt_run(['bluetoothctl', 'devices', 'Paired'])
+        paired  = bt_run(['bluetoothctl', 'devices', 'Paired'])
         trusted = bt_run(['bluetoothctl', 'devices', 'Trusted'])
         combined = set()
         result = []

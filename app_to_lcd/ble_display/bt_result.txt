@@ -1,12 +1,14 @@
 [BT] Scanning for 1F:10:00:9D:63:E2...
-Waiting to connect to bluetoothd...[0;94m[bluetoothctl]> [0m        [0;94m[realme narzo 20]> [0mscan on
-[0;94m[realme narzo 20]> [0m                                                                               Agent registered
-[0;94m[realme narzo 20]> [0m                                                                               SetDiscoveryFilter success
-[0;94m[realme narzo 20]> [0m                                                                               Discovery started
-[0;94m[realme narzo 20]> [0mscan off
-[0;94m[realme narzo 20]> [0m                                                                               Discovery stopped
-[0;94m[realme narzo 20]> [0m                              [BT] Connecting 1F:10:00:9D:63:E2...
+Waiting to connect to bluetoothd...[0;94m[bluetoothctl]> [0m        [0;94m[Galaxy F05]> [0mscan on
+[0;94m[Galaxy F05]> [0m                                                                               Agent registered
+[0;94m[Galaxy F05]> [0m                                                                               SetDiscoveryFilter success
+[0;94m[Galaxy F05]> [0m                                                                               Discovery started
+[0;94m[Galaxy F05]> [0m                                                                               [[0;91mDEL[0m] [1;30mDevice 0B:8F:63:71:69:04 0B-8F-63-71-69-04[0m
+[0;94m[Galaxy F05]> [0mscan off
+[0;94m[Galaxy F05]> [0m                                                                               Discovery stopped
+[0;94m[Galaxy F05]> [0m                         [BT] Connecting 1F:10:00:9D:63:E2...
 Attempting to pair with 1F:10:00:9D:63:E2
+[[0;91mDEL[0m] [1;30mDevice 26:88:40:13:A2:89 26-88-40-13-A2-89[0m
 [[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 Connected: yes
 [[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 Bonded: yes
 [[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 UUIDs: 0000110b-0000-1000-8000-00805f9b34fb
@@ -16,37 +18,12 @@ Attempting to pair with 1F:10:00:9D:63:E2
 [[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 ServicesResolved: yes
 [[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 Paired: yes
 Pairing successful
-[[0;91mDEL[0m] Characteristic (Handle 0x0002)
-	/org/bluez/hci0/dev_5C_F3_6C_09_D9_BD/service0001/char0002
-	00002a05-0000-1000-8000-00805f9b34fb
-	Service Changed
-[[0;91mDEL[0m] Primary Service (Handle 0x0001)
-	/org/bluez/hci0/dev_5C_F3_6C_09_D9_BD/service0001
-	00001801-0000-1000-8000-00805f9b34fb
-	Generic Attribute Profile
-[[0;91mDEL[0m] Characteristic (Handle 0x0015)
-	/org/bluez/hci0/dev_5C_F3_6C_09_D9_BD/service0014/char0015
-	00002a00-0000-1000-8000-00805f9b34fb
-	Device Name
-[[0;91mDEL[0m] Characteristic (Handle 0x0017)
-	/org/bluez/hci0/dev_5C_F3_6C_09_D9_BD/service0014/char0017
-	00002a01-0000-1000-8000-00805f9b34fb
-	Appearance
-[[0;91mDEL[0m] Characteristic (Handle 0x0019)
-	/org/bluez/hci0/dev_5C_F3_6C_09_D9_BD/service0014/char0019
-	00002aa6-0000-1000-8000-00805f9b34fb
-	Central Address Resolution
-[[0;91mDEL[0m] Primary Service (Handle 0x0014)
-	/org/bluez/hci0/dev_5C_F3_6C_09_D9_BD/service0014
-	00001800-0000-1000-8000-00805f9b34fb
-	Generic Access Profile
-[[0;91mDEL[0m] Device 5C:F3:6C:09:D9:BD realme narzo 20
 [[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 Trusted: yes
 Changing 1F:10:00:9D:63:E2 trust succeeded
 Attempting to connect to 1F:10:00:9D:63:E2
 [[0;92mNEW[0m] Endpoint /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep1 
 [[0;92mNEW[0m] Endpoint /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep2 
-[[0;92mNEW[0m] Transport /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep1/fd0 
+[[0;92mNEW[0m] Transport /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep1/fd3 
 Connection successful
 [BT] Set default sink to 0
 connected:1F:10:00:9D:63:E2|HBTS001

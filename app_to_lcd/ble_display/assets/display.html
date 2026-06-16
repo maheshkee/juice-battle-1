@@ -120,60 +120,132 @@
         /* Whistle overlay */
         #whistle-overlay {
             position: fixed;
-            top: 20px;
-            right: 20px;
+            top: 24px;
+            right: 24px;
             z-index: 100;
+            pointer-events: none;
+            transition: opacity 0.5s, transform 0.5s cubic-bezier(0.34,1.56,0.64,1);
+            transform: scale(0.85);
+            opacity: 0;
+        }
+        #whistle-overlay.visible {
+            opacity: 1;
+            transform: scale(1);
+        }
+        .whistle-card {
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 16px 28px 14px 28px;
             display: flex;
             flex-direction: column;
-            align-items: flex-end;
-            gap: 4px;
-            pointer-events: none;
-            transition: opacity 0.4s;
+            align-items: center;
+            gap: 2px;
+            border: 1.5px solid rgba(0, 229, 255, 0.15);
+            box-shadow: 0 0 40px rgba(0, 229, 255, 0.05),
+                        inset 0 1px 0 rgba(255,255,255,0.06);
+            min-width: 160px;
         }
-        #whistle-overlay.hidden { opacity: 0; }
-        .whistle-badge {
-            background: rgba(0, 0, 0, 0.65);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(0, 229, 255, 0.25);
-            border-radius: 12px;
-            padding: 8px 14px;
+        .whistle-card.active {
+            border-color: rgba(52, 199, 89, 0.4);
+            box-shadow: 0 0 50px rgba(52, 199, 89, 0.12),
+                        0 0 100px rgba(52, 199, 89, 0.06),
+                        inset 0 1px 0 rgba(255,255,255,0.06);
+        }
+        .whistle-top {
             display: flex;
             align-items: center;
             gap: 8px;
-        }
-        .whistle-badge.active {
-            border-color: rgba(52, 199, 89, 0.5);
-            box-shadow: 0 0 12px rgba(52, 199, 89, 0.15);
+            width: 100%;
+            justify-content: center;
         }
         .whistle-dot {
-            width: 6px;
-            height: 6px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             background: #4a5568;
             flex-shrink: 0;
         }
         .whistle-dot.pulse {
             background: #34C759;
-            animation: dot-pulse 1.5s ease-in-out infinite;
+            animation: dot-pulse 1.2s ease-in-out infinite;
+            box-shadow: 0 0 8px rgba(52, 199, 89, 0.8);
         }
-        .whistle-count {
-            font-size: 1.4rem;
+        .whistle-status-text {
+            font-size: 0.6rem;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.3);
+            font-weight: 600;
+        }
+        .whistle-status-text.active {
+            color: rgba(52, 199, 89, 0.7);
+        }
+        .whistle-number {
+            font-size: 7rem;
             font-weight: 100;
-            color: #fff;
-            font-variant-numeric: tabular-nums;
-            letter-spacing: -0.02em;
             line-height: 1;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.04em;
+            color: #fff;
+            text-shadow: none;
+            transition: color 0.3s, text-shadow 0.3s;
+        }
+        .whistle-number.active {
+            color: #00E5FF;
+            text-shadow: 0 0 30px rgba(0, 229, 255, 0.5),
+                         0 0 60px rgba(0, 229, 255, 0.2);
+        }
+        .whistle-number.complete {
+            color: #34C759;
+            text-shadow: 0 0 30px rgba(52, 199, 89, 0.6),
+                         0 0 80px rgba(52, 199, 89, 0.3);
+        }
+        .whistle-divider {
+            width: 100%;
+            height: 1px;
+            background: rgba(255,255,255,0.06);
+            margin: 2px 0;
+        }
+        .whistle-progress-wrap {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        .whistle-progress-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .whistle-progress-fill {
+            height: 100%;
+            border-radius: 2px;
+            background: #00E5FF;
+            transition: width 0.4s ease, background 0.3s;
+        }
+        .whistle-progress-fill.complete {
+            background: #34C759;
+            box-shadow: 0 0 8px rgba(52, 199, 89, 0.6);
+        }
+        .whistle-fraction {
+            font-size: 0.65rem;
+            color: rgba(255,255,255,0.25);
+            letter-spacing: 0.05em;
         }
         .whistle-label {
-            font-size: 0.55rem;
-            color: rgba(255,255,255,0.3);
-            letter-spacing: 0.15em;
+            font-size: 0.6rem;
+            color: rgba(255,255,255,0.2);
+            letter-spacing: 0.2em;
             text-transform: uppercase;
         }
 
         @keyframes dot-pulse {
             0%,100% { opacity: 1; transform: scale(1); }
-            50%      { opacity: 0.4; transform: scale(0.7); }
+            50%      { opacity: 0.4; transform: scale(0.65); }
         }
         @keyframes pulse-logo {
             0%,100% { transform: scale(1);    opacity: 0.9; }
@@ -188,6 +260,14 @@
             10%  { opacity: 0.6; }
             90%  { opacity: 0.2; }
             100% { transform: translateY(-10vh) translateX(40px); opacity: 0; }
+        }
+        @keyframes pop-in {
+            0%   { transform: scale(0.7); opacity: 0; }
+            70%  { transform: scale(1.08); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .count-pop {
+            animation: pop-in 0.35s cubic-bezier(0.34,1.56,0.64,1);
         }
     </style>
 </head>
@@ -212,13 +292,21 @@
     <div class="clock-seconds-bar" id="sec-bar"></div>
 </div>
 
-<!-- Whistle overlay - always visible top-right -->
-<div id="whistle-overlay" class="hidden">
-    <div class="whistle-badge" id="whistle-badge">
-        <div class="whistle-dot" id="whistle-dot"></div>
-        <div>
-            <div class="whistle-count" id="whistle-count">0</div>
-            <div class="whistle-label">whistles</div>
+<!-- Whistle overlay -->
+<div id="whistle-overlay">
+    <div class="whistle-card" id="whistle-card">
+        <div class="whistle-top">
+            <div class="whistle-dot" id="whistle-dot"></div>
+            <div class="whistle-status-text" id="whistle-status">STOPPED</div>
+        </div>
+        <div class="whistle-number" id="whistle-number">0</div>
+        <div class="whistle-label">WHISTLES</div>
+        <div class="whistle-divider" id="whistle-divider" style="display:none"></div>
+        <div class="whistle-progress-wrap" id="whistle-progress-wrap" style="display:none">
+            <div class="whistle-progress-bar">
+                <div class="whistle-progress-fill" id="whistle-progress-fill"></div>
+            </div>
+            <div class="whistle-fraction" id="whistle-fraction"></div>
         </div>
     </div>
 </div>
@@ -248,12 +336,10 @@ let previousMode = 'idle';
 let lastVideoId  = null;
 try { lastVideoId = localStorage.getItem('lastVideoId'); } catch(e) {}
 let queueActive  = false;
+let _lastCount   = -1;
 
 function showScreen(mode) {
-    if (mode === 'idle') console.log('[DEBUG] showScreen idle called from:', new Error().stack);
-    document.querySelectorAll('.screen').forEach(s => {
-        s.classList.remove('active');
-    });
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     const target = document.getElementById(mode + '-screen');
     if (target) target.classList.add('active');
     previousMode = currentMode;
@@ -272,7 +358,6 @@ function showToast(msg) {
 const DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
-
 function pad2(n) { return String(n).padStart(2, '0'); }
 
 function tickClock() {
@@ -288,27 +373,63 @@ function tickClock() {
 setInterval(tickClock, 1000);
 tickClock();
 
-function updateWhistleOverlay(count, active) {
-    const overlay = document.getElementById('whistle-overlay');
-    const badge   = document.getElementById('whistle-badge');
-    const dot     = document.getElementById('whistle-dot');
-    const countEl = document.getElementById('whistle-count');
+function updateWhistleOverlay(count, active, target) {
+    const overlay   = document.getElementById('whistle-overlay');
+    const card      = document.getElementById('whistle-card');
+    const dot       = document.getElementById('whistle-dot');
+    const status    = document.getElementById('whistle-status');
+    const numberEl  = document.getElementById('whistle-number');
+    const divider   = document.getElementById('whistle-divider');
+    const progWrap  = document.getElementById('whistle-progress-wrap');
+    const progFill  = document.getElementById('whistle-progress-fill');
+    const fraction  = document.getElementById('whistle-fraction');
+    const complete  = target > 0 && count >= target;
 
-    countEl.textContent = count;
+    // show overlay when active or count > 0
+    if (active || count > 0) {
+        overlay.classList.add('visible');
+    } else {
+        overlay.classList.remove('visible');
+        return;
+    }
+
+    // animate count change
+    if (count !== _lastCount && _lastCount !== -1) {
+        numberEl.classList.remove('count-pop');
+        void numberEl.offsetWidth;
+        numberEl.classList.add('count-pop');
+    }
+    _lastCount = count;
+
+    numberEl.textContent = count;
 
     if (active) {
-        overlay.classList.remove('hidden');
-        badge.classList.add('active');
+        card.classList.add('active');
         dot.classList.add('pulse');
+        status.classList.add('active');
+        status.textContent = 'COUNTING';
+        numberEl.className = complete
+          ? 'whistle-number complete'
+          : 'whistle-number active';
     } else {
-        // show overlay only if count > 0 when inactive
-        if (count > 0) {
-            overlay.classList.remove('hidden');
-        } else {
-            overlay.classList.add('hidden');
-        }
-        badge.classList.remove('active');
+        card.classList.remove('active');
         dot.classList.remove('pulse');
+        status.classList.remove('active');
+        status.textContent = 'STOPPED';
+        numberEl.className = 'whistle-number';
+    }
+
+    // progress bar
+    if (target > 0) {
+        divider.style.display  = '';
+        progWrap.style.display = '';
+        const pct = Math.min(count / target, 1.0) * 100;
+        progFill.style.width = pct + '%';
+        progFill.className   = 'whistle-progress-fill' + (complete ? ' complete' : '');
+        fraction.textContent = `${count} / ${target}`;
+    } else {
+        divider.style.display  = 'none';
+        progWrap.style.display = 'none';
     }
 }
 
@@ -338,10 +459,7 @@ window.onYouTubeIframeAPIReady = function () {
 };
 
 function onPlayerReady() {
-    if (pendingVideo) {
-        loadAndPlay(pendingVideo);
-        pendingVideo = null;
-    }
+    if (pendingVideo) { loadAndPlay(pendingVideo); pendingVideo = null; }
 }
 
 function onPlayerStateChange(event) {
@@ -361,17 +479,12 @@ function onPlayerStateChange(event) {
 }
 
 function loadAndPlay(videoId) {
-    if (!ytPlayer || !ytReady) {
-        pendingVideo = videoId;
-        return;
-    }
+    if (!ytPlayer || !ytReady) { pendingVideo = videoId; return; }
     lastVideoId = videoId;
     try { localStorage.setItem('lastVideoId', videoId); } catch(e) {}
     showScreen('youtube');
     ytPlayer.loadVideoById({ videoId, suggestedQuality: 'hd720' });
-    setTimeout(() => {
-        try { ytPlayer.playVideo(); } catch(e) {}
-    }, 1500);
+    setTimeout(() => { try { ytPlayer.playVideo(); } catch(e) {} }, 1500);
 }
 
 const qualityMap = {
@@ -382,68 +495,46 @@ const qualityMap = {
 function execCmd(cmd) {
     switch (true) {
         case cmd === 'pause':
-            if (ytPlayer) ytPlayer.pauseVideo();
-            showToast('Paused');
-            break;
+            if (ytPlayer) ytPlayer.pauseVideo(); showToast('Paused'); break;
         case cmd === 'resume':
         case cmd === 'play':
-            if (ytPlayer) ytPlayer.playVideo();
-            showToast('Playing');
-            break;
+            if (ytPlayer) ytPlayer.playVideo(); showToast('Playing'); break;
         case cmd === 'mute':
-            if (ytPlayer) ytPlayer.mute();
-            showToast('Muted');
-            break;
+            if (ytPlayer) ytPlayer.mute(); showToast('Muted'); break;
         case cmd === 'unmute':
-            if (ytPlayer) ytPlayer.unMute();
-            showToast('Unmuted');
-            break;
+            if (ytPlayer) ytPlayer.unMute(); showToast('Unmuted'); break;
         case cmd === 'vol_up':
             if (ytPlayer) ytPlayer.setVolume(Math.min(100, ytPlayer.getVolume() + 10));
-            showToast('Vol +');
-            break;
+            showToast('Vol +'); break;
         case cmd === 'vol_down':
             if (ytPlayer) ytPlayer.setVolume(Math.max(0, ytPlayer.getVolume() - 10));
-            showToast('Vol -');
-            break;
+            showToast('Vol -'); break;
         case cmd === 'seek_fwd':
             if (ytPlayer) ytPlayer.seekTo(ytPlayer.getCurrentTime() + 10, true);
-            showToast('+10s');
-            break;
+            showToast('+10s'); break;
         case cmd === 'seek_back':
             if (ytPlayer) ytPlayer.seekTo(Math.max(0, ytPlayer.getCurrentTime() - 10), true);
-            showToast('-10s');
-            break;
+            showToast('-10s'); break;
         case cmd === 'replay': {
             const replayId = (ytPlayer && ytPlayer.getVideoData && ytPlayer.getVideoData().video_id)
                 || lastVideoId;
-            if (replayId) {
-                loadAndPlay(replayId);
-            }
-            showToast('Replay');
-            break;
+            if (replayId) loadAndPlay(replayId);
+            showToast('Replay'); break;
         }
         case cmd.startsWith('quality:'): {
-            const q = cmd.split(':')[1];
+            const q  = cmd.split(':')[1];
             const yt = qualityMap[q] || 'default';
             if (ytPlayer) {
                 try {
                     const currentTime = ytPlayer.getCurrentTime();
-                    const videoId = ytPlayer.getVideoData().video_id;
-                    if (videoId) {
-                        ytPlayer.loadVideoById({
-                            videoId,
-                            startSeconds: currentTime,
-                            suggestedQuality: yt
-                        });
-                    }
+                    const videoId     = ytPlayer.getVideoData().video_id;
+                    if (videoId) ytPlayer.loadVideoById({
+                        videoId, startSeconds: currentTime, suggestedQuality: yt });
                 } catch(e) {}
             }
-            showToast(q);
-            break;
+            showToast(q); break;
         }
-        default:
-            break;
+        default: break;
     }
 }
 
@@ -460,13 +551,11 @@ socket.on('connect', () => {
 });
 
 socket.on('disconnect', () => {
-    console.log('[DEBUG] socket disconnected - going idle');
     if (ytPlayer) { try { ytPlayer.stopVideo(); } catch(e) {} }
     showScreen('idle');
 });
 
 socket.on('display_cmd', (data) => {
-    console.log('[DEBUG] display_cmd received:', JSON.stringify(data));
     const { cmd, video_id, mode } = data;
     if (cmd === 'play' && video_id) {
         showToast('Loading...');
@@ -496,7 +585,7 @@ socket.on('queue_status', (data) => {
 });
 
 socket.on('whistle_overlay', (data) => {
-    updateWhistleOverlay(data.count || 0, data.active || false);
+    updateWhistleOverlay(data.count || 0, data.active || false, data.target || 0);
 });
 </script>
 </body>

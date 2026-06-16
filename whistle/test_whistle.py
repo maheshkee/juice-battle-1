@@ -6,8 +6,8 @@ import numpy as np
 from scipy import signal
 from edge_impulse_linux.runner import ImpulseRunner
 
-MODEL_PATH     = "/home/arduino/ArduinoApps/whistle/models/cooker-whistle-v3.eim"
-THRESHOLD      = 0.97
+MODEL_PATH     = "/home/arduino/ArduinoApps/whistle/models/whistle.eim"
+THRESHOLD      = 0.95
 CONSECUTIVE    = 5
 COOLDOWN_SEC   = 4.0
 WINDOW_SAMPLES = 16000

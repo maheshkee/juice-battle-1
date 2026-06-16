@@ -11,7 +11,6 @@ import numpy as np
 
 sys.path.insert(0, '/app/wheels')
 
-os.environ['ALSA_CARD'] = '0'
 os.environ['GI_TYPELIB_PATH'] = '/app/typelibs'
 
 for lib in [
@@ -108,12 +107,15 @@ _playlist_chunk_time = 0
 
 playlists = []
 
-whistle_count      = 0
-whistle_consec     = 0
-whistle_active     = False
+whistle_count       = 0
+whistle_consec      = 0
+whistle_active      = False
+whistle_target      = 0
 whistle_last_action = -999.0
 whistle_last_detect = -999.0
-whistle_lock       = threading.Lock()
+whistle_lock        = threading.Lock()
+
+ALARM_PATH = '/app/assets/alarm.wav'
 
 
 def now_str():
@@ -150,10 +152,19 @@ def push_whistle_state():
     payload = {
         'count':  whistle_count,
         'active': whistle_active,
+        'target': whistle_target,
         'time':   now_str(),
     }
     GLib.idle_add(lambda: push_to_phone('whistle_count', payload) or False)
     ui.send_message('whistle_overlay', payload)
+
+
+def _play_alarm():
+    try:
+        launcher_send('alarm')
+        print('[ALARM] Sent alarm to launcher', flush=True)
+    except Exception as e:
+        print(f'[ALARM] Failed: {e}', flush=True)
 
 
 def _whistle_resample(data, from_rate, to_rate):
@@ -185,6 +196,15 @@ def _whistle_on_detection():
             whistle_count      += 1
             log(f'[WHISTLE] CONFIRMED -- total = {whistle_count}')
             push_whistle_state()
+            if whistle_target > 0 and whistle_count == whistle_target:
+                log(f'[WHISTLE] TARGET {whistle_target} REACHED -- playing alarm')
+                ui.send_message('display_cmd', {'cmd': 'pause'})
+                threading.Thread(target=_play_alarm, daemon=True).start()
+                GLib.idle_add(lambda: push_to_phone('whistle_target_reached', {
+                    'count':  whistle_count,
+                    'target': whistle_target,
+                    'time':   now_str(),
+                }) or False)
 
 
 def whistle_audio_loop():
@@ -630,7 +650,7 @@ def _bt_forget(mac: str):
 def handle_phone_command(text: str):
     global led_state, schedule, whistle_count, whistle_consec
     global whistle_active, whistle_last_action, whistle_last_detect
-    global queue_loop, queue_repeat
+    global queue_loop, queue_repeat, whistle_target
     text = text.strip()
     log(f'[PHONE] {text[:80]}')
 
@@ -863,17 +883,32 @@ def handle_phone_command(text: str):
             push_whistle_state()
         elif cmd == 'WHISTLE_STOP':
             with whistle_lock:
-                whistle_active = False
-            log(f'[WHISTLE] Counting STOPPED -- final = {whistle_count}')
+                whistle_active      = False
+                whistle_count       = 0
+                whistle_consec      = 0
+                whistle_last_action = -999.0
+                whistle_last_detect = -999.0
+            launcher_send('alarm_stop')
+            log('[WHISTLE] Counting STOPPED -- count reset')
             push_whistle_state()
+            ui.send_message('display_cmd', {'cmd': 'resume'})
         elif cmd == 'WHISTLE_RESET':
             with whistle_lock:
                 whistle_count      = 0
                 whistle_consec     = 0
                 whistle_last_action = -999.0
                 whistle_last_detect = -999.0
+            launcher_send('alarm_stop')
             log('[WHISTLE] Count RESET')
             push_whistle_state()
+        elif cmd.startswith('WHISTLE_TARGET:'):
+            try:
+                with whistle_lock:
+                    whistle_target = int(cmd.split(':')[1].strip())
+                log(f'[WHISTLE] Target set to {whistle_target}')
+                push_whistle_state()
+            except Exception:
+                pass
         else: log(f'[CMD] Unknown: {cmd}')
 
 def _get_bt_connected():
@@ -910,6 +945,7 @@ def _push_full_status_to_phone():
     push_to_phone('whistle_count', {
         'count':  whistle_count,
         'active': whistle_active,
+        'target': whistle_target,
         'time':   now_str(),
     })
     bt_mac, bt_name = _get_bt_connected()

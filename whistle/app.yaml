@@ -2,7 +2,5 @@ name: whistle
 description: ""
 ports: []
 bricks:
-- arduino:audio_classification:
-    model: ei-model-1001902-15
 - arduino:web_ui: {}
 icon: 😀
