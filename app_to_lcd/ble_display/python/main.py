@@ -43,17 +43,17 @@ LE_ADVERTISEMENT_IFACE       = 'org.bluez.LEAdvertisement1'
 DBUS_PROP_IFACE              = 'org.freedesktop.DBus.Properties'
 DBUS_OM_IFACE                = 'org.freedesktop.DBus.ObjectManager'
 
-ADAPTER_PATH    = '/org/bluez/hci0'
-LAUNCHER_SOCK   = '/app/launcher.sock'
-MAX_HISTORY     = 20
-TRUSTED_FILE    = '/app/trusted_devices.json'
-SCHEDULE_FILE   = '/app/schedule.json'
-WATCHLATER_FILE = '/app/watchlater.json'
-
-BT_CMD_FILE    = '/app/bt_cmd.txt'
-BT_RESULT_FILE = '/app/bt_result.txt'
-HISTORY_FILE   = '/app/history.json'
-PLAYLIST_FILE  = '/app/playlists.json'
+ADAPTER_PATH         = '/org/bluez/hci0'
+LAUNCHER_SOCK        = '/app/launcher.sock'
+MAX_HISTORY          = 20
+TRUSTED_FILE         = '/app/trusted_devices.json'
+SCHEDULE_FILE        = '/app/schedule.json'
+WATCHLATER_FILE      = '/app/watchlater.json'
+BT_CMD_FILE          = '/app/bt_cmd.txt'
+BT_RESULT_FILE       = '/app/bt_result.txt'
+HISTORY_FILE         = '/app/history.json'
+PLAYLIST_FILE        = '/app/playlists.json'
+DISPLAY_MODE_FILE    = '/app/display_mode.json'
 
 PHONE_SVC_UUID = 'a00b0000-0000-0000-0000-000000000000'
 PHONE_CMD_UUID = 'a00b0002-0000-0000-0000-000000000000'
@@ -98,11 +98,11 @@ adv_global      = None
 gatt_mgr_global = None
 evt_char_global = None
 
-_sched_chunks       = {}
-_sched_chunk_time   = 0
-_queue_chunks       = {}
-_queue_chunk_time   = 0
-_playlist_chunks    = {}
+_sched_chunks        = {}
+_sched_chunk_time    = 0
+_queue_chunks        = {}
+_queue_chunk_time    = 0
+_playlist_chunks     = {}
 _playlist_chunk_time = 0
 
 playlists = []
@@ -114,6 +114,8 @@ whistle_target      = 0
 whistle_last_action = -999.0
 whistle_last_detect = -999.0
 whistle_lock        = threading.Lock()
+
+display_mode = 'overlay'
 
 ALARM_PATH = '/app/assets/alarm.wav'
 
@@ -128,9 +130,9 @@ def log(message):
 def push_to_phone(event: str, payload: dict):
     global evt_char_global
     if evt_char_global and evt_char_global.notifying:
-        msg   = json.dumps({'event': event, **payload})
-        data  = msg.encode('utf-8')
-        size  = 18
+        msg    = json.dumps({'event': event, **payload})
+        data   = msg.encode('utf-8')
+        size   = 18
         chunks = [data[i:i+size] for i in range(0, len(data), size)]
         total  = len(chunks)
         for idx, chunk in enumerate(chunks):
@@ -412,6 +414,34 @@ def apply_playlists(data: str):
     save_playlists()
     push_playlists()
     log(f'[PLAYLIST] Updated - {len(playlists)} playlists')
+
+
+def load_display_mode():
+    global display_mode
+    try:
+        if os.path.exists(DISPLAY_MODE_FILE):
+            with open(DISPLAY_MODE_FILE, 'r') as f:
+                data = json.load(f)
+            display_mode = data.get('mode', 'overlay')
+            log(f'[DISPLAY] Mode loaded: {display_mode}')
+    except Exception as e:
+        log(f'[DISPLAY] Load failed: {e}')
+
+def save_display_mode():
+    try:
+        with open(DISPLAY_MODE_FILE, 'w') as f:
+            json.dump({'mode': display_mode}, f)
+    except Exception: pass
+
+def apply_display_mode(mode: str):
+    global display_mode
+    display_mode = mode
+    save_display_mode()
+    ui.send_message('display_mode', {'mode': display_mode})
+    GLib.idle_add(lambda: push_to_phone('display_mode_update',
+        {'mode': display_mode, 'time': now_str()}) or False)
+    log(f'[DISPLAY] Mode set to {display_mode}')
+
 
 def launcher_send(cmd: str) -> str:
     try:
@@ -874,11 +904,11 @@ def handle_phone_command(text: str):
             push_to_phone('bt_paired_devices', {'devices': devices, 'time': now_str()})
         elif cmd == 'WHISTLE_START':
             with whistle_lock:
-                whistle_count      = 0
-                whistle_consec     = 0
+                whistle_count       = 0
+                whistle_consec      = 0
                 whistle_last_action = -999.0
                 whistle_last_detect = -999.0
-                whistle_active     = True
+                whistle_active      = True
             log('[WHISTLE] Counting STARTED')
             push_whistle_state()
         elif cmd == 'WHISTLE_STOP':
@@ -894,8 +924,8 @@ def handle_phone_command(text: str):
             ui.send_message('display_cmd', {'cmd': 'resume'})
         elif cmd == 'WHISTLE_RESET':
             with whistle_lock:
-                whistle_count      = 0
-                whistle_consec     = 0
+                whistle_count       = 0
+                whistle_consec      = 0
                 whistle_last_action = -999.0
                 whistle_last_detect = -999.0
             launcher_send('alarm_stop')
@@ -909,6 +939,12 @@ def handle_phone_command(text: str):
                 push_whistle_state()
             except Exception:
                 pass
+        elif cmd.startswith('DISPLAY_MODE:'):
+            mode_val = cmd.split(':', 1)[1].strip()
+            if mode_val in ('overlay', 'split'):
+                GLib.idle_add(apply_display_mode, mode_val)
+            else:
+                log(f'[DISPLAY] Unknown mode: {mode_val}')
         else: log(f'[CMD] Unknown: {cmd}')
 
 def _get_bt_connected():
@@ -948,6 +984,7 @@ def _push_full_status_to_phone():
         'target': whistle_target,
         'time':   now_str(),
     })
+    push_to_phone('display_mode_update', {'mode': display_mode, 'time': now_str()})
     bt_mac, bt_name = _get_bt_connected()
     if bt_mac:
         def _push_bt():
@@ -1277,7 +1314,12 @@ def ble_main():
         print(f'[BLE] SystemBus failed: {e}'); return
 
     BLEObjectWatcher(bus)
-    load_trusted(); load_schedule(); load_watch_later(); load_history(); load_playlists()
+    load_trusted()
+    load_schedule()
+    load_watch_later()
+    load_history()
+    load_playlists()
+    load_display_mode()
     GLib.idle_add(_autoconnect_existing)
     GLib.idle_add(start_scan)
 
@@ -1365,6 +1407,7 @@ def on_get_initial_state(client, data):
         'trusted': [{'mac': mac, 'name': name} for mac, name in trusted.items()],
         'whistle_count':  whistle_count,
         'whistle_active': whistle_active,
+        'display_mode':   display_mode,
     }, client)
 
 ui.on_message('send_url',          on_send_url)

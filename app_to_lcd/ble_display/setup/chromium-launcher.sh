@@ -25,7 +25,7 @@ sleep 0.5
 rm -rf /tmp/chrome-kiosk
 
 echo "[LAUNCHER] Launching Chromium -> http://localhost:7000/display.html"
-/usr/bin/chromium --kiosk \
+/usr/bin/chromium --kiosk --enable-logging --log-level=0 --log-file=/tmp/chromium-debug.log \
     --no-sandbox \
     --noerrdialogs \
     --disable-infobars \
