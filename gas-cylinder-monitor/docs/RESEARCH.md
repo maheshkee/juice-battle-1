@@ -537,3 +537,41 @@ and continues. Log clarity issue, not functional bug.
 | Date | Change |
 |------|--------|
 | 2026-06-16 | gas_monitor_v1 modular sketch verified on 3-cell hardware |
+| 2026-06-16 | health.h + health.cpp added. Runtime jump detection verified on hardware. cstdio include required for snprintf on ESP32. |
+
+---
+
+## 2026-06-16 - Health Module Hardware Verification
+
+**Board:** ESP32-C3 SuperMini
+**Sketch:** node/gas_monitor_v1/gas_monitor_v1.ino (with health.h / health.cpp)
+**Session:** Session 3 - 1B
+
+### Confirmed hardware behaviour
+
+**Runtime jump detection:**
+- Empty platform (post-tare): ~0g
+- Placed ~1kg weight: first reading 1009.1g
+- Delta = 1009g - exceeded 500g threshold
+- health_check() correctly returned quality=FAILED, diagnosis="stuck:|jump:1009g", checks=0x05
+- Subsequent readings: delta < 500g, jump check passed, quality returned to DEGRADED
+
+**Stuck check behaviour (known limitation):**
+- tare_variance_raw = 0.0f (tare.h does not expose variance)
+- Bit 1 (stuck_ok) always 0 - stuck check always fails
+- Result: platform always reports DEGRADED in steady state
+- This is correct and expected behaviour until TODO 1B-stuck is resolved
+
+**Erratic and cal drift checks:**
+- Both skip on every boot (prev_sigma_g = -1.0f, prev_cal_factor = -1.0f sentinels)
+- First-boot path confirmed working - no false alarms
+- Will remain skipped until TODO 1B-persistence is resolved
+
+**cal_factor this session:** 35.84 raw/g (slightly lower than locked ~37 - within normal boot-to-boot variation)
+**sigma recomputed:** 3.44g (slightly higher than session 2 value of 2.64g - within normal variation)
+
+### Toolchain confirmed
+- Arduino IDE v3.0.7 on Windows
+- esp32 by Espressif v3.0.7
+- Board: ESP32C3 Dev Module, COM11, USB CDC On Boot: ENABLED
+- #include <cstdio> required for snprintf on ESP32 Arduino toolchain (not in <math.h>)

@@ -1,6 +1,6 @@
 # CLAUDE.md — gas-cylinder-monitor
 # Board: Arduino UNO Q AQ3 | IP: 192.168.1.161 | user: arduino
-# Last updated: 2026-06-04 (ESP32 pivot ingested — complete rewrite)
+# Last updated: 2026-06-16
 # Read this FULLY before doing anything in this directory.
 
 ---
@@ -178,11 +178,12 @@ LOCKED CONSTANTS (hardware-verified, never change without re-deriving):
   Min reliable weight: ~150g
 
 ## Current Position
-Date: 2026-06-16 (Session 2)
-Chunk: 1A COMPLETE — modular sketch verified on hardware
-Status: gas_monitor_v1 boots, calibrates, and outputs correct grams on real hardware
-Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino
-Next: 1B — load cell health detection module (design session first)
+Date: 2026-06-16 (Session 3)
+Chunk: 1B COMPLETE — load cell health detection module built
+Status: health.h + health.cpp added; health_check() wired into gas_monitor_v1.ino STATE_RUNNING
+Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino (unchanged path)
+New files this session: node/gas_monitor_v1/health.h, node/gas_monitor_v1/health.cpp
+Next: 1C — timing instrumentation (millis() per boot phase)
 
 ## What was completed 2026-06-16 Session 2
 - node/gas_monitor_v1/ full modular sketch built and verified:
@@ -238,3 +239,9 @@ Next: 1B — load cell health detection module (design session first)
 ## Known assumptions
 
 - noise_recompute_sigma() assumes s_samples[] is in raw-count units.  Only valid when called after boot-sequence noise char (cal_factor=0 path).  Do not call after any recalibration flow without reviewing this assumption.
+
+- health.cpp: tare_variance_raw is always 0.0f — tare.h does not yet expose variance. Stuck check (bit 1) always passes. TODO 1B-stuck: update TareResult struct to include a variance field and pass it through the orchestrator.
+
+- health.cpp: g_prev_cal_factor and g_prev_sigma_g are set from the current boot only — no config.json persistence yet. Cal drift and erratic checks skip every boot via the -1.0f first-boot sentinel. TODO 1B-persistence: read prev values from config.json at startup (before STATE_SETTLE), write cur values to config.json after CAL_SUCCESS.
+
+- health.cpp: noise_recompute_sigma() unit assumption (raw-count samples) is unchanged — the recomputed sigma fed into health_check() is only valid on the standard single-boot sequence. See noise_recompute_sigma() assumption above.

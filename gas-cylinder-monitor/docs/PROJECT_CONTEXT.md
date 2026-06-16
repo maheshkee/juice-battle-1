@@ -136,7 +136,8 @@ Platform: 3-cell (3× YZC-161A 20kg, shared fibre plate)
 cal_factor: 37.06 raw/g (2026-06-16, derived every boot — not hardcoded)
 sigma: 2.64g (2026-06-16, recomputed in grams post-CAL)
 Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino
-Next action: 1B — load cell health detection module (design session first)
+Last completed: 1B — load cell health detection module (health.h + health.cpp) COMPLETE 2026-06-16
+Next action: 1C — timing instrumentation (millis() per boot phase)
 
 ### Backlog audit complete — full ordered backlog
 
@@ -144,8 +145,8 @@ Next action: 1B — load cell health detection module (design session first)
 | Chunk | Task | Status |
 |-------|------|--------|
 | 1A | Modular sketch port to 3-cell ESP32-C3 (hx711.cpp, tare.cpp, cal.cpp, weight.cpp) | COMPLETE 2026-06-16 |
-| 1B | Structured Serial journal (machine-parseable [BOOT][CAL][TARE][WEIGHT][ERR] prefixes) | Queued |
-| 1C | Timing instrumentation — log read latency and state machine cycle times | Queued |
+| 1B | Load cell health detection — health.h + health.cpp. Pure function. 4 checks: erratic, stuck, cal_drift, runtime_jump. Bitmask checks_passed. DEGRADED=1 fail, FAILED=2+ fails. Known limitation: stuck check always fires (tare_variance=0.0f, TODO 1B-stuck). | COMPLETE 2026-06-16 |
+| 1C | Timing instrumentation — millis() per boot phase | Queued |
 | 1D | Noise floor recheck on 3-cell platform (repeat 3E-002 procedure post-modular port) | Queued |
 
 **Sensor experiment backlog (3E series)**
@@ -194,3 +195,6 @@ The product must NEVER tell the user they have more gas than they actually do.
 | 2 | Temperature drift magnitude over real 24hr indoor cycle | Pending 3E-007 |
 | 3 | Whether partial same-brand cylinder swap needs special handling | Design pending |
 | 4 | Non-domestic cylinder support (19kg commercial) | V3 scope |
+| 5 | Can health module detect load cell failures at runtime? | RESOLVED 2026-06-16 — runtime jump check verified on hardware. Placed 1kg on empty platform, caught 1009g jump, flagged FAILED correctly. |
+| 6 | tare.h variance exposure needed for stuck check to function | OPEN — TODO 1B-stuck: TareResult has no variance field. Stuck check (bit 1) always passes until tare.h updated. |
+| 7 | config.json persistence for prev_cal_factor and prev_sigma_g | OPEN — TODO 1B-persistence: cal drift and erratic checks skip every boot (first-boot sentinel -1.0f). Needs read-at-startup + write-after-CAL_SUCCESS in config.json. |

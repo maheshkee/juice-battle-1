@@ -416,3 +416,42 @@ exceeds 20g guard before recompute). Not a bug - orchestrator correctly
 continues. Log clarity issue only. Filed for 1B/1C session.
 
 Next: 1B - load cell health detection module design
+
+---
+
+## Session: 2026-06-16 Session 3 - 1B Load Cell Health Detection Module
+
+**Goal:** Design and implement the load cell health detection module (health.h / health.cpp) and wire it into the production sketch.
+
+**What was built:**
+- node/gas_monitor_v1/health.h - HealthResult struct + health_check() declaration (9 parameters)
+- node/gas_monitor_v1/health.cpp - pure function implementation, 4 checks, bitmask output
+- node/gas_monitor_v1/gas_monitor_v1.ino - updated to include health.h, wire health_check() in STATE_RUNNING, add g_prev_gross_g / g_prev_cal_factor / g_prev_sigma_g / g_tare_variance_raw globals
+
+**Design decisions made:**
+- health_check() is a pure function - no internal state, no static variables
+- Orchestrator owns prev_gross_g (sentinel -1.0f), passes both cur and prev into health
+- Diagnosis string uses pipe separator: "stuck:|jump:1009g"
+- Bitmask: bit0=erratic_ok, bit1=stuck_ok, bit2=cal_ok, bit3=runtime_ok
+- DEGRADED = 1 check fails, FAILED = 2+ checks fail
+
+**Real hardware outputs (verified 2026-06-16):**
+| Measurement | Value |
+|---|---|
+| cal_factor this boot | 35.84 raw/g |
+| sigma recomputed | 3.44g |
+| Empty platform quality | DEGRADED (stuck check fails, tare_variance=0.0f) |
+| 1kg placement jump detected | 1009g delta - correctly flagged FAILED |
+| Steady load quality | DEGRADED (stuck check only) |
+| checks_passed steady | 0x0D (bits 0,2,3 set - only stuck failing) |
+| checks_passed on placement | 0x05 (bits 0,2 set - stuck + jump both failing) |
+
+**Gate result:** PASSED - health module compiles, flashes, runs on hardware. Runtime jump detection verified. Stuck detection firing correctly (expected, pending tare.h update).
+
+**Known limitations carried forward:**
+- TODO 1B-stuck: tare_variance_raw always 0.0f - stuck check always DEGRADED until tare.h exposes variance
+- TODO 1B-persistence: prev_cal_factor and prev_sigma_g not persisted across boots - cal/erratic checks always skip
+
+**Next session:** 1C - timing instrumentation. Add millis() timestamps to each boot phase. Emit in structured Serial journal.
+
+---

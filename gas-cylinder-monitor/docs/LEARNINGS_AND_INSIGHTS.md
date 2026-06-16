@@ -1034,3 +1034,73 @@ Required for gas_monitor_v1:
 - NimBLE-Arduino by h2zero (BLE GATT server)
 - ArduinoJson by Benoit Blanchon (SPIFFS config.json)
 - SPIFFS - built into ESP32 core, no install needed
+
+---
+
+## L-046 - Pure function design: why health_check() owns no state
+Date: 2026-06-16
+
+**The principle:**
+A pure function given the same inputs always returns the same output and owns no persistent state. health_check() is pure - it receives all inputs as parameters and returns a verdict. It never calls hx711 directly and never stores anything between calls.
+
+**Why it matters:**
+If health_check() stored prev_gross_g internally as a static variable, the orchestrator could not reset it after a tare event, could not inspect it for debugging, and could not know whether it was comparing against a valid baseline or a zeroed initialisation. Hidden state is invisible to the caller and creates coupling where there should be none.
+
+**The consequence of violating it:**
+A static prev_gross_g initialised to 0.0f causes a false FAILED on the first tick - the delta from 0g to ~14000g exceeds any threshold. Adding a first-call skip flag adds a second hidden static, compounding the problem. The orchestrator is now responsible for a system it cannot see.
+
+**The correct design:**
+Orchestrator owns prev_gross_g, initialises to -1.0f sentinel (physically impossible for a real gross weight), passes both cur and prev into health_check() every tick. Health judges. Orchestrator updates prev after health returns. Each component has one job.
+
+**Verified:** Health module tested on hardware 2026-06-16. First tick correctly skipped (prev=-1.0f). Subsequent ticks compared correctly.
+
+---
+
+## L-047 - Sentinel value selection: why -1.0f not 0.0f
+Date: 2026-06-16
+
+**The principle:**
+A sentinel value must be physically impossible for the real system to produce. It signals "no valid data yet" unambiguously. The sentinel must not overlap with any valid measurement.
+
+**Why 0.0f fails as a sentinel:**
+- gross_g = 0.0f is a valid reading (empty platform after tare reads near zero)
+- cal_factor = 0.0f could appear from a corrupt config.json read
+- sigma_g = 0.0f is theoretically possible if variance is exactly zero
+
+Using 0.0f as "no data" means the first valid zero reading gets mistaken for "no baseline" or vice versa.
+
+**Why -1.0f works:**
+- gross_g is always >= 0 on this hardware (load cells produce positive output above tare)
+- cal_factor is always a large positive number (~37 raw/g on this platform)
+- sigma_g is always >= 0 (it is a standard deviation)
+
+-1.0f cannot occur naturally. It is unambiguous.
+
+**Rule derived:** For any sentinel representing "no previous valid value", choose a value that is physically impossible for the measurement being tracked. Document the physical reasoning, not just the chosen value.
+
+**Verified:** Applied consistently to prev_gross_g, prev_cal_factor, prev_sigma_g in gas_monitor_v1.ino. No false triggers observed on first boot.
+
+---
+
+## L-048 - Health module architecture: judge not sensor
+Date: 2026-06-16
+
+**The principle:**
+The health module is a judge, not a sensor. It receives already-computed values from other modules and returns a verdict. It never touches hardware.
+
+**Why this matters:**
+Every piece of data health_check() needs already exists - sigma_g from noise.cpp, tare variance from tare.cpp, cal_factor from cal.cpp, gross_g from weight.cpp. The orchestrator has all of it. Health just inspects it.
+
+If health called hx711 directly, it would have two jobs: reading hardware AND judging state. A change to HX711 pin assignments would then require changes to health.cpp even though health has nothing to do with pins. This is coupling where there should be none.
+
+**The check-to-data mapping:**
+- Erratic check → sigma_g from noise.cpp (already computed)
+- Stuck check → tare_variance_raw from tare.cpp (already computed - pending tare.h update)
+- Cal drift check → cur_cal_factor from cal.cpp + prev from config.json
+- Runtime jump check → cur_gross_g and prev_gross_g from weight.cpp + orchestrator
+
+**Rule derived:** A diagnostic module must never acquire its own data. It receives outputs from the modules it monitors and judges those outputs. The seam is the data, not the hardware.
+
+**Verified:** health_check() has zero calls to hx711_read(). All inputs are passed by the orchestrator. Tested on hardware 2026-06-16.
+
+---
