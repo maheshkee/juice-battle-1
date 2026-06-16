@@ -27,6 +27,8 @@ static float     g_sigma_g         = 0.0f;
 static BootState g_state           = STATE_SETTLE;
 static uint32_t  g_last_tick       = 0;
 static uint32_t  g_settle_start_ms = 0;
+// 1C timing globals
+static uint32_t  phase_start_ms    = 0;
 
 // 1B health module globals
 static HealthResult g_health;
@@ -52,6 +54,7 @@ void setup() {
     ble_init();
     g_state           = STATE_SETTLE;
     g_settle_start_ms = millis();
+    phase_start_ms    = millis();
     Serial.println("[BOOT] Gas monitor starting");
 }
 
@@ -68,8 +71,11 @@ void loop() {
     case STATE_SETTLE:
         if (now - g_settle_start_ms >= 2000) {
             Serial.println("[BOOT] phase=SETTLE complete");
+            uint32_t settle_ms = millis() - phase_start_ms;
+            Serial.printf("[BOOT] phase=SETTLE s=%.1f\n", settle_ms / 1000.0f);
             tare_init();
             g_state = STATE_TARE;
+            phase_start_ms = millis();
         }
         break;
 
@@ -81,8 +87,11 @@ void loop() {
             // (see TODO 1B-stuck comment in globals)
             Serial.print("[BOOT] phase=TARE result=");
             Serial.println(tr.diagnosis);
+            uint32_t tare_ms = millis() - phase_start_ms;
+            Serial.printf("[BOOT] phase=TARE s=%.1f\n", tare_ms / 1000.0f);
             noise_init();
             g_state = STATE_NOISE;
+            phase_start_ms = millis();
         } else if (tr.status == TARE_FAILED) {
             Serial.println("[BOOT] phase=TARE FAILED - halting");
             while (true) delay(1000);
@@ -96,14 +105,20 @@ void loop() {
             g_sigma_g = nr.sigma_g;
             Serial.print("[BOOT] phase=NOISE result=");
             Serial.println(nr.diagnosis);
+            uint32_t noise_ms = millis() - phase_start_ms;
+            Serial.printf("[BOOT] phase=NOISE s=%.1f\n", noise_ms / 1000.0f);
             cal_init(g_tare_raw);
             g_state = STATE_CAL;
+            phase_start_ms = millis();
         } else if (strstr(nr.diagnosis, "too high") || strstr(nr.diagnosis, "too low")) {
             Serial.print("[BOOT] phase=NOISE WARNING: ");
             Serial.println(nr.diagnosis);
             g_sigma_g = nr.sigma_g;
+            uint32_t noise_ms = millis() - phase_start_ms;
+            Serial.printf("[BOOT] phase=NOISE s=%.1f\n", noise_ms / 1000.0f);
             cal_init(g_tare_raw);
             g_state = STATE_CAL;
+            phase_start_ms = millis();
         }
         break;
     }
@@ -128,8 +143,11 @@ void loop() {
             Serial.println(g_sigma_g);
             Serial.print("[BOOT] phase=CAL result=");
             Serial.println(cr.diagnosis);
+            uint32_t cal_ms = millis() - phase_start_ms;
+            Serial.printf("[BOOT] phase=CAL s=%.1f\n", cal_ms / 1000.0f);
             weight_init();
             g_state = STATE_RUNNING;
+            phase_start_ms = millis();
             Serial.println("[BOOT] RUNNING");
         } else if (cr.status == CAL_FAILED) {
             Serial.print("[BOOT] phase=CAL FAILED: ");
@@ -140,6 +158,8 @@ void loop() {
     }
 
     case STATE_RUNNING: {
+        static uint32_t tick_start_ms = 0;
+        tick_start_ms = millis();
         WeightResult wr = weight_update(r.value, g_tare_raw, g_cal_factor);
         g_health = health_check(
             g_sigma_g,          // runtime sigma from this boot's noise char
@@ -156,10 +176,9 @@ void loop() {
         Serial.printf("[HEALTH] quality=%s diagnosis=%s checks=0x%02X\n",
                       g_health.quality, g_health.diagnosis, g_health.checks_passed);
         ble_notify(wr.grams, g_health.quality, g_sigma_g);
-        char line[80];
-        snprintf(line, sizeof(line), "[RUN] grams=%.1f quality=%s sigma=%.2f",
-                 wr.grams, g_health.quality, g_sigma_g);
-        Serial.println(line);
+        uint32_t tick_ms = millis() - tick_start_ms;
+        Serial.printf("[RUN] grams=%.1f quality=%s sigma=%.2f tick_ms=%lu\n",
+                      wr.grams, g_health.quality, g_sigma_g, tick_ms);
         break;
     }
 
