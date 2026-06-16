@@ -1,6 +1,24 @@
 # CLAUDE.md — home-hub + digital-scale | AQ3
 # Board: Arduino UNO Q AQ3 (4GB) | IP: 192.168.1.161
-# Last updated: 2026-04-30 | Read this fully before doing ANYTHING
+# Last updated: 2026-06-16 | Read this fully before doing ANYTHING
+
+---
+
+## Current State — 2026-06-16
+
+| Item | Value |
+|------|-------|
+| Status | Design session complete 2026-06-16 |
+| Transport | BLE — confirmed working (any WiFi references in this file are outdated) |
+| Platform | 3-cell: 3× YZC-161A load cells, fibre plate |
+| cal_factor | ~36 raw/g (3-cell platform), derived every boot via self-cal routine |
+| Production sketch | 3E004_cal_and_run.ino |
+| Current position | Backlog fully audited. Next: 1A modular sketch port to 3-cell ESP32-C3 |
+
+### New rules added 2026-06-16
+- **Load cell health module needed**: detect dead/shorted cells before tare attempt — never tare blindly
+- **Timing instrumentation needed**: log read latency and state machine cycle times to Serial on every boot
+- **Structured Serial journal needed**: machine-parseable log format (`[BOOT]`, `[CAL]`, `[TARE]`, `[ERR]` prefixes) for all key events — enables offline analysis
 
 ---
 
@@ -226,9 +244,9 @@ Never hardcode expected tare range — it changes with mounting and session.
 ### Cal factor — derive fresh, never hardcode
 CAL_FACTOR = (weight_raw - tare) / known_grams
 Use state machine approach — never blocking delay() during calibration sequence.
-Acceptance range for this hardware: 94–112 raw/g
-Verified cal_factor for this load cell + HX711 + current mounting: 106.7 raw/g
-Re-derive whenever load cell is remounted or wiring changes.
+Acceptance range — single-cell platform: 94–112 raw/g (verified 106.7 raw/g at last cal)
+Acceptance range — 3-cell platform (3× YZC-161A, fibre plate): ~36 raw/g (verified 2026-06-16)
+Re-derive whenever load cell is remounted, wiring changes, or platform topology changes.
 
 ### Corrupt value filters — always use all three
 Filter these in hx711_read_average() — copy from home-hub, not digital-scale:
@@ -298,25 +316,58 @@ sudo docker logs $(sudo docker ps | grep home-hub | awk '{print $1}') 2>&1 | tai
 
 ---
 
-## Next Session Priorities
+## Next Session Priorities — Updated 2026-06-16
 
-### Phase 1 — Hardware baseline (do first)
-1. Calibrate digital-scale with known weight → real CALIBRATION_FACTOR (not 420.0f estimate)
-2. Migrate home-hub sketch: DT=7, SCK=6 + Bridge.notify() copied from digital-scale verbatim
-3. Update home-hub main.py: remove weight_poll_loop, add Bridge.provide("weight_event", handler) listener  # Bridge.on() does not exist — confirmed 2026-05-02
-4. Tare persistence: skip auto-tare on boot if weight > 2kg (cylinder already on scale)
+### Completed (do not re-implement)
+- ✅ 3E-001: Single-cell HX711 characterisation
+- ✅ 3E-002: Noise floor lock, BLE EMI test, HW_VERIFY_3CELL
+- ✅ 3E-003: End-to-end BLE transport complete, hub deployed, demo achieved
+- ✅ 3E-004: Self-calibrating boot, accuracy verified ±7g across full range
 
-### Phase 2 — Gas monitor smart features
-5. Re-enable 6hr snapshot cycle: time.sleep(21600) + SQLite writes
-6. Implement daily_aggregates table: Python aggregates snapshots at midnight
-7. Multi-window prediction: 7-day + 30-day weighted average (see algorithm in Gas Monitor section)
-8. High-usage day detection: flag days > 2× 30-day baseline
-9. Refill detection: weight jump > 5kg → log to refill_history, reset learning window
+### Immediate next — 3-cell modular sketch (1A series)
+**1A** — Modular sketch port to 3-cell ESP32-C3 (NEXT ACTION)
+  - Port 3E004_cal_and_run.ino to modular structure: hx711.cpp, tare.cpp, cal.cpp, weight.cpp
+  - Board target: ESP32-C3 (not STM32) — pin assignments change
+  - cal_factor baseline: ~36 raw/g, self-derived on every boot
+  - Must include load cell health check before tare
 
-### Phase 3 — UI + alerts
-10. Gas dashboard in splash.html: days_left, weekly trend, high-usage flags, refill history
-11. Low-gas BLE alert: push_evt when net_kg < REFILL_THRESHOLD
-12. BT speaker: D-Bus A2DP (never bluetoothctl)
+**1B** — Structured Serial journal
+  - Machine-parseable prefixes: [BOOT], [CAL], [TARE], [WEIGHT], [ERR]
+  - Verify with: arduino-app-cli logs | grep "^\[" 
+
+**1C** — Timing instrumentation
+  - Log read latency per sample and state machine cycle time to Serial
+
+**1D** — Noise floor recheck on 3-cell platform
+  - Repeat 3E-002 procedure with 3-cell rig + fibre plate
+
+### Sensor experiments backlog (3E series — after 1A-1D)
+| ID | Experiment | Status |
+|----|-----------|--------|
+| 3E-006B | 3-cell noise floor BLE on | Queued |
+| 3E-007 | Temperature drift characterisation | Queued |
+| 3E-008 | Long-term drift (24hr soak) | Queued |
+| 3E-009 | Multi-cylinder weight envelope | Queued |
+| 3E-010 | Refill detection false-positive tuning | Queued |
+
+### Hub integration backlog (Groups 4-7)
+| Group | Feature | Status |
+|-------|---------|--------|
+| 4 | Gas snapshot 6hr cycle + SQLite writes | Queued |
+| 5 | Daily aggregates + multi-window prediction | Queued |
+| 6 | Refill detection + learning window reset | Queued |
+| 7 | Gas dashboard UI + BLE low-gas alert | Queued |
+
+### V2 / V3 cold-start features
+- V2: tare persistence — skip auto-tare if cylinder detected on boot (weight > 2kg)
+- V3: multi-cylinder profile support (14.2kg / 5kg / 19kg templates)
+
+### Deferred (not blocking)
+- BT speaker: D-Bus A2DP integration (never bluetoothctl)
+- High-usage day detection and flagging UI
+
+### Previously planned — now obsolete (superseded by 3-cell work)
+~~Phase 1 single-cell migration tasks (DT=7/SCK=6 migration to home-hub) — architecture changed to 3-cell ESP32-C3~~
 
 ---
 

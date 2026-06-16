@@ -351,3 +351,34 @@ Find root cause of systematic weight reading errors. Achieve accurate readings.
 - Session close docs from previous session (2026-06-15) still pending
 - Self-deriving cal_factor (no user input) not yet built
 - cal_factor not yet saved to config.json on hub
+
+---
+
+## Session 007 - 2026-06-16 (Session 2) - Architecture review and backlog audit
+
+### Goal
+Architecture review, backlog audit, V1/V2/V3 design consolidation. No hardware touched.
+
+### What happened
+- Full backlog audited — all remaining work identified and ordered
+- Three product versions (V1/V2/V3) cold-start strategies consolidated
+- All threshold values derived from first principles:
+    CYLINDER_REMOVED=2kg, REFILL_THRESHOLD=6kg, FRESH_CYLINDER_MIN=26kg
+- V1 hub state machine fully designed: UNINSTALLED / TRACKING / LOW_GAS
+- 4-step calibration sequence on cylinder change designed
+- Special cases identified: partial same-brand, different brand, non-domestic cylinder
+- Water container simulation approach validated for 3E series experiments
+- Session decisions documented in GasCylMonitor_SessionDecisions_2026_06_16.docx
+
+### Key decisions made
+- V1 ships with delta tracking only — burn rate and days_remaining exact from day 1
+- V2 adds stamped tare from cylinder label → unlocks absolute gas%
+- V3 self-heals steel estimate across a complete refill cycle
+- Conservative bias rule locked: always report lower gas estimate when uncertain
+- Delta tracking immune to unknown steel (S cancels in subtraction)
+
+### Real outputs
+None — design session only. No hardware touched. No sketches built.
+
+### Gate
+N/A — design session. Architecture and backlog locked. Ready for 1A modular sketch port.
