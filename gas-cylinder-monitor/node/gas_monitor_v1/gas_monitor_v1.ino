@@ -5,6 +5,7 @@
 // Board: ESP32C3 Dev Module, esp32 by Espressif v3.0.7, USB CDC On Boot: ENABLED
 
 #include <SPIFFS.h>
+#include <ArduinoJson.h>
 #include "hx711.h"
 #include "tare.h"
 #include "noise.h"
@@ -12,6 +13,7 @@
 #include "weight.h"
 #include "ble.h"
 #include "health.h"
+#include "journal.h"
 
 enum BootState {
     STATE_SETTLE,
@@ -27,6 +29,7 @@ static float     g_sigma_g         = 0.0f;
 static BootState g_state           = STATE_SETTLE;
 static uint32_t  g_last_tick       = 0;
 static uint32_t  g_settle_start_ms = 0;
+static uint32_t  g_boot_count      = 0;
 // 1C timing globals
 static uint32_t  phase_start_ms    = 0;
 
@@ -55,7 +58,24 @@ void setup() {
     g_state           = STATE_SETTLE;
     g_settle_start_ms = millis();
     phase_start_ms    = millis();
-    Serial.println("[BOOT] Gas monitor starting");
+    {
+        StaticJsonDocument<4096> doc;
+        File fr = SPIFFS.open("/config.json", "r");
+        if (fr) {
+            deserializeJson(doc, fr);
+            fr.close();
+        }
+        g_boot_count = doc["boot_count"] | (uint32_t)0;
+        g_boot_count++;
+        doc["boot_count"] = g_boot_count;
+        File fw = SPIFFS.open("/config.json", "w");
+        if (fw) {
+            serializeJson(doc, fw);
+            fw.close();
+        }
+    }
+    journal_init(g_boot_count);
+    journal_boot_start();
 }
 
 void loop() {
@@ -70,9 +90,8 @@ void loop() {
 
     case STATE_SETTLE:
         if (now - g_settle_start_ms >= 2000) {
-            Serial.println("[BOOT] phase=SETTLE complete");
             uint32_t settle_ms = millis() - phase_start_ms;
-            Serial.printf("[BOOT] phase=SETTLE s=%.1f\n", settle_ms / 1000.0f);
+            journal_phase_complete("SETTLE", "OK", settle_ms / 1000.0f, 0, 0, 0);
             tare_init();
             g_state = STATE_TARE;
             phase_start_ms = millis();
@@ -85,15 +104,15 @@ void loop() {
             g_tare_raw = tr.tare_raw;
             // g_tare_variance_raw stays 0.0f — TareResult has no variance field yet
             // (see TODO 1B-stuck comment in globals)
-            Serial.print("[BOOT] phase=TARE result=");
-            Serial.println(tr.diagnosis);
+            // NOTE: tr.tare_raw used as mean (it IS the mean, see tare.cpp:107).
+            // spread is not exposed by TareResult; extra2=0.0f until tare.h adds it.
             uint32_t tare_ms = millis() - phase_start_ms;
-            Serial.printf("[BOOT] phase=TARE s=%.1f\n", tare_ms / 1000.0f);
+            journal_phase_complete("TARE", "OK", tare_ms / 1000.0f, tr.tare_raw, 0.0f, 0);
             noise_init();
             g_state = STATE_NOISE;
             phase_start_ms = millis();
         } else if (tr.status == TARE_FAILED) {
-            Serial.println("[BOOT] phase=TARE FAILED - halting");
+            journal_phase_fail("TARE", "halting", 0);
             while (true) delay(1000);
         }
         break;
@@ -103,19 +122,15 @@ void loop() {
         NoiseResult nr = noise_update(r.value, g_tare_raw, g_cal_factor);
         if (nr.valid) {
             g_sigma_g = nr.sigma_g;
-            Serial.print("[BOOT] phase=NOISE result=");
-            Serial.println(nr.diagnosis);
             uint32_t noise_ms = millis() - phase_start_ms;
-            Serial.printf("[BOOT] phase=NOISE s=%.1f\n", noise_ms / 1000.0f);
+            journal_phase_complete("NOISE", "OK", noise_ms / 1000.0f, 0, 0, 0);
             cal_init(g_tare_raw);
             g_state = STATE_CAL;
             phase_start_ms = millis();
         } else if (strstr(nr.diagnosis, "too high") || strstr(nr.diagnosis, "too low")) {
-            Serial.print("[BOOT] phase=NOISE WARNING: ");
-            Serial.println(nr.diagnosis);
             g_sigma_g = nr.sigma_g;
             uint32_t noise_ms = millis() - phase_start_ms;
-            Serial.printf("[BOOT] phase=NOISE s=%.1f\n", noise_ms / 1000.0f);
+            journal_phase_complete("NOISE", "WARN", noise_ms / 1000.0f, 0, 0, 0);
             cal_init(g_tare_raw);
             g_state = STATE_CAL;
             phase_start_ms = millis();
@@ -139,46 +154,36 @@ void loop() {
             // at startup before STATE_SETTLE, and writing cur values TO config.json
             // after CAL_SUCCESS. Until that is implemented, these checks only catch
             // failures that develop mid-session, not failures that persist across reboots.
-            Serial.print("[BOOT] sigma recomputed in grams: ");
-            Serial.println(g_sigma_g);
-            Serial.print("[BOOT] phase=CAL result=");
-            Serial.println(cr.diagnosis);
             uint32_t cal_ms = millis() - phase_start_ms;
-            Serial.printf("[BOOT] phase=CAL s=%.1f\n", cal_ms / 1000.0f);
+            journal_phase_complete("CAL", "OK", cal_ms / 1000.0f, g_cal_factor, 0, 0);
             weight_init();
             g_state = STATE_RUNNING;
             phase_start_ms = millis();
-            Serial.println("[BOOT] RUNNING");
+            journal_boot_complete(millis() / 1000.0f, g_cal_factor, g_sigma_g, (float)g_tare_raw);
         } else if (cr.status == CAL_FAILED) {
-            Serial.print("[BOOT] phase=CAL FAILED: ");
-            Serial.println(cr.diagnosis);
+            journal_phase_fail("CAL", cr.diagnosis, cr.cal_factor);
             cal_init(g_tare_raw);
         }
         break;
     }
 
     case STATE_RUNNING: {
-        static uint32_t tick_start_ms = 0;
-        tick_start_ms = millis();
         WeightResult wr = weight_update(r.value, g_tare_raw, g_cal_factor);
         g_health = health_check(
-            g_sigma_g,          // runtime sigma from this boot's noise char
-            g_prev_sigma_g,     // historical baseline from config.json (-1.0f = first boot)
-            g_tare_variance_raw,// tare window variance (0.0f until tare.h updated)
-            g_cal_factor,       // cal_factor derived this boot
-            g_prev_cal_factor,  // cal_factor from previous boot (-1.0f = first boot)
-            wr.grams,           // current gross weight reading
-            g_prev_gross_g,     // previous gross weight (-1.0f = first tick)
-            0.20f,              // cal_tolerance: 20% drift threshold (placeholder - move to config.json later)
-            3.0f                // sigma_tolerance: flag if runtime sigma > 3x historical baseline (placeholder)
+            g_sigma_g,
+            g_prev_sigma_g,
+            g_tare_variance_raw,
+            g_cal_factor,
+            g_prev_cal_factor,
+            wr.grams,
+            g_prev_gross_g,
+            0.20f,
+            3.0f
         );
         g_prev_gross_g = wr.grams;
-        Serial.printf("[HEALTH] quality=%s diagnosis=%s checks=0x%02X\n",
-                      g_health.quality, g_health.diagnosis, g_health.checks_passed);
         ble_notify(wr.grams, g_health.quality, g_sigma_g);
-        uint32_t tick_ms = millis() - tick_start_ms;
-        Serial.printf("[RUN] grams=%.1f quality=%s sigma=%.2f tick_ms=%lu\n",
-                      wr.grams, g_health.quality, g_sigma_g, tick_ms);
+        journal_run(wr.grams, g_sigma_g, g_health);
+        journal_heartbeat_tick(wr.grams, g_sigma_g, g_health);
         break;
     }
 
