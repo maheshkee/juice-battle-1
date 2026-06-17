@@ -480,6 +480,34 @@ Threshold: ~150g (SNR = 150g x 36.1 / 150 raw noise ~ 36x, above 20x minimum)
 
 ---
 
+## 2026-06-17 — Boot timing and journal architecture confirmed on hardware
+
+### Boot phase durations — ✅ PROVEN on 3-cell ESP32-C3
+| Phase | Duration | Derivation |
+|---|---|---|
+| SETTLE | 2.1s | Fixed 2000ms mechanical settle wait |
+| TARE | ~21s | 200 samples × 100ms (HX711 at 10 SPS) |
+| NOISE | ~20s | 200 samples × 100ms (HX711 at 10 SPS) |
+| CAL | variable | Waits for human weight placement + Serial input |
+| Total (excl. CAL wait) | ~43s | SETTLE + TARE + NOISE |
+
+HX711 sample rate confirmed 10 SPS — matches datasheet. No drift.
+
+### Journal module confirmed working — ✅ PROVEN
+- journal.cpp service module: sequence numbers, boot counter, event-based output
+- Boot counter persisted in config.json — survives resets
+- Event rate: ~13 lines for full boot + weight placement sequence
+- vs old per-tick output: 216,000 lines/6hr reduced to ~750 lines
+- Heartbeat 30s confirmed firing on schedule
+
+### tick_ms finding — ✅ PROVEN
+Per-tick loop time in STATE_RUNNING = 0–1ms. The entire reading cycle
+(HX711 read → health check → BLE notify) completes in under 1ms as measured
+by millis() difference. HX711 blocks internally during the 25-pulse read
+sequence — that time is not captured by millis() around the loop body.
+
+---
+
 ## Change Log
 
 | Date | Entry |

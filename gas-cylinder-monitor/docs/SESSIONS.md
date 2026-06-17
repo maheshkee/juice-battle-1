@@ -455,3 +455,52 @@ Next: 1B - load cell health detection module design
 **Next session:** 1C - timing instrumentation. Add millis() timestamps to each boot phase. Emit in structured Serial journal.
 
 ---
+
+## Session 003 — 2026-06-17 — Node Layer 1 complete (1C + 1D)
+
+### Goal
+Complete Node Layer 1: add timing instrumentation (1C) and structured 
+event journal (1D) to the production sketch.
+
+### What was built
+- 1C: phase_start_ms global + per-phase duration emitted in seconds on boot exit
+- 1D: journal.h / journal.cpp service module — owns all Serial output
+  Events: START, PHASE_COMPLETE, BOOT_COMPLETE, QUALITY_CHANGE, 
+          WEIGHT_EVENT, HEARTBEAT, PHASE_FAIL
+  Boot counter persisted in config.json
+  Format: #SEQ t=T boot=B [TAG] event=NAME key=val key=val
+
+### Real hardware outputs (2026-06-17)
+Boot timing verified:
+| Phase | Duration |
+|---|---|
+| SETTLE | 2.1s |
+| TARE | 21.1–21.2s |
+| NOISE | 20.1s |
+| CAL | 17–55s (human input variable) |
+| Total boot | ~60s |
+
+Journal output verified:
+#0001 t=0.2 boot=1 [BOOT] event=START fw=1.0
+#0002 t=2.3 boot=1 [BOOT] event=PHASE_COMPLETE phase=SETTLE result=OK s=2.1
+#0003 t=23.5 boot=1 [BOOT] event=PHASE_COMPLETE phase=TARE result=OK mean=-102970.8 spread=0.0 s=21.1
+#0004 t=43.6 boot=1 [BOOT] event=PHASE_COMPLETE phase=NOISE result=WARN s=20.1
+#0005 t=64.3 boot=1 [BOOT] event=PHASE_COMPLETE phase=CAL result=OK cal_factor=35.9664 s=20.7
+#0006 t=64.3 boot=1 [BOOT] event=BOOT_COMPLETE total_s=64.3 cal=35.9664 sigma=3.65 tare=-102970.8
+#0007 t=64.4 boot=1 [RUN] event=QUALITY_CHANGE from=NONE to=DEGRADED grams=0.0 sigma=3.65 diagnosis=stuck:
+#0008 t=64.4 boot=1 [HB] event=HEARTBEAT grams=0.0 quality=DEGRADED sigma=3.65 uptime=64.4
+#0009 t=66.3 boot=1 [RUN] event=WEIGHT_EVENT type=PLACED grams=406.3 prev=0.0 delta=406.3
+Heartbeat every 30s confirmed. Boot counter increments confirmed (boot=1→2).
+
+### Key decisions
+- journal.cpp is a SERVICE module (owns state) — not a pure function
+- Computation modules = pure functions. Service modules = stateful. Rule distinction locked.
+- tick_start_ms removed — per-tick timing was noise not signal at 0–1ms resolution
+- Event log replaces data stream: 216,000 lines/6hr → ~750 lines. Every line meaningful.
+- Log on transitions not state: QUALITY_CHANGE not quality every tick
+
+### Gate
+Node Layer 1: COMPLETE. All four items (1A, 1B, 1C, 1D) verified on hardware.
+
+### Next
+3E-006B — minimum detectable removal experiment.

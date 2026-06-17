@@ -134,75 +134,57 @@ The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ---
 
-## Current State - 2026-06-15
-Status:         3E-003 COMPLETE AND PASSED (2026-06-15)
+## Current State — 2026-06-17
 
-3E-001 COMPLETE AND PASSED (2026-06-12)
-Experiment series complete:
+Status:         Node Layer 1 COMPLETE (1A + 1B + 1C + 1D all verified on hardware)
+Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino
+Modules:        hx711, tare, noise, cal, weight, ble, health, journal — all .h/.cpp
 
-  E-000  PASSED 2026-06-04  raw bit-bang proven
-  E-001  PASSED 2026-06-05  cal_factor single-cell ~106.7 raw/g (VOID on 3-cell)
-  E-002  PASSED 2026-06-08  noise floor single-cell BLE-off (VOID on 3-cell)
-  E-003  PASSED 2026-06-08  BLE transport single-cell (patterns reused)
-  3E-001 PASSED 2026-06-12  cal_factor 3-cell = 36.1 raw/g LOCKED
-  3E-002 PASSED 2026-06-15  noise floor 3-cell BLE-off and BLE-on LOCKED
-  3E-003 PASSED 2026-06-15  BLE transport 3-cell — ESP32→BLE→Hub→WebUI end-to-end
-
-node/ sketches built:
-  E000_raw_read, E001_tare_cal_grams, E002_noise_floor,
-  E003_ble_transport, 3E001_cal_factor_v5, 3E001_cal_factor_v5_1,
-  3E001_cal_factor_v5_2, 3E002_noise_floor_v1, 3E002_noise_floor_v1_ble,
-  HW_VERIFY_3CELL, STOP, HW_VERIFY, 3E003_ble_transport_v1
-
-hub/: COMPLETE AND DEPLOYED (user:gas-cylinder-monitor/hub, WebUI: http://AQ3:7000)
-
-Wiring locked (do not change without re-verifying):
-  ESP32-C3 GPIO4 = DOUT (INPUT_PULLUP), GPIO3 = SCK
-  HX711 VDD = 3V3 ONLY - never 5V
-  3-cell parallel: all reds → E+, all blacks → E-, all greens → A+, all whites → A-
-  Twisted/soldered direct to HX711 terminals - NOT breadboard
+Transport:      BLE-only (WiFi removed entirely)
+Platform:       3-cell YZC-161A parallel → HX711 → ESP32-C3 SuperMini
+Wiring locked:
+  ESP32-C3 GPIO4=DT, GPIO3=SCK, 3V3=VDD, GND=GND
+  All 3 red→E+, all 3 black→E−, all 3 green→A+, all 3 white→A−
+  Direct soldered/twisted — NOT breadboard
 
 Arduino IDE locked:
   esp32 by Espressif v3.0.7, Board: ESP32C3 Dev Module
   Port: COM11, USB CDC On Boot: ENABLED
-  SCP to: C:\Users\mahes\Documents\Arduino\
+  Libraries: NimBLE-Arduino by h2zero, ArduinoJson by Benoit Blanchon
 
-LOCKED CONSTANTS (hardware-verified, never change without re-deriving):
-  cal_factor (3-cell parallel, shared plate) = 36.1 raw/g  LOCKED 2026-06-12
-  noise_std_g  (BLE off, worst case)         = 4.93g        LOCKED 2026-06-15
-  noise_std_g  (BLE on,  worst case)         = 4.64g        LOCKED 2026-06-15
-  threshold_g  (BLE on,  production)         = 18.54g       LOCKED 2026-06-15
-  BLE EMI penalty on 3-cell platform         = ~1.0x        LOCKED 2026-06-15
-  tare_raw: NEVER hardcode - re-derived every boot
-  Linear range: 200g - 1800g (verified 3E-001 Stage 3)
-  Min reliable weight: ~150g
+Verified hardware values:
+  cal_factor:   ~36 raw/g (3-cell parallel, derived every boot — never hardcoded)
+  sigma:        3.48–3.68g (boot-to-boot variation normal)
+  zero accuracy: ±3g
+  weight accuracy: ±7g across 200g–1700g
+  threshold_g:  4 × sigma
+  linear range: 200g–1700g
 
-## Current Position
-Date: 2026-06-16 (Session 3)
-Chunk: 1B COMPLETE — load cell health detection module built
-Status: health.h + health.cpp added; health_check() wired into gas_monitor_v1.ino STATE_RUNNING
-Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino (unchanged path)
-New files this session: node/gas_monitor_v1/health.h, node/gas_monitor_v1/health.cpp
-Next: 1C — timing instrumentation (millis() per boot phase)
+Boot timing (verified 2026-06-17):
+  SETTLE: ~2.1s
+  TARE:   ~21s (200 samples × 100ms)
+  NOISE:  ~20s (200 samples × 100ms)
+  CAL:    variable (waits for human input)
+  Total boot: ~60s excluding CAL wait
 
-## What was completed 2026-06-16 Session 2
-- node/gas_monitor_v1/ full modular sketch built and verified:
-  hx711.cpp, tare.cpp, noise.cpp, cal.cpp, weight.cpp, ble.cpp, gas_monitor_v1.ino
-- noise_recompute_sigma() added — post-CAL gram-unit sigma correction
-- README.md added with library dependency table (NimBLE-Arduino, ArduinoJson)
-- Known assumptions section added to CLAUDE.md
-- SESSIONS.md, LEARNINGS_AND_INSIGHTS.md, RESEARCH.md updated
+Journal format (1D — verified 2026-06-17):
+  #SEQ t=T boot=B [TAG] event=NAME key=val key=val
+  Tags: [BOOT] [RUN] [HB] [FAULT]
+  Events: START, PHASE_COMPLETE, BOOT_COMPLETE, QUALITY_CHANGE,
+          WEIGHT_EVENT, HEARTBEAT, PHASE_FAIL
+  Boot counter persisted in config.json
 
-## Locked values updated 2026-06-16 Session 2
-- cal_factor: 37.06 raw/g (3-cell, this boot — self-derived, not hardcoded)
-- sigma: 2.64g (recomputed in grams post-CAL via noise_recompute_sigma())
-- tare source: s2_mean (200-sample Phase 2 mean) — confirmed correct
-- Zero accuracy: ±3g
-- Weight accuracy: ±7g across 200g–1700g
+Known TODOs (deferred, tracked):
+  TODO 1B-stuck:       tare_variance_raw=0.0f — stuck check always fails
+                       Fix: update TareResult struct to expose variance
+  TODO 1B-persistence: prev_cal_factor/prev_sigma_g not read from config.json
+                       Fix: read/write at boot and after CAL_SUCCESS
 
-## New rules added 2026-06-16 Session 2
-- Arduino sketch dependencies must be listed in README.md and .ino comment block
-- Required libraries for gas_monitor_v1: NimBLE-Arduino by h2zero, ArduinoJson by Benoit Blanchon
+Hub status: DEPLOYED skeleton at arduino@AQ3 gas-cylinder-monitor/hub
+            WebUI at AQ3:7000 — no gas logic yet
+
+Current position: Node Layer 1 complete. Next = 3E-006B (min detectable removal experiment)
+Next action:      Design 3E-006B in chat. Implement via Claude Code CLI on ESP32-C3.
 
 ---
 

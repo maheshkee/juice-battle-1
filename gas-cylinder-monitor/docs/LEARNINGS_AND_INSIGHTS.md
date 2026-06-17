@@ -1104,3 +1104,74 @@ If health called hx711 directly, it would have two jobs: reading hardware AND ju
 **Verified:** health_check() has zero calls to hx711_read(). All inputs are passed by the orchestrator. Tested on hardware 2026-06-16.
 
 ---
+
+## SESSION 003 LEARNINGS — 2026-06-17
+
+### L-049 — Computation modules vs service modules: a critical distinction
+Date: 2026-06-17
+
+Pure function rule (from health.cpp): a module that takes inputs and produces 
+outputs with no side effects. The same inputs always produce the same output.
+Owns no state. Testable in complete isolation.
+
+Service module rule (journal.cpp): a module whose entire job requires tracking 
+what happened before. Cannot be stateless by definition. Owns its own internal 
+state. The orchestrator calls it but does not manage its internals.
+
+The rule is not "all modules are pure functions." The rule is:
+- Computation modules (hx711, tare, noise, cal, weight, health) → pure functions
+- Service modules (journal) → own state, encapsulate it completely
+
+Violation: putting journal state (s_prev_quality, s_seq, s_last_hb_ms) in the 
+orchestrator would make the orchestrator own implementation details that belong 
+to the journal. The orchestrator would need to know about journal internals to 
+call it correctly. That breaks encapsulation.
+
+Correct design: journal.cpp owns all its state. Orchestrator calls 
+journal_run(grams, sigma, health) — one line, no knowledge of internals.
+
+### L-050 — Event log vs data stream: why transitions beat state
+Date: 2026-06-17
+
+A data stream emits state on every tick: 216,000 lines over 6 hours at 10 SPS.
+An event log emits transitions: ~750 lines over 6 hours for a clean run.
+
+The insight: a repeated state line carries zero information after the first 
+occurrence. If quality=DEGRADED for 10,000 consecutive ticks, lines 2–10,000 
+add nothing. The information is in the moment it changed — GOOD→DEGRADED — 
+and the context at that moment (grams, sigma, diagnosis).
+
+Rule: log the transition, not the state.
+
+Corollary: heartbeat is the exception — it provides proof-of-life and a 
+trend spine even when no events fire. 30s interval gives 2 heartbeats/min 
+which is sufficient for both human review and hub analytics.
+
+### L-051 — Serial sequence numbers: why they matter for deployed devices
+Date: 2026-06-17
+
+A log without sequence numbers cannot detect dropped lines, out-of-order 
+delivery, or device resets mid-log. With #SEQ:
+- Gap in sequence → line dropped or corrupt
+- Sequence reset → device rebooted
+- Combined with boot=B: #0047 boot=3 is globally unique across all boots
+
+The sequence counter must NOT be persisted to flash because flash has 
+limited write cycles (~10,000–100,000). Persisting a counter that increments 
+hundreds of times per boot would exhaust flash in days. Solution: RAM-only 
+counter that resets to 1 on every boot. boot=B provides the cross-boot 
+identity.
+
+### L-052 — Boot phase timing reveals actual hardware behaviour
+Date: 2026-06-17
+
+Before 1C: boot duration was unknown. After 1C, first real measurement:
+SETTLE=2.1s, TARE=21s, NOISE=20s. 
+
+The 21s and 20s for TARE and NOISE are not arbitrary — they are 
+200 samples × 100ms per sample (HX711 at 10 SPS). This confirms the 
+HX711 sample rate is exactly 10 SPS as per datasheet. No drift, no 
+timing error. The math matches perfectly.
+
+This is the value of timing instrumentation: it either confirms theory 
+(as here) or reveals a discrepancy that demands investigation.

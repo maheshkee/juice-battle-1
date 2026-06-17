@@ -92,13 +92,13 @@ class BLESubscriber:
         )
 
         self._start_scan()
+        GLib.idle_add(self._check_known_devices)
         self._loop = GLib.MainLoop()
         self._loop.run()
 
     def _start_scan(self):
         try:
             self.adapter.SetDiscoveryFilter(dbus.Dictionary({
-                'UUIDs':     dbus.Array([SERVICE_UUID], signature='s'),
                 'Transport': dbus.String('le')
             }, signature='sv'))
             self.adapter.StartDiscovery()
@@ -116,13 +116,33 @@ class BLESubscriber:
         except Exception as e:
             print(f'[BLE_SUB] Stop scan error: {e}', flush=True)
 
+    def _check_known_devices(self):
+        try:
+            om = dbus.Interface(
+                self.bus.get_object(BLUEZ, '/'), DBUS_OM)
+            objects = om.GetManagedObjects()
+            for path, ifaces in objects.items():
+                if DEVICE_IFACE not in ifaces:
+                    continue
+                props = ifaces[DEVICE_IFACE]
+                name = str(props.get('Name', ''))
+                if name == DEVICE_NAME:
+                    print(f'[BLE_SUB] Found cached: {name} at {path}',
+                          flush=True)
+                    self._stop_scan()
+                    GLib.idle_add(self._connect, path)
+                    return False
+        except Exception as e:
+            print(f'[BLE_SUB] Known device check error: {e}', flush=True)
+        return False
+
     def _interfaces_added(self, path, interfaces):
         if DEVICE_IFACE not in interfaces:
             return
         props = interfaces[DEVICE_IFACE]
         uuids = [str(u) for u in props.get('UUIDs', [])]
         name  = str(props.get('Name', 'Unknown'))
-        if SERVICE_UUID in uuids:
+        if name == DEVICE_NAME:
             print(f'[BLE_SUB] Found: {name} at {path}', flush=True)
             self._stop_scan()
             GLib.idle_add(self._connect, path)

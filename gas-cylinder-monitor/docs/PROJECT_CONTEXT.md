@@ -31,41 +31,56 @@ Hub stamps timestamp on receipt. ESP32-C3 has no RTC.
 
 ## Hardware
 
-| Role | Board | IP / Connection |
-|------|-------|----------------|
-| Hub | Arduino UNO Q AQ3 | 192.168.1.161 (SSH: arduino@192.168.1.161) |
-| Node | ESP32-C3 | in hand — USB flash via Arduino IDE / PlatformIO |
-| Load cell | YZC-161A 20 kg | Red→E+, Black→E-, Green→A+, White→A- |
-| ADC | HX711 GISLAB (green PCB, AVIAIC chip) | VDD = 3.3V — DOUT/SCK safe for ESP32-C3 GPIO |
+| Component | Part | Role |
+|---|---|---|
+| Sensor node | ESP32-C3 SuperMini | Raw sensor work: HX711 bit-bang, BLE GATT notify |
+| Load cells | 3× YZC-161A 20kg parallel | Measures gross weight |
+| ADC | GISLAB HX711, AVIAIC chip | 24-bit, 10SPS, 3V3 VCC only |
+| Hub board | Arduino UNO Q AQ3 | QRB2210 Linux: Python, BlueZ, SQLite, WebUI |
+| Transport | BLE only (NimBLE-Arduino) | Node notifies hub every tick |
+| Storage | SQLite on AQ3 | Readings, anchor events, analytics |
 
 **JCTL on UNO Q = 1.8V ONLY. 3.3V damages hardware.**
 **ESP32-C3 wiring locked: GPIO4=DOUT, GPIO3=SCK, 3V3=VDD. 3.3V gate cleared 2026-06-04.**
 
 ---
 
-## Current State
+## Version History
 
-```
-Transport  : BLE only (LOCKED 2026-06-05, validated 2026-06-08)
-             E-003 PASSED. Full pipeline proven end-to-end.
-             ESP32 GATT server → BlueZ QRB2210 → Python bleak → hub terminal with timestamp.
-             bleak service_uuids filter not respected on QRB2210 - name filter applied in code (L-020)
-             Noise STD with BLE running: 1.81g, threshold 7.24g (supersedes E-002 BLE-off values)
+| Version | Scope | Status |
+|---|---|---|
+| V1 fresh cylinder | Node→hub BLE, steel from anchor, gas% | In progress |
+| V2 partial + known brand | Brand lookup tare, heals at anchor | Not started |
+| V3 partial + unknown brand | Interval estimation, conservative bias | Not started |
+| v2.0 | ML/TFLite/Kalman | Not started |
+| v3.0 | LLM agent, ordering API | Not started |
 
-Experiments:
-  E-000  PASSED  2026-06-04
-  E-001  PASSED  2026-06-05
-  E-002  PASSED  2026-06-08
-  E-003  PASSED  2026-06-08
-  Next: modular refactor → App Lab migration
+---
 
-Hub files:
-  hub/ COMPLETE AND DEPLOYED — App Lab ID: user:gas-cylinder-monitor/hub, WebUI: http://AQ3:7000
-  hub/python/main.py           - Flask + Socket.IO server
-  hub/python/ble_subscriber.py - BlueZ BLE subscriber, self-provisioning
-  hub/assets/index.html        - WebUI showing live grams
-  hub/app.yaml, setup.sh, deploy.sh
-```
+## Current State — 2026-06-17
+
+### Node Layer 1 — COMPLETE
+- 1A Modular sketch port: DONE
+- 1B Health module: DONE (health.h/health.cpp, 4 checks, bitmask quality)
+- 1C Timing instrumentation: DONE (phase durations in seconds on boot)
+- 1D Structured event journal: DONE (journal.h/journal.cpp, 7 event types)
+
+### Verified hardware values
+- cal_factor: ~36 raw/g (3-cell parallel)
+- sigma: 3.48–3.68g
+- zero accuracy: ±3g, weight accuracy: ±7g (200g–1700g)
+- Boot time: ~60s (SETTLE 2.1s, TARE 21s, NOISE 20s, CAL variable)
+
+### Known TODOs (deferred)
+- TODO 1B-stuck: tare_variance_raw always 0.0f — stuck check always fails
+- TODO 1B-persistence: prev values not read from config.json across boots
+
+### Next action
+3E-006B — minimum detectable removal experiment on 3-cell hardware.
+Design in chat, implement via Claude Code CLI.
+
+### Hub
+Skeleton deployed at AQ3:7000. No gas logic. BLE subscriber running.
 
 ---
 
