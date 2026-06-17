@@ -3,11 +3,13 @@
 
 #define NOISE_SAMPLES  200
 
-// 3-cell YZC-161A parallel, ESP32-C3 platform
-// Healthy sigma: 4.68-5.33g verified. PASS gate set at 8g (1.5x margin).
-// Open cell causes sigma ~25g. WARN gate set at 15g to catch degraded state.
-#define NOISE_SIGMA_PASS_G  8.0f
-#define NOISE_SIGMA_WARN_G  15.0f
+// 3-cell YZC-161A parallel platform, ESP32-C3 SuperMini
+// Healthy sigma verified: 4.68-5.33g across boots.
+// PASS gate: 8.0g = 1.5x margin above healthy max.
+// WARN gate: 15.0g = midpoint between healthy (5g) and open-cell (25g).
+// FAIL: sigma >= 15.0g indicates hardware fault (open cell or bad junction).
+static const float NOISE_SIGMA_PASS_G = 8.0f;
+static const float NOISE_SIGMA_WARN_G = 15.0f;
 
 static float s_samples[NOISE_SAMPLES];
 static float s_sum;

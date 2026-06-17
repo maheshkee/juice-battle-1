@@ -54,19 +54,23 @@ HealthResult health_check(
      * means every sample was identical, which is physically impossible on real
      * hardware and indicates a frozen output (stuck wire, broken cell, or HX711
      * in power-down mode). Any variance > 0 is sufficient to pass. */
-    // TODO 1B-stuck: tare_variance_raw not yet populated by tare.cpp.
-    // Skip stuck check when variance is 0.0f to prevent false DEGRADED on every boot.
-    // Fix properly when TareResult struct exposes variance from tare phase.
-    if (tare_variance_raw == 0.0f) {
-        result.checks_passed |= 0x02;
-    } else if (tare_variance_raw > 0.0f) {
-        result.checks_passed |= 0x02;
+    // TODO 1B-stuck: tare variance field not yet populated by tare.cpp.
+    // Always 0.0f at boot. Skip stuck check when unpopulated to prevent
+    // false DEGRADED on every boot. Fix properly when tare.cpp exposes
+    // variance through TareResult struct.
+    bool skip_stuck = (tare_variance_raw == 0.0f);
+    if (!skip_stuck) {
+        if (tare_variance_raw > 0.0f) {
+            result.checks_passed |= 0x02;
+        } else {
+            if (dpos > 0)
+                dpos += snprintf(result.diagnosis + dpos, sizeof(result.diagnosis) - dpos, "|");
+            dpos += snprintf(result.diagnosis + dpos,
+                             sizeof(result.diagnosis) - dpos,
+                             "stuck:");
+        }
     } else {
-        if (dpos > 0)
-            dpos += snprintf(result.diagnosis + dpos, sizeof(result.diagnosis) - dpos, "|");
-        dpos += snprintf(result.diagnosis + dpos,
-                         sizeof(result.diagnosis) - dpos,
-                         "stuck:");
+        result.checks_passed |= 0x02;
     }
 
     /* STEP 4 — cal drift check (bit 2)
