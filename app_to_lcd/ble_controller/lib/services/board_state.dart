@@ -30,13 +30,19 @@ class BoardState extends ChangeNotifier {
   int  whistleTarget = 0;
 
   String displayMode = 'overlay';
+  String boardName = '';
+
+  String wifiStatus = '';
+  String wifiSsid   = '';
 
   void Function(int count, int target)? onWhistleTargetReached;
+  void Function(bool success, String ssid, String error)? onWifiResult;
 
   BoardState() {
     _loadBtConnected();
     _loadSchedule();
     _loadDisplayMode();
+    loadBoardName();
   }
 
   Future<void> _loadBtConnected() async {
@@ -102,6 +108,23 @@ class BoardState extends ChangeNotifier {
       displayMode = prefs.getString('display_mode') ?? 'overlay';
       notifyListeners();
     } catch (_) {}
+  }
+
+  Future<void> loadBoardName() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      boardName = prefs.getString('board_name') ?? '';
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> saveBoardName(String name) async {
+    boardName = name;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('board_name', name);
+    } catch (_) {}
+    notifyListeners();
   }
 
   Future<void> saveDisplayMode() async {
@@ -253,6 +276,14 @@ class BoardState extends ChangeNotifier {
           displayMode = m;
           saveDisplayMode();
         }
+        break;
+      case 'wifi_provision_result':
+        final success = d['success'] as bool? ?? false;
+        final ssid    = d['ssid']    as String? ?? '';
+        final error   = d['error']   as String? ?? '';
+        wifiStatus = success ? 'connected' : 'failed';
+        wifiSsid   = ssid;
+        onWifiResult?.call(success, ssid, error);
         break;
     }
     notifyListeners();

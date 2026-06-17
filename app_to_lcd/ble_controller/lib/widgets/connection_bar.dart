@@ -5,7 +5,9 @@ class ConnectionBar extends StatelessWidget {
   final ConnState state;
   final VoidCallback onScan;
   final VoidCallback onDisconnect;
-  const ConnectionBar({super.key, required this.state, required this.onScan, required this.onDisconnect});
+  final String boardName;
+  const ConnectionBar({super.key, required this.state, required this.onScan,
+    required this.onDisconnect, this.boardName = 'BLE-Hub'});
 
   Color get _c {
     switch (state) {
@@ -18,9 +20,9 @@ class ConnectionBar extends StatelessWidget {
 
   String get _label {
     switch (state) {
-      case ConnState.connected:    return 'Connected to BLE-Hub';
+      case ConnState.connected:    return 'Connected to $boardName';
       case ConnState.connecting:   return 'Connecting...';
-      case ConnState.scanning:     return 'Scanning for BLE-Hub...';
+      case ConnState.scanning:     return 'Scanning for $boardName...';
       case ConnState.disconnected: return 'Tap Scan to connect to board';
     }
   }
@@ -42,12 +44,12 @@ class ConnectionBar extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF111827),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _c.withOpacity(0.3)),
-      ),
+        border: Border.all(color: _c.withOpacity(0.3))),
       child: Row(children: [
         Icon(_icon, color: _c, size: 20),
         const SizedBox(width: 10),
-        Expanded(child: Text(_label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _c))),
+        Expanded(child: Text(_label,
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _c))),
         _buildBtn(),
       ]),
     );
@@ -70,10 +72,8 @@ class ConnectionBar extends StatelessWidget {
         decoration: BoxDecoration(
           color: color.withOpacity(0.12),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withOpacity(0.5)),
-        ),
-        child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
-      ),
-    );
+          border: Border.all(color: color.withOpacity(0.5))),
+        child: Text(label,
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color))));
   }
 }

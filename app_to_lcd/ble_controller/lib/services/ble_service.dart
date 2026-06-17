@@ -33,14 +33,17 @@ class BleService {
   void _log(String m) => _logs.add(m);
   void _setState(ConnState s) { _state = s; _connState.add(s); }
 
+  String _targetName = 'BLE-Hub';
+  void setTargetName(String name) { _targetName = name; }
+
   Future<void> startScan() async {
     if (_state == ConnState.scanning) return;
     _setState(ConnState.scanning);
-    _log('[SCAN] Looking for BLE-Hub...');
+    _log('[SCAN] Looking for $_targetName...');
     await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
     _scanSub = FlutterBluePlus.scanResults.listen((results) async {
       for (var r in results) {
-        if (r.device.platformName == 'BLE-Hub') {
+        if (r.device.platformName == _targetName) {
           _log('[SCAN] Found: ${r.device.platformName}');
           FlutterBluePlus.stopScan();
           _scanSub?.cancel();
@@ -185,6 +188,7 @@ class BleService {
   Future<void> whistleReset()                             => _write('CMD:WHISTLE_RESET');
   Future<void> whistleSetTarget(int n)                    => _write('CMD:WHISTLE_TARGET:$n');
   Future<void> setDisplayMode(String mode)                => _write('CMD:DISPLAY_MODE:$mode');
+  Future<void> wifiProvision(String ssid, String pwd)     => _write('CMD:WIFI_PROVISION:$ssid||$pwd');
 
   Future<void> sendQueue(List<QueueItem> items) async {
     final payload = jsonEncode(items.map((e) => e.toJson()).toList());

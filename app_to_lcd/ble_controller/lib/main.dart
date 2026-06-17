@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'services/ble_service.dart';
 import 'services/board_state.dart';
 import 'services/watch_later_service.dart';
@@ -10,6 +11,7 @@ import 'services/bt_audio_service.dart';
 import 'services/playlist_service.dart';
 import 'services/notification_service.dart';
 import 'screens/hub_screen.dart';
+import 'screens/qr_scan_screen.dart';
 import 'models/board_event.dart';
 
 const _platform = MethodChannel('com.gratian.ble_controller/share');
@@ -23,6 +25,8 @@ void main() async {
   final plService  = PlaylistService();
   await wlService.load();
   await plService.load();
+  final prefs     = await SharedPreferences.getInstance();
+  final boardName = prefs.getString('board_name') ?? '';
   runApp(
     MultiProvider(
       providers: [
@@ -32,13 +36,14 @@ void main() async {
         ChangeNotifierProvider.value(value: wlService),
         ChangeNotifierProvider.value(value: plService),
       ],
-      child: const BleHubApp(),
+      child: BleHubApp(boardName: boardName),
     ),
   );
 }
 
 class BleHubApp extends StatefulWidget {
-  const BleHubApp({super.key});
+  final String boardName;
+  const BleHubApp({super.key, required this.boardName});
   @override
   State<BleHubApp> createState() => _BleHubAppState();
 }
@@ -95,6 +100,9 @@ class _BleHubAppState extends State<BleHubApp> {
       board.onWhistleTargetReached = (count, target) {
         NotificationService.showWhistleAlert(count, target);
       };
+      if (widget.boardName.isNotEmpty) {
+        context.read<BleService>().setTargetName(widget.boardName);
+      }
     });
   }
 
@@ -111,7 +119,9 @@ class _BleHubAppState extends State<BleHubApp> {
         highlightColor: Colors.transparent,
         splashColor: Colors.transparent,
       ),
-      home: const HubScreen(),
+      home: widget.boardName.isEmpty
+          ? const QrScanScreen()
+          : const HubScreen(),
     );
   }
 }

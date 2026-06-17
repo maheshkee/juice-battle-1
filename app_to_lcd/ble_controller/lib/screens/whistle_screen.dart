@@ -423,7 +423,7 @@ class _WhistleScreenState extends State<WhistleScreen> {
                   color: _red, size: 16),
                 const SizedBox(width: 10),
                 const Expanded(child: Text(
-                  'Connect to BLE-Hub to control the counter',
+                  'Connect to board to control the counter',
                   style: TextStyle(fontSize: 12, color: _red))),
               ]),
             ),

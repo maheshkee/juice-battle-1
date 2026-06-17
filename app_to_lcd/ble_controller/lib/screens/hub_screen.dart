@@ -18,6 +18,10 @@ import '../screens/bt_devices_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/playlists_screen.dart';
 import '../screens/whistle_screen.dart';
+import 'package:wifi_iot/wifi_iot.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+
 import '../services/playlist_service.dart';
 import '../main.dart' show startKeepAlive, stopKeepAlive;
 
@@ -109,6 +113,25 @@ class _HubScreenState extends State<HubScreen> {
   Future<void> _requestPermissions() async {
     await [Permission.bluetoothScan, Permission.bluetoothConnect,
            Permission.location].request();
+
+    // turn on bluetooth if off
+    final btState = await FlutterBluePlus.adapterState.first;
+    if (btState == BluetoothAdapterState.off) {
+      await FlutterBluePlus.turnOn();
+      // wait up to 10s for BT to turn on
+      await FlutterBluePlus.adapterState
+          .where((s) => s == BluetoothAdapterState.on)
+          .first
+          .timeout(const Duration(seconds: 10), onTimeout: () => BluetoothAdapterState.off);
+    }
+
+    // turn on location if off
+    final locationOn = await Geolocator.isLocationServiceEnabled();
+    if (!locationOn) {
+      await Geolocator.openLocationSettings();
+      // wait a moment for user to enable
+      await Future.delayed(const Duration(seconds: 1));
+    }
   }
 
   @override
@@ -155,10 +178,13 @@ class _HubScreenState extends State<HubScreen> {
       body: SafeArea(
         child: Column(children: [
           _buildHeader(ble),
-          ConnectionBar(
-            state:        ble.state,
-            onScan:       () => ble.startScan(),
-            onDisconnect: () => ble.disconnect()),
+          Selector<BoardState, String>(
+            selector: (_, b) => b.boardName,
+            builder: (_, name, __) => ConnectionBar(
+              state:        ble.state,
+              onScan:       () => ble.startScan(),
+              onDisconnect: () => ble.disconnect(),
+              boardName:    name.isNotEmpty ? name : 'BLE-Hub')),
           Expanded(
             child: SingleChildScrollView(
               physics: const ClampingScrollPhysics(),
@@ -305,7 +331,7 @@ class _HubScreenState extends State<HubScreen> {
                     borderRadius: BorderRadius.circular(8)),
                   child: const Icon(Icons.hub_rounded, color: Colors.white, size: 16)),
                 const SizedBox(width: 10),
-                const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Display', style: TextStyle(
                     fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white)),
                   Text('Choose how the board screen looks', style: TextStyle(
@@ -382,6 +408,41 @@ class _HubScreenState extends State<HubScreen> {
                 );
               },
             ),
+            const SizedBox(height: 8),
+            const Divider(color: Color(0xFF1A2840), height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.of(context).pop();
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (_) => WifiProvisionDialog(
+                      ble:       ble,
+                      connected: connected,
+                    ),
+                  );
+                },
+                child: Row(children: [
+                  const Icon(Icons.wifi_rounded,
+                    color: Color(0xFF00D4FF), size: 20),
+                  const SizedBox(width: 10),
+                  const Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('WiFi', style: TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w500,
+                        color: Colors.white)),
+                      Text('Connect board to a network', style: TextStyle(
+                        fontSize: 11, color: Color(0xFF3D5068))),
+                    ],
+                  )),
+                  const Icon(Icons.chevron_right_rounded,
+                    color: Color(0xFF3D5068), size: 18),
+                ]),
+              ),
+            ),
           ],
         ),
       ),
@@ -408,10 +469,14 @@ class _HubScreenState extends State<HubScreen> {
             child: const Icon(Icons.hub_rounded, color: Colors.white, size: 20)),
         ),
         const SizedBox(width: 12),
-        const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('BLE HUB', style: TextStyle(
-            fontSize: 15, fontWeight: FontWeight.w900, color: Colors.white,
-            letterSpacing: 1.5)),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Selector<BoardState, String>(
+            selector: (_, b) => b.boardName,
+            builder: (_, name, __) => Text(
+              name.isNotEmpty ? name : 'BLE HUB',
+              style: const TextStyle(
+                fontSize: 15, fontWeight: FontWeight.w900, color: Colors.white,
+                letterSpacing: 1.5))),
           Text('Arduino UNO Q', style: TextStyle(
             fontSize: 10, color: Color(0xFF3D5068), letterSpacing: 0.5)),
         ]),
@@ -754,6 +819,283 @@ class _PlaylistsSection extends StatelessWidget {
           )),
         ],
       ]),
+    );
+  }
+}
+
+class WifiProvisionDialog extends StatefulWidget {
+  final BleService ble;
+  final bool connected;
+  const WifiProvisionDialog({super.key, required this.ble, required this.connected});
+  @override
+  State<WifiProvisionDialog> createState() => _WifiProvisionDialogState();
+}
+
+class _WifiProvisionDialogState extends State<WifiProvisionDialog> {
+  List<WifiNetwork> _networks = [];
+  bool   _scanning    = false;
+  bool   _sending     = false;
+  bool?  _result      = null;
+  String _resultMsg   = '';
+  String _selectedSsid = '';
+  final  _pwdController = TextEditingController();
+  bool   _pwdVisible  = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scan();
+    final board = context.read<BoardState>();
+    board.onWifiResult = (success, ssid, error) {
+      if (!mounted) return;
+      setState(() {
+        _sending   = false;
+        _result    = success;
+        _resultMsg = success ? 'Connected to $ssid' : 'Failed: $error';
+      });
+    };
+  }
+
+  @override
+  void dispose() {
+    final board = context.read<BoardState>();
+    board.onWifiResult = null;
+    _pwdController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _scan() async {
+    setState(() { _scanning = true; _networks = []; });
+    try {
+      final results = await WiFiForIoTPlugin.loadWifiList() ?? [];
+      final seen = <String>{};
+      final unique = <WifiNetwork>[];
+      for (final r in results) {
+        final ssid = r.ssid ?? '';
+        if (ssid.isNotEmpty && seen.add(ssid)) unique.add(r);
+      }
+      unique.sort((a, b) => (b.level ?? -100).compareTo(a.level ?? -100));
+      setState(() { _networks = unique; });
+    } catch (_) {}
+    setState(() { _scanning = false; });
+  }
+
+  IconData _signalIcon(int level) {
+    if (level >= -50) return Icons.signal_wifi_4_bar_rounded;
+    if (level >= -60) return Icons.network_wifi_3_bar_rounded;
+    if (level >= -70) return Icons.network_wifi_2_bar_rounded;
+    return Icons.network_wifi_1_bar_rounded;
+  }
+
+  void _selectNetwork(String ssid) {
+    setState(() { _selectedSsid = ssid; _result = null; _resultMsg = ''; });
+  }
+
+  Future<void> _connect() async {
+    if (_selectedSsid.isEmpty) return;
+    setState(() { _sending = true; _result = null; _resultMsg = ''; });
+    await widget.ble.wifiProvision(_selectedSsid, _pwdController.text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF0D1520),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+
+          Row(children: [
+            Container(
+              width: 34, height: 34,
+              decoration: BoxDecoration(
+                color: const Color(0xFF00D4FF).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.wifi_rounded,
+                color: Color(0xFF00D4FF), size: 18)),
+            const SizedBox(width: 10),
+            const Expanded(child: Text('Connect Board to WiFi',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700,
+                color: Colors.white))),
+            GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              child: const Icon(Icons.close_rounded,
+                color: Color(0xFF3D5068), size: 20)),
+          ]),
+
+          const SizedBox(height: 16),
+
+          if (!widget.connected) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF3D71).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFF3D71).withOpacity(0.2))),
+              child: const Row(children: [
+                Icon(Icons.warning_amber_rounded,
+                  color: Color(0xFFFF3D71), size: 16),
+                SizedBox(width: 8),
+                Expanded(child: Text('Connect to board via BLE first',
+                  style: TextStyle(fontSize: 12, color: Color(0xFFFF3D71)))),
+              ])),
+          ] else if (_result != null) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _result!
+                  ? const Color(0xFF30D158).withOpacity(0.08)
+                  : const Color(0xFFFF3D71).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _result!
+                    ? const Color(0xFF30D158).withOpacity(0.2)
+                    : const Color(0xFFFF3D71).withOpacity(0.2))),
+              child: Row(children: [
+                Icon(_result! ? Icons.check_circle_rounded : Icons.error_rounded,
+                  color: _result! ? const Color(0xFF30D158) : const Color(0xFFFF3D71),
+                  size: 16),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_resultMsg,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _result! ? const Color(0xFF30D158) : const Color(0xFFFF3D71)))),
+              ])),
+            const SizedBox(height: 12),
+          ] else if (_selectedSsid.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF111827),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF1A2840))),
+              child: Column(children: [
+                Row(children: [
+                  const Icon(Icons.wifi_rounded,
+                    color: Color(0xFF00D4FF), size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_selectedSsid,
+                    style: const TextStyle(fontSize: 13,
+                      fontWeight: FontWeight.w500, color: Colors.white))),
+                  GestureDetector(
+                    onTap: () => setState(() { _selectedSsid = ''; }),
+                    child: const Icon(Icons.close_rounded,
+                      color: Color(0xFF3D5068), size: 16)),
+                ]),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _pwdController,
+                  obscureText: !_pwdVisible,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'Password',
+                    hintStyle: const TextStyle(color: Color(0xFF3D5068), fontSize: 13),
+                    filled: true,
+                    fillColor: const Color(0xFF0D1520),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFF1A2840))),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFF1A2840))),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(
+                        color: Color(0xFF00D4FF), width: 1.5)),
+                    suffixIcon: GestureDetector(
+                      onTap: () => setState(() { _pwdVisible = !_pwdVisible; }),
+                      child: Icon(
+                        _pwdVisible ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                        color: const Color(0xFF3D5068), size: 18))),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: GestureDetector(
+                    onTap: _sending ? null : _connect,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      decoration: BoxDecoration(
+                        color: _sending
+                          ? const Color(0xFF1A2840)
+                          : const Color(0xFF00D4FF),
+                        borderRadius: BorderRadius.circular(10)),
+                      child: Center(child: _sending
+                        ? const SizedBox(width: 16, height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                        : const Text('Connect',
+                            style: TextStyle(fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white))))),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          if (_selectedSsid.isEmpty && _result == null) ...[
+            Row(children: [
+              const Text('Nearby Networks',
+                style: TextStyle(fontSize: 11, color: Color(0xFF3D5068),
+                  letterSpacing: 0.5)),
+              const Spacer(),
+              GestureDetector(
+                onTap: _scanning ? null : _scan,
+                child: Icon(_scanning ? Icons.hourglass_empty_rounded : Icons.refresh_rounded,
+                  color: const Color(0xFF00D4FF), size: 16)),
+            ]),
+            const SizedBox(height: 8),
+            if (_scanning)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Color(0xFF00D4FF))))
+            else if (_networks.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(child: Text('No networks found',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF3D5068)))))
+            else
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 260),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _networks.length,
+                  separatorBuilder: (_, __) => const Divider(
+                    color: Color(0xFF1A2840), height: 1),
+                  itemBuilder: (_, i) {
+                    final n = _networks[i];
+                    final ssid = n.ssid ?? '';
+                    return GestureDetector(
+                      onTap: () => _selectNetwork(ssid),
+                      child: Container(
+                        color: Colors.transparent,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 10),
+                        child: Row(children: [
+                          Icon(_signalIcon(n.level ?? -100),
+                            color: const Color(0xFF00D4FF), size: 16),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(ssid,
+                            style: const TextStyle(
+                              fontSize: 13, color: Colors.white))),
+                          Text('${n.level ?? '?'} dBm',
+                            style: const TextStyle(
+                              fontSize: 10, color: Color(0xFF3D5068))),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+
+        ]),
+      ),
     );
   }
 }
