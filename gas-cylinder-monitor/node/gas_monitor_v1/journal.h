@@ -15,3 +15,4 @@ void journal_run(float grams, float sigma, const HealthResult& health,
 void journal_heartbeat_tick(float grams, float sigma,
                              const HealthResult& health);
 void journal_phase_fail(const char* phase, const char* reason, float value);
+void journal_tare_wait_result(const char* result);

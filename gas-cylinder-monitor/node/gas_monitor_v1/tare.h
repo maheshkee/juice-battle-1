@@ -16,3 +16,5 @@ struct TareResult {
 
 void       tare_init();
 TareResult tare_update(long raw);
+bool       tare_save_to_spiffs(float tare_raw);
+bool       tare_load_from_spiffs(float* tare_raw_out);

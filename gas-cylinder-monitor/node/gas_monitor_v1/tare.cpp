@@ -1,4 +1,6 @@
 #include "tare.h"
+#include <SPIFFS.h>
+#include <ArduinoJson.h>
 
 #define WINDOW_SIZE        10
 #define SPREAD_GOOD        500L
@@ -116,4 +118,36 @@ TareResult tare_update(long raw) {
     }
 
     return result;
+}
+
+bool tare_save_to_spiffs(float tare_raw) {
+    StaticJsonDocument<4096> doc;
+    File fr = SPIFFS.open("/config.json", "r");
+    if (fr) {
+        deserializeJson(doc, fr);
+        fr.close();
+    }
+    doc["tare_raw"] = tare_raw;
+    File fw = SPIFFS.open("/config.json", "w");
+    if (!fw) return false;
+    serializeJson(doc, fw);
+    fw.close();
+    Serial.printf("[TARE] Saved tare_raw=%.1f to SPIFFS\n", tare_raw);
+    return true;
+}
+
+bool tare_load_from_spiffs(float* tare_raw_out) {
+    File f = SPIFFS.open("/config.json", "r");
+    if (!f) return false;
+    StaticJsonDocument<4096> doc;
+    DeserializationError err = deserializeJson(doc, f);
+    f.close();
+    if (err) return false;
+    if (!doc.containsKey("tare_raw")) return false;
+    float v = doc["tare_raw"].as<float>();
+    // Sanity: 3-cell raw tare is a large negative value (platform at zero reads ~ -100k to -200k raw)
+    if (v < -200000.0f || v > -50000.0f) return false;
+    *tare_raw_out = v;
+    Serial.printf("[TARE] Loaded tare_raw=%.1f from SPIFFS\n", *tare_raw_out);
+    return true;
 }

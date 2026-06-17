@@ -92,3 +92,8 @@ void journal_phase_fail(const char* phase, const char* reason, float value) {
     Serial.printf("[FAULT] event=PHASE_FAIL phase=%s reason=%s value=%.2f\n",
                   phase, reason, value);
 }
+
+void journal_tare_wait_result(const char* result) {
+    LOG_PREFIX();
+    Serial.printf("[BOOT] event=PHASE_COMPLETE phase=TARE_WAIT result=%s\n", result);
+}
