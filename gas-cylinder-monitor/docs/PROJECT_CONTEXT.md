@@ -57,30 +57,41 @@ Hub stamps timestamp on receipt. ESP32-C3 has no RTC.
 
 ---
 
-## Current State — 2026-06-17
+## Current State — 2026-06-17 (SESSION2)
 
-### Node Layer 1 — COMPLETE
+### Node Layer 1 — COMPLETE + 3E-006B COMPLETE
 - 1A Modular sketch port: DONE
 - 1B Health module: DONE (health.h/health.cpp, 4 checks, bitmask quality)
 - 1C Timing instrumentation: DONE (phase durations in seconds on boot)
 - 1D Structured event journal: DONE (journal.h/journal.cpp, 7 event types)
+- 3E-006B min detectable removal: DONE — min=20g (1 trial), hard floor=10g
+
+### Weight module API updated (SESSION2)
+- weight_update() is now 4 args: (long raw, float tare_raw, float cal_factor, float sigma_g)
+- Delay-line event detector: 20-tick delay line + s_event_pending lockout flag
+- Single WEIGHT_EVENT per physical placement/removal — no cascade
+- journal_run() is now 5 args: (float grams, float sigma, HealthResult&, WeightEvent, float delta)
 
 ### Verified hardware values
-- cal_factor: ~36 raw/g (3-cell parallel)
-- sigma: 3.48–3.68g
+- cal_factor: ~36 raw/g (3-cell parallel, derived every boot)
+- sigma: 3.48–5.33g (boot-to-boot variation — wider range observed SESSION2)
+- threshold: 4 × sigma (~14–21g depending on boot)
 - zero accuracy: ±3g, weight accuracy: ±7g (200g–1700g)
 - Boot time: ~60s (SETTLE 2.1s, TARE 21s, NOISE 20s, CAL variable)
+- Min detectable removal: 20g (1 trial), hard floor 10g
 
 ### Known TODOs (deferred)
 - TODO 1B-stuck: tare_variance_raw always 0.0f — stuck check always fails
 - TODO 1B-persistence: prev values not read from config.json across boots
 
-### Next action
-3E-006B — minimum detectable removal experiment on 3-cell hardware.
-Design in chat, implement via Claude Code CLI.
+### Hub (SESSION2)
+- BLE subscriber: _check_known_devices() added for cached BlueZ devices
+- _check_known_devices() called at startup and inside every _start_scan() (reconnect)
+- Skeleton deployed at AQ3:7000 — no gas logic yet
 
-### Hub
-Skeleton deployed at AQ3:7000. No gas logic. BLE subscriber running.
+### Next action
+3E-007B — repeat minimum detectable removal (3 trials) to confirm 20g minimum.
+Design in chat, implement via Claude Code CLI.
 
 ---
 
@@ -95,7 +106,7 @@ Skeleton deployed at AQ3:7000. No gas logic. BLE subscriber running.
 | 5 | Noise floor on ESP32-C3 + with hardened wiring | RESOLVED E-002: STD 0.62-0.67g, threshold 2.67g |
 | 6 | WiFi transport protocol details (MQTT vs HTTP) | SUPERSEDED — transport locked as BLE-only |
 | 7 | cal_factor linearity across full 0-20kg range | PENDING E-005 (parked) |
-| 8 | Minimum detectable cooking event (real measurement) | PENDING E-006B post-install |
+| 8 | Minimum detectable cooking event (real measurement) | RESOLVED 2026-06-17 — min=20g (1 trial), hard floor=10g. Confirm with 3E-007B (3 trials). |
 | 9 | BLE GATT UUIDs (service + characteristic) | RESOLVED E-003: service aa206b91-..., char b9b25bb1-... |
 | 10 | Hub discovery without hardcoded MAC | RESOLVED E-003: self-provisioning via name filter + config.json cache |
 | 11 | Accuracy offset — readings proportional but offset from known weights | 2026-06-15 | ❓ Pending |
@@ -213,3 +224,20 @@ The product must NEVER tell the user they have more gas than they actually do.
 | 5 | Can health module detect load cell failures at runtime? | RESOLVED 2026-06-16 — runtime jump check verified on hardware. Placed 1kg on empty platform, caught 1009g jump, flagged FAILED correctly. |
 | 6 | tare.h variance exposure needed for stuck check to function | OPEN — TODO 1B-stuck: TareResult has no variance field. Stuck check (bit 1) always passes until tare.h updated. |
 | 7 | config.json persistence for prev_cal_factor and prev_sigma_g | OPEN — TODO 1B-persistence: cal drift and erratic checks skip every boot (first-boot sentinel -1.0f). Needs read-at-startup + write-after-CAL_SUCCESS in config.json. |
+
+---
+
+## Backlog — Deferred Features
+
+### 1E — BLE Journal Transport (DESIGNED, NOT BUILT)
+
+Design: dedicated BLE GATT characteristic on ESP32-C3 for journal log lines.
+Hub Python subscriber reads characteristic notifications and writes to a rotating
+log file on AQ3 (e.g. logs/node_journal_YYYY-MM-DD.log, max 7 days retention).
+Enables post-mortem diagnosis of node-side events without USB Serial attached.
+Required for production deployment.
+
+Gate: implement after 3E experiment program complete and hub BLE subscriber is stable.
+Priority: medium — not blocking V1 experiments, blocking production.
+Note: requires a second BLE characteristic with its own UUID, separate from the
+existing weight notify characteristic. Do not confuse the two.

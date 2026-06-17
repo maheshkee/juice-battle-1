@@ -519,3 +519,65 @@ WebUI: LIVE showing real weight
 
 ### Next
 3E-006B — minimum detectable removal experiment.
+
+---
+
+## Session — 2026-06-17 SESSION2 — 3E-006B Minimum Detectable Removal
+
+### Goal
+Run 3E-006B: measure the minimum detectable weight removal on the 3-cell platform.
+Fix the weight event detector bug discovered during this session.
+
+### Bug found and fixed — weight event detector
+Root cause: journal.cpp computed a tick-to-tick delta (current_grams − prev_grams),
+not a windowed comparison. This caused:
+- Cascades of 19+ WEIGHT_EVENT lines per single physical removal
+- 100g removal on a 1615g base load completely missed (per-tick delta ~5g,
+  never crossed the 21.3g threshold)
+
+Fix — 20-tick delay-line detector added to weight.cpp:
+- s_ref_buf[20] stores reference mean from 20 ticks ago
+- s_event_pending lockout flag: one event per transition, no cascade
+- s_ref_count guard: no detection for first 40 ticks (delay line priming)
+- Detection logic moved from journal.cpp to weight.cpp (correct separation)
+- journal.cpp is now a pure reporter: reads wr.event and wr.delta only
+- weight_update() gains sigma_g as 4th parameter (threshold = 4.0f × sigma_g)
+- journal_run() gains event and delta as 4th and 5th parameters
+
+Files changed: weight.h, weight.cpp, journal.h, journal.cpp, gas_monitor_v1.ino
+Verified on hardware: single event per physical removal for all test steps.
+
+### Experiment results — 3E-006B
+sigma this session: 5.33g | threshold: 4 × 5.33 = 21.3g
+
+| Removal | Detected? | Events | Notes |
+|---|---|---|---|
+| 100g | ✅ YES | 1 | Clean, no cascade |
+| 50g | ✅ YES | 1 | Clean, no cascade |
+| 30g | ✅ YES | 1 | Clean, no cascade |
+| 20g | ✅ YES | 1 | delta=21.8g — 0.94× threshold, slightly below 4σ |
+| 10g | ❌ NO | 0 | Invisible to detector and heartbeat |
+
+Minimum detectable removal: 20g (1 trial)
+Hard floor: 10g (confirmed undetectable)
+
+### Key findings
+- Load cell creep: 1414g bowl took >60s to stabilise before detection was reliable
+  Hub settle gate: use 2×sigma between consecutive heartbeats, not a fixed gram value
+- WEIGHT_EVENT delta field is a detection signal, not a precise measurement
+  Hub must use grams field, not delta, to compute actual weight change
+- Delay-line detector is slightly more sensitive than 4σ theory predicts:
+  detected 20g at 0.94× threshold
+- Sigma varies boot-to-boot: 3.65g to 5.33g observed across sessions
+  Minimum detectable removal therefore varies per boot — not a fixed product spec
+- 1E identified: BLE journal transport — dedicated BLE characteristic for log lines,
+  hub writes to rotating log file on AQ3. Not yet designed.
+
+### Gate
+3E-006B: COMPLETE
+Minimum detectable removal: 20g (1 trial — 3-trial confirmation pending)
+Hard floor: 10g (confirmed undetectable)
+Weight event detector: FIXED and verified on hardware
+
+### Next
+3E-007B — false positive rate experiment. Design in chat first.

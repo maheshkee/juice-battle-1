@@ -168,7 +168,7 @@ void loop() {
     }
 
     case STATE_RUNNING: {
-        WeightResult wr = weight_update(r.value, g_tare_raw, g_cal_factor);
+        WeightResult wr = weight_update(r.value, g_tare_raw, g_cal_factor, g_sigma_g);
         g_health = health_check(
             g_sigma_g,
             g_prev_sigma_g,
@@ -182,7 +182,7 @@ void loop() {
         );
         g_prev_gross_g = wr.grams;
         ble_notify(wr.grams, g_health.quality, g_sigma_g);
-        journal_run(wr.grams, g_sigma_g, g_health);
+        journal_run(wr.grams, g_sigma_g, g_health, wr.event, wr.delta);
         journal_heartbeat_tick(wr.grams, g_sigma_g, g_health);
         break;
     }

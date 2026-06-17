@@ -1,6 +1,6 @@
 # CLAUDE.md — gas-cylinder-monitor
 # Board: Arduino UNO Q AQ3 | IP: 192.168.1.161 | user: arduino
-# Last updated: 2026-06-16
+# Last updated: 2026-06-17
 # Read this FULLY before doing anything in this directory.
 
 ---
@@ -134,9 +134,9 @@ The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ---
 
-## Current State — 2026-06-17
+## Current State — 2026-06-17 (SESSION2)
 
-Status:         Node Layer 1 COMPLETE (1A + 1B + 1C + 1D all verified on hardware)
+Status:         Node Layer 1 COMPLETE + 3E-006B COMPLETE
 Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino
 Modules:        hx711, tare, noise, cal, weight, ble, health, journal — all .h/.cpp
 
@@ -154,11 +154,12 @@ Arduino IDE locked:
 
 Verified hardware values:
   cal_factor:   ~36 raw/g (3-cell parallel, derived every boot — never hardcoded)
-  sigma:        3.48–3.68g (boot-to-boot variation normal)
+  sigma:        3.48–5.33g (boot-to-boot variation — wider range observed SESSION2)
   zero accuracy: ±3g
   weight accuracy: ±7g across 200g–1700g
-  threshold_g:  4 × sigma
+  threshold_g:  4 × sigma (~14–21g depending on boot sigma)
   linear range: 200g–1700g
+  min detectable removal: 20g (1 trial SESSION2), hard floor 10g
 
 Boot timing (verified 2026-06-17):
   SETTLE: ~2.1s
@@ -174,6 +175,14 @@ Journal format (1D — verified 2026-06-17):
           WEIGHT_EVENT, HEARTBEAT, PHASE_FAIL
   Boot counter persisted in config.json
 
+weight_update() API (updated SESSION2):
+  Signature: weight_update(long raw, float tare_raw, float cal_factor, float sigma_g) — 4 args
+  Delay-line detector: 20-tick delay line, s_event_pending lockout flag
+  Returns: WeightResult with event (NONE/PLACED/REMOVED) and delta fields
+
+journal_run() API (updated SESSION2):
+  Signature: journal_run(float grams, float sigma, const HealthResult&, WeightEvent, float delta) — 5 args
+
 Known TODOs (deferred, tracked):
   TODO 1B-stuck:       tare_variance_raw=0.0f — stuck check always fails
                        Fix: update TareResult struct to expose variance
@@ -182,9 +191,16 @@ Known TODOs (deferred, tracked):
 
 Hub status: DEPLOYED skeleton at arduino@AQ3 gas-cylinder-monitor/hub
             WebUI at AQ3:7000 — no gas logic yet
+            BLE subscriber: _check_known_devices() fix applied (SESSION2)
 
-Current position: Node Layer 1 complete. Next = 3E-006B (min detectable removal experiment)
-Next action:      Design 3E-006B in chat. Implement via Claude Code CLI on ESP32-C3.
+Current position: 3E-006B COMPLETE. min detectable removal = 20g (1 trial).
+Next action:      3E-007B — repeat 3 trials to confirm 20g minimum.
+                  Design in chat. Implement via Claude Code CLI on ESP32-C3.
+
+Backlog:
+  1E: BLE journal transport — see PROJECT_CONTEXT.md for design.
+      Not yet implemented. Do not confuse with existing BLE weight notify.
+      Requires a second BLE characteristic, separate UUID.
 
 ---
 
@@ -215,6 +231,7 @@ Next action:      Design 3E-006B in chat. Implement via Claude Code CLI on ESP32
 | deploy app without restarting socat service | dbus.sock may not exist | Hub |
 | Hardcode APP_NAME in hub scripts | Read from app.yaml — folder name ≠ app name | Hub |
 | List package names in requirements.txt for wheels | Must be /app/wheels/ file paths | Hub |
+| Detect weight events by tick-to-tick delta in journal.cpp | journal is a service module — detection belongs in weight.cpp (computation module). Cross-module detection causes cascade events. | Node 2026-06-17 |
 
 ---
 

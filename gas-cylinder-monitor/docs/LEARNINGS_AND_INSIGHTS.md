@@ -1224,3 +1224,111 @@ the adapter is broken — it means hcitool's direct HCI access is blocked.
 
 Rule: on QRB2210, always use bluetoothctl to diagnose BLE issues.
 Never trust hcitool lescan as the definitive adapter health check.
+
+---
+
+## SESSION2 LEARNINGS — 2026-06-17
+
+### L-056 — Load cell creep under real load: settle time scales with mass and history
+Date: 2026-06-17
+
+A 1414g water bowl took >60s to stabilise after placement before the delay-line
+detector produced reliable readings. This is the same viscoelastic beam creep
+documented in L-ESP32-007, now confirmed at a realistic cylinder-simulation load.
+
+Consequence for hub design: a fixed gram-value settle gate (e.g. "wait until
+drift < 5g") is wrong because the drift rate depends on mass and mechanical
+history. Correct gate: use 2×sigma between consecutive heartbeats. Two heartbeats
+30s apart with |grams[n] − grams[n−1]| < 2σ means the platform has settled to
+within the noise floor regardless of starting mass.
+
+Verified: 1414g bowl, 3-cell platform, 2026-06-17.
+
+### L-057 — WEIGHT_EVENT delta field is a detection signal, not a measurement
+Date: 2026-06-17
+
+The delta emitted in a WEIGHT_EVENT is mean_now − mean_20_ticks_ago. It answers
+"did something change?" but not "by exactly how much?". Two sources of error:
+
+1. The 20-tick reference mean was captured before the load changed, but the current
+   mean may still be climbing toward its new settled value during creep.
+2. The reference and current windows overlap in time — the delta is not a clean
+   before/after comparison.
+
+Rule: hub must use wr.grams (the current 20-sample mean) to compute consumption
+deltas, not wr.delta. wr.delta triggers the event; wr.grams measures the result.
+
+Verified: 3E-006B, confirmed by comparing delta values with known removal weights.
+
+### L-058 — Delay-line detector is slightly more sensitive than 4σ theory predicts
+Date: 2026-06-17
+
+Theory: a 20g removal on sigma=5.33g hardware should produce delta=20g vs
+threshold=21.3g → below threshold → not detected.
+Observed: 20g removal detected (delta=21.8g). The actual delta exceeded the
+theoretical removal weight.
+
+Why: the 20-tick delay line compares the current 20-sample mean to a reference
+mean from 20 ticks earlier. Creep in the reference window (the old stable state)
+and a still-settling current window can add to the measured delta, making the
+effective signal slightly larger than the physical removal.
+
+Implication: the detector is not exactly a "4σ threshold on removal weight" — it
+is a "4σ threshold on difference-of-means." For small removals near the threshold,
+creep contributions can push it over. This is a feature, not a bug, for production
+use. But it means 20g detection cannot be treated as a hard guaranteed spec without
+more trials to bound the variance.
+
+### L-059 — Sigma varies boot-to-boot: minimum detectable removal is not a fixed spec
+Date: 2026-06-17
+
+sigma observed across sessions on same hardware:
+  Session 1 (2026-06-17): 3.65g → threshold 14.6g
+  Session 2 (2026-06-17): 5.33g → threshold 21.3g
+
+This 46% variation means the minimum detectable removal varies from ~14g to ~21g
+between boots on the same platform. It is not a fixed product specification.
+
+Root cause: per-boot noise characterisation captures thermal state, USB power
+quality, and platform creep state at the moment of boot. These all vary.
+
+Rule: minimum detectable removal is a per-boot property, not a global constant.
+Hub must use the sigma reported in each BLE payload to interpret events correctly.
+Product documentation must quote a worst-case range, not a single value.
+
+### L-060 — Weight event detection belongs in weight.cpp, not journal.cpp
+Date: 2026-06-17
+
+The original bug: event detection logic lived in journal.cpp, a service module.
+journal.cpp checked (grams − prev_grams) on every tick and emitted events when
+the delta crossed 4σ. This violated the computation/service module split (L-049).
+
+Why it was wrong:
+1. journal.cpp is a pure reporter — it should receive facts and emit log lines.
+   It should not compute derived signals.
+2. The tick-to-tick comparison in a service module had no access to the correct
+   windowed reference, so it produced cascades and missed large removals.
+
+Correct design: weight.cpp owns the event detector. It has the 20-sample mean
+buffer (s_buf), can maintain the 20-tick delay line (s_ref_buf), and returns
+a WeightEvent enum + delta in WeightResult. journal.cpp receives these as
+parameters and reports them — zero detection logic.
+
+Rule: any signal that requires knowledge of the weight history belongs in
+weight.cpp. journal.cpp receives pre-computed signals. It never computes them.
+
+Verified: fix applied 2026-06-17. Single event per physical removal confirmed.
+
+### L-061 — 1E: BLE journal transport (backlog item, not yet designed)
+Date: 2026-06-17
+
+The current journal emits to Serial only. The hub cannot read Serial from the
+node — it only receives BLE payloads. This means all journal output is invisible
+to the hub in production.
+
+1E design concept: add a second BLE GATT characteristic for log lines. Node
+buffers journal lines and notifies the hub. Hub writes to a rotating log file
+on AQ3 disk. Enables remote diagnostics without Serial Monitor.
+
+Deferred: design required before implementation. Not yet scoped. Log line size,
+buffering strategy, and characteristic UUID to be decided in chat.

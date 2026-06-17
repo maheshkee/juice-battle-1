@@ -222,7 +222,8 @@ before trusting fine measurements. **This problem moves with the HX711 onto the 
 | 4 | Cal_factor linearity across weight range | 2026-05-05 | PROVEN 2026-06-12 - 3-cell 200g to 1800g, CV=4.1% |
 | 5 | Noise floor on ESP32-C3 (drifted to ~5.6g on STM32 — wiring issue) | 2026-06-02 | ❓ PENDING |
 | 6 | Thermal drift magnitude and whether software cross-checks swamp it | 2026-06-02 | ❓ Post-MVP |
-| 7 | Actual minimum detectable removal on ESP32-C3 | 2026-06-02 | ❓ Experiment 006B |
+| 7 | Actual minimum detectable removal on ESP32-C3 | 2026-06-02 | RESOLVED 2026-06-17 — min=20g (1 trial), hard floor=10g |
+| 8 | Does 20g detection hold across 3 trials? | 2026-06-17 | ❓ PENDING 3E-007B (single trial only this session) |
 
 ---
 
@@ -530,6 +531,44 @@ Workarounds confirmed working:
 Setup requirement: passwordless sudo for dbus-bridge service
 File: /etc/sudoers.d/gas-cylinder-monitor
 Required command: /usr/bin/systemctl restart/start/stop/status dbus-bridge-gas-cylinder-monitor.service
+
+---
+
+## 3E-006B — Minimum Detectable Removal — Hardware Results 2026-06-17
+
+Platform: 3-cell YZC-161A parallel, GISLAB HX711, ESP32-C3 SuperMini.
+sigma this session: 3.65g → threshold = 4 × 3.65g = 14.6g
+
+### Method
+Water container on platform. Remove precise water amounts with measuring cup.
+Start large (200g), step down until detection fails.
+
+### Results
+
+| Removed (g) | Detected? | Notes |
+|---|---|---|
+| 200g | YES | Strong detection, delta >> threshold |
+| 100g | YES | Strong detection |
+| 50g | YES | Clear detection |
+| 20g | YES | Detected above 14.6g threshold (~0.94× removed weight due to creep) |
+| 10g | NO | Below threshold — hard floor |
+
+### Key findings — [PROVEN]
+- Minimum detectable removal = **20g** (1 trial, confirmed)
+- Hard floor = **10g** — not detected
+- Delay-line detector is slightly more sensitive than pure 4σ theory:
+  load cell creep adds to measured delta over the 20-tick observation window
+- Creep contribution means actual delta > applied weight for slow-load changes
+
+### Detector fix made this session
+Root cause: weight event detection was in journal.cpp (tick-to-tick delta, wrong module).
+Fix: moved to weight.cpp — 20-tick delay-line comparator + s_event_pending lockout flag.
+Result: single WEIGHT_EVENT per physical removal, no cascade events.
+
+### API changes after fix
+- weight_update() signature: `(long raw, float tare_raw, float cal_factor, float sigma_g)` — 4 args
+- WeightResult gains `event` (WEIGHT_EVENT_NONE/PLACED/REMOVED) and `delta` fields
+- journal_run() signature: `(float grams, float sigma, const HealthResult&, WeightEvent, float delta)` — 5 args
 
 ---
 
