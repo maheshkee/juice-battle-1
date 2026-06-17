@@ -8,6 +8,8 @@ export PIPEWIRE_RUNTIME_DIR=/run/user/1000
 BT_CMD_FILE="$PROJECT_DIR/bt_cmd.txt"
 BT_RESULT_FILE="$PROJECT_DIR/bt_result.txt"
 BT_CONNECTED_FILE="$PROJECT_DIR/bt_connected.txt"
+WIFI_CMD_FILE="$PROJECT_DIR/wifi_cmd.txt"
+WIFI_RESULT_FILE="$PROJECT_DIR/wifi_result.txt"
 
 xset s off
 xset s noblank
@@ -25,7 +27,7 @@ sleep 0.5
 rm -rf /tmp/chrome-kiosk
 
 echo "[LAUNCHER] Launching Chromium -> http://localhost:7000/display.html"
-/usr/bin/chromium --kiosk --enable-logging --log-level=0 --log-file=/tmp/chromium-debug.log \
+/usr/bin/chromium --kiosk \
     --no-sandbox \
     --noerrdialogs \
     --disable-infobars \
@@ -54,7 +56,6 @@ bt_connect() {
 
     echo "[BT] Scanning for $MAC..." >> "$BT_RESULT_FILE"
 
-    # start scan in background using a fifo to keep bluetoothctl alive
     FIFO=$(mktemp -u /tmp/btfifo.XXXXXX)
     mkfifo "$FIFO"
     bluetoothctl < "$FIFO" >> "$BT_RESULT_FILE" 2>&1 &
@@ -62,7 +63,6 @@ bt_connect() {
     exec 3>"$FIFO"
     echo "scan on" >&3
 
-    # poll until device seen in fresh scan output OR 10s
     FOUND=0
     for i in $(seq 1 20); do
         sleep 0.5
@@ -105,6 +105,57 @@ bt_connect() {
     fi
 }
 
+wifi_provision() {
+    local SSID="$1"
+    local PASSWORD="$2"
+    > "$WIFI_RESULT_FILE"
+    echo "[WIFI] Connecting to: $SSID"
+    unset DBUS_SYSTEM_BUS_ADDRESS
+    CONNECT_OUT=$(nmcli con up "$SSID" 2>&1)
+    if echo "$CONNECT_OUT" | grep -qE "successfully activated|Connection successfully activated"; then
+        printf "method:saved_profile
+" >> "$WIFI_RESULT_FILE"
+        printf "wifi_ok:%s
+" "$SSID" >> "$WIFI_RESULT_FILE"
+        printf "%s||%s
+" "$SSID" "$(date '+%Y-%m-%d %H:%M:%S')" > "$PROJECT_DIR/wifi_last.txt"
+        echo "[WIFI] Connected to $SSID via saved profile"
+        return
+    fi
+    echo "[WIFI] No saved profile, scanning for: $SSID"
+    nmcli dev wifi rescan ifname wlan0 2>/dev/null || true
+    FOUND=0
+    for i in $(seq 1 20); do
+        sleep 1
+        if nmcli dev wifi list 2>/dev/null | grep -qF "$SSID"; then
+            FOUND=1
+            break
+        fi
+        nmcli dev wifi rescan ifname wlan0 2>/dev/null || true
+    done
+    if [ $FOUND -eq 0 ]; then
+        printf "wifi_fail:%s
+" "$SSID" >> "$WIFI_RESULT_FILE"
+        echo "[WIFI] Network not found: $SSID"
+        return
+    fi
+    echo "[WIFI] Network found, connecting..."
+    CONNECT_OUT=$(nmcli dev wifi connect "$SSID" password "$PASSWORD" 2>&1)
+    if echo "$CONNECT_OUT" | grep -qE "successfully activated|Connection successfully activated"; then
+        printf "method:fresh_connect
+" >> "$WIFI_RESULT_FILE"
+        printf "wifi_ok:%s
+" "$SSID" >> "$WIFI_RESULT_FILE"
+        printf "%s||%s
+" "$SSID" "$(date '+%Y-%m-%d %H:%M:%S')" > "$PROJECT_DIR/wifi_last.txt"
+        echo "[WIFI] Connected to $SSID via fresh connect"
+    else
+        printf "wifi_fail:%s
+" "$SSID" >> "$WIFI_RESULT_FILE"
+        echo "[WIFI] Failed to connect to $SSID"
+    fi
+}
+
 while true; do
     if [ -f "$BT_CMD_FILE" ]; then
         BT_CMD=$(cat "$BT_CMD_FILE")
@@ -140,5 +191,20 @@ while true; do
                 ;;
         esac
     fi
+
+    if [ -f "$WIFI_CMD_FILE" ]; then
+        WIFI_CMD=$(cat "$WIFI_CMD_FILE")
+        rm -f "$WIFI_CMD_FILE"
+        echo "[WIFI] CMD: $WIFI_CMD"
+        case "$WIFI_CMD" in
+            WIFI_PROVISION:*)
+                PAYLOAD="${WIFI_CMD#WIFI_PROVISION:}"
+                SSID="${PAYLOAD%%||*}"
+                PASSWORD="${PAYLOAD#*||}"
+                wifi_provision "$SSID" "$PASSWORD"
+                ;;
+        esac
+    fi
+
     sleep 0.5
 done

@@ -54,6 +54,21 @@ BT_RESULT_FILE       = '/app/bt_result.txt'
 HISTORY_FILE         = '/app/history.json'
 PLAYLIST_FILE        = '/app/playlists.json'
 DISPLAY_MODE_FILE    = '/app/display_mode.json'
+WIFI_CMD_FILE        = '/app/wifi_cmd.txt'
+WIFI_RESULT_FILE     = '/app/wifi_result.txt'
+BOARD_ID_FILE        = '/app/board_id.json'
+
+def _load_board_name() -> str:
+    try:
+        if os.path.exists(BOARD_ID_FILE):
+            with open(BOARD_ID_FILE, 'r') as f:
+                data = json.load(f)
+            name = data.get('name', '').strip()
+            if name:
+                return name
+    except Exception:
+        pass
+    return 'BLE-Hub'
 
 PHONE_SVC_UUID = 'a00b0000-0000-0000-0000-000000000000'
 PHONE_CMD_UUID = 'a00b0002-0000-0000-0000-000000000000'
@@ -677,6 +692,46 @@ def _bt_forget(mac: str):
     _bt_wait_result(f'forgotten:{mac}', timeout=10)
     push_to_phone('bt_forgotten', {'mac': mac, 'time': now_str()})
 
+def _wifi_provision(ssid: str, password: str):
+    log(f'[WIFI] Provisioning: {ssid}')
+    try:
+        with open(WIFI_CMD_FILE, 'w') as f:
+            f.write(f'WIFI_PROVISION:{ssid}||{password}')
+    except Exception as e:
+        log(f'[WIFI] Write cmd failed: {e}')
+        GLib.idle_add(lambda: push_to_phone('wifi_provision_result', {
+            'success': False, 'ssid': ssid, 'error': str(e), 'time': now_str(),
+        }) or False)
+        return
+    start = time.time()
+    while time.time() - start < 30:
+        try:
+            if os.path.exists(WIFI_RESULT_FILE):
+                with open(WIFI_RESULT_FILE, 'r') as f:
+                    content = f.read()
+                if f'wifi_ok:{ssid}' in content:
+                    pass  # os.remove(WIFI_RESULT_FILE)
+                    log(f'[WIFI] Connected to {ssid}')
+                    GLib.idle_add(lambda s=ssid: push_to_phone('wifi_provision_result', {
+                        'success': True, 'ssid': s, 'time': now_str(),
+                    }) or False)
+                    return
+                elif f'wifi_fail:{ssid}' in content:
+                    pass  # os.remove(WIFI_RESULT_FILE)
+                    log(f'[WIFI] Failed to connect to {ssid}')
+                    GLib.idle_add(lambda s=ssid: push_to_phone('wifi_provision_result', {
+                        'success': False, 'ssid': s, 'error': 'Connection failed', 'time': now_str(),
+                    }) or False)
+                    return
+        except Exception: pass
+        time.sleep(0.5)
+    log(f'[WIFI] Timeout waiting for result')
+    GLib.idle_add(lambda s=ssid: push_to_phone('wifi_provision_result', {
+        'success': False, 'ssid': s, 'error': 'Timeout', 'time': now_str(),
+    }) or False)
+
+
+
 def handle_phone_command(text: str):
     global led_state, schedule, whistle_count, whistle_consec
     global whistle_active, whistle_last_action, whistle_last_detect
@@ -945,6 +1000,14 @@ def handle_phone_command(text: str):
                 GLib.idle_add(apply_display_mode, mode_val)
             else:
                 log(f'[DISPLAY] Unknown mode: {mode_val}')
+        elif cmd.startswith('WIFI_PROVISION:'):
+            parts = cmd[15:].split('||', 1)
+            ssid  = parts[0].strip()
+            pwd   = parts[1].strip() if len(parts) > 1 else ''
+            if ssid:
+                threading.Thread(target=_wifi_provision, args=(ssid, pwd), daemon=True).start()
+            else:
+                log('[WIFI] Empty SSID ignored')
         else: log(f'[CMD] Unknown: {cmd}')
 
 def _get_bt_connected():
@@ -985,6 +1048,7 @@ def _push_full_status_to_phone():
         'time':   now_str(),
     })
     push_to_phone('display_mode_update', {'mode': display_mode, 'time': now_str()})
+    push_to_phone('board_id', {'name': _load_board_name(), 'time': now_str()})
     bt_mac, bt_name = _get_bt_connected()
     if bt_mac:
         def _push_bt():
@@ -1196,6 +1260,7 @@ class BLEObjectWatcher:
                     push_to_phone('device_disconnected',
                         {'mac': mac, 'time': now_str()})
                     push_connected_devices()
+                    GLib.idle_add(_start_advertising)
 
 def _autoconnect_existing():
     if not trusted: return
@@ -1221,7 +1286,7 @@ class PhoneAdvertisement(dbus.service.Object):
             raise dbus.exceptions.DBusException('org.bluez.Error.InvalidArgs')
         return {'Type': dbus.String('peripheral'),
                 'ServiceUUIDs': dbus.Array([PHONE_SVC_UUID], signature='s'),
-                'LocalName': dbus.String('BLE-Hub'),
+                'LocalName': dbus.String(_load_board_name()),
                 'IncludeTxPower': dbus.Boolean(True),
                 'Discoverable': dbus.Boolean(True)}
 
@@ -1290,9 +1355,12 @@ class PhoneEvtChar(dbus.service.Object):
         if self.notifying: return
         self.notifying = True
         GLib.idle_add(_push_full_status_to_phone)
+        GLib.idle_add(_stop_advertising)
 
     @dbus.service.method(GATT_CHRC_IFACE)
-    def StopNotify(self): self.notifying = False
+    def StopNotify(self):
+        self.notifying = False
+        GLib.idle_add(_start_advertising)
 
     @dbus.service.signal(DBUS_PROP_IFACE, signature='sa{sv}as')
     def PropertiesChanged(self, interface, changed, invalidated): pass
@@ -1301,6 +1369,26 @@ class PhoneEvtChar(dbus.service.Object):
         self.value = dbus.Array(value, signature='y')
         self.PropertiesChanged(GATT_CHRC_IFACE, {'Value': self.value}, [])
 
+
+
+def _stop_advertising():
+    global adv_mgr_global, adv_global
+    if adv_mgr_global and adv_global:
+        try:
+            adv_mgr_global.UnregisterAdvertisement(dbus.ObjectPath(adv_global.path))
+            log('[PHONE] Advertising stopped -- phone connected')
+        except Exception as e:
+            log(f'[PHONE] Stop adv failed: {e}')
+
+def _start_advertising():
+    global adv_mgr_global, adv_global
+    if adv_mgr_global and adv_global:
+        try:
+            adv_mgr_global.RegisterAdvertisement(dbus.ObjectPath(adv_global.path), {},
+                reply_handler=lambda: log(f'[PHONE] Advertising resumed as {_load_board_name()}'),
+                error_handler=lambda e: log(f'[PHONE] Resume adv failed: {e}'))
+        except Exception as e:
+            log(f'[PHONE] Start adv failed: {e}')
 
 def ble_main():
     global bus, adv_mgr_global, adv_global, gatt_mgr_global, evt_char_global
@@ -1339,7 +1427,7 @@ def ble_main():
             error_handler=lambda e: log(f'[PHONE] GATT failed: {e}'))
         adv_global = PhoneAdvertisement(bus, 0)
         adv_mgr_global.RegisterAdvertisement(dbus.ObjectPath(adv_global.path), {},
-            reply_handler=lambda: log('[PHONE] Advertising as BLE-Hub'),
+            reply_handler=lambda: log(f'[PHONE] Advertising as {_load_board_name()}'),
             error_handler=lambda e: log(f'[PHONE] Adv failed: {e}'))
     except Exception as e:
         log(f'[PHONE] Setup failed: {e}')
