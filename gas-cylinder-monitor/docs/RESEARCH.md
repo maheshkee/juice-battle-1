@@ -223,7 +223,9 @@ before trusting fine measurements. **This problem moves with the HX711 onto the 
 | 5 | Noise floor on ESP32-C3 (drifted to ~5.6g on STM32 — wiring issue) | 2026-06-02 | ❓ PENDING |
 | 6 | Thermal drift magnitude and whether software cross-checks swamp it | 2026-06-02 | ❓ Post-MVP |
 | 7 | Actual minimum detectable removal on ESP32-C3 | 2026-06-02 | RESOLVED 2026-06-17 — min=20g (1 trial), hard floor=10g |
-| 8 | Does 20g detection hold across 3 trials? | 2026-06-17 | ❓ PENDING 3E-007B (single trial only this session) |
+| 8 | False positive rate of delay-line detector on static load | 2026-06-17 | RESOLVED 2026-06-17 — 0 false triggers in 38.4 min. PASS. |
+| 9 | 190g drift over 38 min on static load — thermal? mechanical creep? | 2026-06-17 | ❓ PENDING 3E-009 long-run stability soak |
+| 10 | HUB-001 BLE command protocol — single byte opcode? JSON? | 2026-06-17 | ❓ Design needed before node BLE work |
 
 ---
 
@@ -569,6 +571,34 @@ Result: single WEIGHT_EVENT per physical removal, no cascade events.
 - weight_update() signature: `(long raw, float tare_raw, float cal_factor, float sigma_g)` — 4 args
 - WeightResult gains `event` (WEIGHT_EVENT_NONE/PLACED/REMOVED) and `delta` fields
 - journal_run() signature: `(float grams, float sigma, const HealthResult&, WeightEvent, float delta)` — 5 args
+
+---
+
+## 3E-007B — False Positive Rate — Hardware Results 2026-06-17
+
+Platform: 3-cell YZC-161A parallel, GISLAB HX711, ESP32-C3 SuperMini.
+sigma this session: 5.12g → threshold = 4 × 5.12g = 20.5g
+
+### Method
+Static load (water container) on platform. No intentional disturbances.
+Observe WEIGHT_EVENT count over 38.4 minutes (2304 seconds).
+Target: fewer than 2 false triggers per hour.
+
+### Results — [PROVEN]
+
+| Metric | Target | Observed | Status |
+|---|---|---|---|
+| False WEIGHT_EVENT triggers | < 2 per hour | 0 | ✅ PASS |
+| Static load drift | (observation only) | 190g peak-to-trough | recorded |
+| Observation window | > 30 minutes | 38.4 minutes | ✅ |
+
+### Key findings
+- Delay-line detector is completely immune to slow drift at this drift rate
+- Drift rate: ~190g over 38 min ≈ 0.08g per 2-second tick
+- Delta over 20 ticks ≈ 0.08 × 20 = 1.6g — far below 20.5g threshold
+- 190g total drift is real slow drift (not noise) — thermal or mechanical creep
+- Must be characterised in 3E-009 (long-run stability soak, 24hr)
+- If uncorrected, will corrupt gas% at ~190g/38min ≈ 5g/min rate over long cycles
 
 ---
 

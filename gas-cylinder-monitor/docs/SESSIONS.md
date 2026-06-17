@@ -581,3 +581,57 @@ Weight event detector: FIXED and verified on hardware
 
 ### Next
 3E-007B — false positive rate experiment. Design in chat first.
+
+---
+
+## Session — 2026-06-17 SESSION3 — 3E-007B False Positive Rate + Disturbance Analysis
+
+### Goal
+Run 3E-007B: measure the false positive rate of the delay-line weight event detector
+on a static load over an extended observation window.
+Conduct disturbance analysis: what happens when the platform is mechanically disturbed.
+
+### Experiment results — 3E-007B (false positive rate)
+sigma this session: 5.12g | threshold: 4 × 5.12 = 20.5g
+Observation window: 38.4 minutes (2304 seconds) on static load
+
+| Metric | Target | Result | Status |
+|---|---|---|---|
+| False WEIGHT_EVENT triggers | < 2 per hour | 0 | ✅ PASS |
+| Slow drift immunity | Must not trigger | 190g peak-to-trough — zero events | ✅ PASS |
+| Observation duration | > 30 minutes | 38.4 minutes | ✅ PASS |
+
+### Disturbance analysis
+Finding: moving the platform base (with or without a cylinder) shifts the zero reference silently.
+
+Case A — cylinder removed, base moved, cylinder replaced:
+- Hub knows platform was empty at removal (WEIGHT_EVENT type=REMOVED, grams≈0)
+- Hub can trigger retare via BLE command to node
+- Requires a writable BLE characteristic on node → HUB-001 backlog item
+
+Case B — base moved with cylinder on platform:
+- No WEIGHT_EVENT fires — weight is unchanged, only the zero reference shifted
+- System reports wrong values silently — no current detection mechanism
+- Mitigation: detect from heartbeat trend (sudden step with no WEIGHT_EVENT) → HUB-002 backlog item
+- Cannot implement HUB-002 without burn rate estimate from Group 5 analytics
+
+### New backlog items added this session
+HUB-001: auto-retare after cylinder removal — requires writable BLE characteristic on node.
+         Priority: high — required for correct operation after any cylinder change.
+HUB-002: disturbance detection from heartbeat trend anomaly.
+         Priority: medium — requires Group 5 burn rate first.
+
+### Drift observation
+190g peak-to-trough wander on static load over 38 minutes.
+Drift rate: ~0.08g per 2-second tick window — far below 20.5g threshold.
+Not noise — this is real slow drift (thermal or mechanical creep).
+Will corrupt gas% calculation over a 6-hour reading cycle if not characterised.
+Must be properly characterised in 3E-009 (long-run stability soak).
+
+### Gate
+3E-007B: COMPLETE
+False positive rate: 0 per hour. Target < 2 per hour. PASS ✅
+Delay-line detector validated against real slow drift on hardware.
+
+### Next
+3E-008 — temperature drift experiment. Design in chat first.

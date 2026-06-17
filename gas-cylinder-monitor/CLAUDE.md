@@ -134,9 +134,9 @@ The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ---
 
-## Current State — 2026-06-17 (SESSION2)
+## Current State — 2026-06-17 (SESSION3)
 
-Status:         Node Layer 1 COMPLETE + 3E-006B COMPLETE
+Status:         Node Layer 1 COMPLETE + 3E-006B COMPLETE + 3E-007B COMPLETE
 Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino
 Modules:        hx711, tare, noise, cal, weight, ble, health, journal — all .h/.cpp
 
@@ -160,6 +160,9 @@ Verified hardware values:
   threshold_g:  4 × sigma (~14–21g depending on boot sigma)
   linear range: 200g–1700g
   min detectable removal: 20g (1 trial SESSION2), hard floor 10g
+  false positive rate:    0/hr on static load (SESSION3, 38.4 min window)
+  slow drift:             190g peak-to-trough over 38 min — do NOT interpret
+                          as gas consumption in hub logic without drift correction
 
 Boot timing (verified 2026-06-17):
   SETTLE: ~2.1s
@@ -193,14 +196,26 @@ Hub status: DEPLOYED skeleton at arduino@AQ3 gas-cylinder-monitor/hub
             WebUI at AQ3:7000 — no gas logic yet
             BLE subscriber: _check_known_devices() fix applied (SESSION2)
 
-Current position: 3E-006B COMPLETE. min detectable removal = 20g (1 trial).
-Next action:      3E-007B — repeat 3 trials to confirm 20g minimum.
+Current position: 3E-007B COMPLETE. False positive rate = 0/hr. PASS.
+Next action:      3E-008 — temperature drift experiment.
                   Design in chat. Implement via Claude Code CLI on ESP32-C3.
 
 Backlog:
   1E: BLE journal transport — see PROJECT_CONTEXT.md for design.
       Not yet implemented. Do not confuse with existing BLE weight notify.
       Requires a second BLE characteristic, separate UUID.
+
+  HUB-001: Auto-retare on cylinder removal.
+      Requires writable BLE command characteristic on node (hub→node direction).
+      This is a NEW node requirement — must be added before hub Layer 2 work.
+      Any future node BLE work must plan for this second characteristic.
+
+  HUB-002: Disturbance detection from heartbeat trend anomaly.
+      Requires Group 5 burn rate estimate first. Design pending.
+
+NOTE: 190g drift over 38 min observed on static load.
+  Do NOT interpret heartbeat wander as gas consumption in hub logic.
+  Raw heartbeat trend ≠ burn rate until drift is characterised and corrected (3E-009).
 
 ---
 

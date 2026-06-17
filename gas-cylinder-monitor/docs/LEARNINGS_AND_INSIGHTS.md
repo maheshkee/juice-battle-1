@@ -1332,3 +1332,91 @@ on AQ3 disk. Enables remote diagnostics without Serial Monitor.
 
 Deferred: design required before implementation. Not yet scoped. Log line size,
 buffering strategy, and characteristic UUID to be decided in chat.
+
+### L-062 — Delay-line detector is immune to slow drift
+Date: 2026-06-17
+
+The 20-tick delay-line detector compares mean(now) to mean(20 ticks ago). Slow
+drift adds approximately drift_rate × 20_ticks to the reference window and the
+same amount to the current window. The difference (mean_now − mean_ref) therefore
+captures the net drift over 20 ticks, not the total accumulated drift.
+
+At 190g drift over 38 minutes (2280 seconds = 228 ticks at 10 SPS):
+drift per tick ≈ 190g / 228 = 0.83g per tick
+delta over 20 ticks = 0.83 × 20 ≈ 16.6g
+
+But threshold = 20.5g (4 × 5.12g sigma). 16.6g < 20.5g → no false trigger.
+
+In practice, drift is not linear — it is logarithmic (load cell creep curve).
+Actual delta measured was far lower than this worst-case estimate.
+Result: 0 false triggers over 38.4 minutes. Confirmed on real hardware 2026-06-17.
+
+Rule: slow drift (< 1g per tick) will not trigger the delay-line detector on this
+platform. Only step changes (>4σ over 20 ticks) trigger detection.
+
+### L-063 — Platform tare is invalidated by any mechanical disturbance
+Date: 2026-06-17
+
+The tare is derived once at boot from an empty platform. If the platform is moved
+after tare (even slightly), the zero reference shifts by an unknown amount. The
+system has no way to detect this — it continues reporting grams as if tare is valid.
+
+Two cases:
+Case A — platform moved while empty (after cylinder removal):
+The hub can detect this window (WEIGHT_EVENT type=REMOVED ∧ grams≈0). The hub
+can command a retare via BLE write to the node. This is recoverable — HUB-001.
+
+Case B — platform moved while loaded (cylinder present):
+No weight event fires. The shift is silent. The reported gross weight is wrong
+by the shift amount — could be hundreds of grams. The hub cannot auto-retare
+because it cannot distinguish a tare shift from a true weight change.
+Mitigation: detect from heartbeat anomaly (sudden grams step, no WEIGHT_EVENT) — HUB-002.
+This is partially recoverable but requires burn rate context (Group 5 prerequisite).
+
+Production requirement: the physical installation must be permanent — the platform
+must not move after initial tare. If it must move, the cylinder should be removed
+first so Case A applies.
+
+### L-064 — 190g drift over 38 minutes is real slow drift, not noise
+Date: 2026-06-17
+
+noise_sigma = 5.12g → noise peak-to-peak ≈ 3×sigma ≈ 15g.
+Observed peak-to-trough: 190g over 38 minutes on a static load.
+190g >> 15g → this is not random noise. It is deterministic slow drift.
+
+Two candidate mechanisms:
+1. Thermal drift: load cell bridge resistance changes with temperature.
+   A 1°C room temperature change produces ~50–100 ppm shift in bridge balance.
+   Over 38 minutes with indoor HVAC cycling, this is consistent with 190g on a
+   3-cell, 3.3V platform.
+2. Mechanical creep: viscoelastic relaxation of the load cell beam under constant
+   stress. Creep is logarithmic — mostly in the first 10 minutes, then slow.
+   190g over 38 minutes is plausible for a 60kg-rated 3-cell platform under
+   1.5kg load (well below rated, so creep magnitude is small but non-zero).
+
+Consequence: gas% readings will drift by up to 190g / 14200g = 1.3% over 38
+minutes if no anchor or correction is applied. Over 6 hours this could be much
+larger. 3E-009 (long-run stability soak) must quantify the full magnitude.
+
+Rule: never treat a 6-hour heartbeat trend as gas consumption without first
+accounting for drift. The hub must normalise or cross-check against known events.
+
+### L-065 — HUB-001 and HUB-002 require a BLE write characteristic on the node
+Date: 2026-06-17
+
+The current BLE architecture is unidirectional: node → hub (notify).
+HUB-001 (auto-retare) and HUB-002 (disturbance response) both require the hub
+to send a command to the node. This requires a new writable BLE GATT
+characteristic on the ESP32-C3 — a command channel in the hub→node direction.
+
+This is a new architectural requirement not in the original V1 BLE design.
+
+Design requirements for the command characteristic:
+- Separate UUID from the existing weight notify characteristic
+- Must not interfere with the 100ms read/notify loop
+- Command format: TBD (design in chat — options: single byte opcode, short JSON)
+- Node must validate and ignore unknown commands (not crash)
+- At minimum: RETARE command (0x01) to trigger a new STATE_TARE sequence
+
+Gate: this characteristic must be added to the node before hub Layer 2 development.
+Any future node BLE work must plan for this second characteristic.

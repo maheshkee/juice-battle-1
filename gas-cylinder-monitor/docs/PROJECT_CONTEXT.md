@@ -57,41 +57,42 @@ Hub stamps timestamp on receipt. ESP32-C3 has no RTC.
 
 ---
 
-## Current State — 2026-06-17 (SESSION2)
+## Current State — 2026-06-17 (SESSION3)
 
-### Node Layer 1 — COMPLETE + 3E-006B COMPLETE
+### Node Layer 1 — COMPLETE + 3E-006B + 3E-007B COMPLETE
 - 1A Modular sketch port: DONE
 - 1B Health module: DONE (health.h/health.cpp, 4 checks, bitmask quality)
 - 1C Timing instrumentation: DONE (phase durations in seconds on boot)
 - 1D Structured event journal: DONE (journal.h/journal.cpp, 7 event types)
 - 3E-006B min detectable removal: DONE — min=20g (1 trial), hard floor=10g
+- 3E-007B false positive rate: DONE — 0 false triggers in 38.4 min. PASS ✅
 
-### Weight module API updated (SESSION2)
-- weight_update() is now 4 args: (long raw, float tare_raw, float cal_factor, float sigma_g)
-- Delay-line event detector: 20-tick delay line + s_event_pending lockout flag
-- Single WEIGHT_EVENT per physical placement/removal — no cascade
-- journal_run() is now 5 args: (float grams, float sigma, HealthResult&, WeightEvent, float delta)
+### Weight module API (current)
+- weight_update(): (long raw, float tare_raw, float cal_factor, float sigma_g) — 4 args
+- Delay-line detector: 20-tick delay line + s_event_pending lockout flag
+- journal_run(): (float grams, float sigma, HealthResult&, WeightEvent, float delta) — 5 args
 
 ### Verified hardware values
 - cal_factor: ~36 raw/g (3-cell parallel, derived every boot)
-- sigma: 3.48–5.33g (boot-to-boot variation — wider range observed SESSION2)
+- sigma: 3.48–5.33g (boot-to-boot variation normal)
 - threshold: 4 × sigma (~14–21g depending on boot)
 - zero accuracy: ±3g, weight accuracy: ±7g (200g–1700g)
-- Boot time: ~60s (SETTLE 2.1s, TARE 21s, NOISE 20s, CAL variable)
-- Min detectable removal: 20g (1 trial), hard floor 10g
+- Min detectable removal: 20g (1 trial, SESSION2), hard floor 10g
+- False positive rate: 0/hr on static load (SESSION3)
+- Slow drift: 190g peak-to-trough over 38 min on static load — characterise in 3E-009
 
 ### Known TODOs (deferred)
 - TODO 1B-stuck: tare_variance_raw always 0.0f — stuck check always fails
 - TODO 1B-persistence: prev values not read from config.json across boots
 
-### Hub (SESSION2)
-- BLE subscriber: _check_known_devices() added for cached BlueZ devices
-- _check_known_devices() called at startup and inside every _start_scan() (reconnect)
-- Skeleton deployed at AQ3:7000 — no gas logic yet
+### Hub
+- BLE subscriber: _check_known_devices() fix deployed, WebUI at AQ3:7000
+- No gas logic yet — skeleton only
+- New node requirement: writable BLE command characteristic needed for HUB-001/HUB-002
+  Must be added to node before hub Layer 2 development begins
 
 ### Next action
-3E-007B — repeat minimum detectable removal (3 trials) to confirm 20g minimum.
-Design in chat, implement via Claude Code CLI.
+3E-008 — temperature drift experiment. Design in chat first.
 
 ---
 
@@ -228,6 +229,32 @@ The product must NEVER tell the user they have more gas than they actually do.
 ---
 
 ## Backlog — Deferred Features
+
+### HUB-001 — Auto-Retare on Cylinder Removal (DESIGNED, NOT BUILT)
+
+Trigger: hub detects WEIGHT_EVENT type=REMOVED with grams≈0 (platform empty).
+Action: hub monitors subsequent heartbeats. When two consecutive heartbeats satisfy
+|grams[n] − grams[n−1]| < 2×sigma → platform stable → hub sends RETARE command
+to node over BLE write characteristic → node executes STATE_TARE sequence →
+confirms via next heartbeat reading ≈ 0g.
+
+Node requirement: writable BLE GATT characteristic (command channel, hub→node).
+Separate UUID from existing weight notify characteristic.
+Command format: TBD — design in chat (options: single byte opcode, short JSON).
+Priority: **high** — required for correct grams after any cylinder swap.
+Gate: node BLE command characteristic must be designed and implemented first.
+
+### HUB-002 — Disturbance Detection from Heartbeat Trend (DESIGNED, NOT BUILT)
+
+Trigger: hub detects a sudden step change in consecutive heartbeat grams values
+that exceeds 5× expected_consumption_in_interval AND no WEIGHT_EVENT occurred
+in that window → platform was disturbed while loaded (silent tare shift).
+Action: flag DISTURBANCE state → mark subsequent readings UNRELIABLE until
+next confirmed retare → surface alert to user.
+
+Prerequisite: requires burn rate estimate from Group 5 analytics.
+Cannot compute expected_consumption without a known burn rate.
+Priority: **medium** — improves reliability, not blocking V1.
 
 ### 1E — BLE Journal Transport (DESIGNED, NOT BUILT)
 
