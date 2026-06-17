@@ -502,5 +502,20 @@ Heartbeat every 30s confirmed. Boot counter increments confirmed (boot=1→2).
 ### Gate
 Node Layer 1: COMPLETE. All four items (1A, 1B, 1C, 1D) verified on hardware.
 
+### Additional work — BLE pipeline debugging and fix
+- Diagnosed QRB2210 BT adapter I/O error (hcitool lescan fails, bluetoothctl works)
+- Root cause 1: InterfacesAdded UUID filter ignored on QRB2210 BlueZ backend
+  Fix: changed discovery match from SERVICE_UUID to device Name
+- Root cause 2: already-known BlueZ devices don't re-trigger InterfacesAdded
+  Fix: added _check_known_devices() at startup to scan managed objects
+- Added passwordless sudo rule for dbus-bridge service restart in deploy
+- End-to-end pipeline verified: node→BLE→hub→WebUI showing live weight
+  WebUI confirmed: 422g DEGRADED ±3.65g 2026-06-17T05:59:22
+
+### Gate
+Node Layer 1: COMPLETE
+BLE transport: VERIFIED end-to-end on real hardware
+WebUI: LIVE showing real weight
+
 ### Next
 3E-006B — minimum detectable removal experiment.

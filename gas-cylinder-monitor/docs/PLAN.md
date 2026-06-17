@@ -271,3 +271,23 @@ Thermal drift magnitude                                → Post-MVP E-T1–T3
 | 2026-05-05 | Created — STM32 era, experiments 003/004 complete |
 | 2026-05-06 | Major update — calibration architecture locked, data intelligence roadmap |
 | 2026-06-04 | COMPLETE REWRITE — ESP32 pivot; phased chunk-groups; STM32 plan superseded |
+
+---
+
+## Deferred Work — Transport Observability (Option C)
+
+### Item 1 — Node BLE journal entries (NEXT SESSION)
+Add to ble.cpp: emit journal events for ADVERTISING, CLIENT_CONNECTED,
+CLIENT_DISCONNECTED. Uses existing journal module. ~30 min work.
+
+### Item 2 — Hub persistent log file (when hub domain logic built)
+Rotating log file on AQ3 disk. Captures all transport + domain events
+with timestamps. Survives restarts. Built alongside gas% and anchor logic.
+
+### Item 3 — WebUI transport status panel (when WebUI built)
+Live display: adapter status, scan/connected state, device name+MAC,
+last received timestamp. One widget row added to existing WebUI.
+
+### Item 4 — deploy.sh adapter health check (add now)
+Before container starts, verify hci0 is up via bluetoothctl show.
+Fail loudly if adapter is in bad state. Prevents silent scan failures.

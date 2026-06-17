@@ -1175,3 +1175,52 @@ timing error. The math matches perfectly.
 
 This is the value of timing instrumentation: it either confirms theory 
 (as here) or reveals a discrepancy that demands investigation.
+
+---
+
+### L-053 — QRB2210 BlueZ: InterfacesAdded UUID filter is ignored
+Date: 2026-06-17
+
+On QRB2210 BlueZ backend, SetDiscoveryFilter with UUIDs array is silently
+ignored. The InterfacesAdded signal fires for ALL devices regardless of
+UUID filter. UUIDs field in the signal payload is also empty — it is only
+populated after ServicesResolved, which happens post-connection.
+
+Rule: Never match on UUID in InterfacesAdded on this platform.
+Always match on device Name instead.
+
+Fix applied: changed _interfaces_added() to check name == DEVICE_NAME
+instead of SERVICE_UUID in uuids.
+
+### L-054 — QRB2210 BlueZ: cached devices don't re-trigger InterfacesAdded
+Date: 2026-06-17
+
+BlueZ only fires InterfacesAdded for newly discovered devices. If a device
+was seen in a previous session (bluetoothctl, previous app run), it exists
+in BlueZ's managed objects cache but fires no signal on the next scan.
+
+The hub would scan forever, seeing the node via RSSI updates but never
+getting the InterfacesAdded callback.
+
+Fix: added _check_known_devices() called via GLib.idle_add() immediately
+after _start_scan(). It walks GetManagedObjects() at startup and connects
+to any already-known device matching DEVICE_NAME.
+
+This is now the primary discovery path for reconnects after hub restart.
+InterfacesAdded remains as the fallback for fresh first-ever discovery.
+
+### L-055 — hcitool lescan vs bluetoothctl vs Python D-Bus: three different paths
+Date: 2026-06-17
+
+hcitool lescan: uses HCI socket directly, bypasses BlueZ daemon entirely.
+Fails with I/O error when adapter is in any non-clean state.
+
+bluetoothctl: uses BlueZ D-Bus API. Works even when hcitool fails.
+This is the correct diagnostic tool on this platform.
+
+Python dbus-python: same D-Bus path as bluetoothctl. If bluetoothctl
+can scan and connect, Python can too. hcitool failure does NOT mean
+the adapter is broken — it means hcitool's direct HCI access is blocked.
+
+Rule: on QRB2210, always use bluetoothctl to diagnose BLE issues.
+Never trust hcitool lescan as the definitive adapter health check.

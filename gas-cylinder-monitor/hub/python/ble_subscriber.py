@@ -104,6 +104,7 @@ class BLESubscriber:
             self.adapter.StartDiscovery()
             self.scanning = True
             print(f'[BLE_SUB] Scanning for {DEVICE_NAME} ({SERVICE_UUID})', flush=True)
+            GLib.idle_add(self._check_known_devices)
         except Exception as e:
             print(f'[BLE_SUB] Scan failed: {e}', flush=True)
 

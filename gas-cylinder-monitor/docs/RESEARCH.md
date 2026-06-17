@@ -508,6 +508,31 @@ sequence — that time is not captured by millis() around the loop body.
 
 ---
 
+## 2026-06-17 — BLE transport verified end-to-end, BlueZ bugs documented
+
+Platform: QRB2210 BlueZ backend inside App Lab Docker container
+
+✅ PROVEN: bluetoothctl can scan and connect to ESP32-C3 NimBLE device
+✅ PROVEN: Python dbus-python can connect via same D-Bus path
+✅ PROVEN: Full pipeline node→BLE→hub→WebUI working on real hardware
+✅ PROVEN: hcitool lescan always fails on this platform (HCI socket blocked)
+
+BlueZ bugs confirmed on QRB2210:
+- UUIDs filter in SetDiscoveryFilter: IGNORED
+- UUIDs in InterfacesAdded payload: EMPTY (populated only after ServicesResolved)
+- InterfacesAdded not fired for cached/known devices
+
+Workarounds confirmed working:
+- Name-based matching in _interfaces_added()
+- _check_known_devices() at startup via GetManagedObjects()
+- Transport='le' only in SetDiscoveryFilter (auto transport kills adapter)
+
+Setup requirement: passwordless sudo for dbus-bridge service
+File: /etc/sudoers.d/gas-cylinder-monitor
+Required command: /usr/bin/systemctl restart/start/stop/status dbus-bridge-gas-cylinder-monitor.service
+
+---
+
 ## Change Log
 
 | Date | Entry |

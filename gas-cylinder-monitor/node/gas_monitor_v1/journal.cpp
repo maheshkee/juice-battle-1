@@ -56,7 +56,8 @@ void journal_boot_complete(float total_s, float cal_factor,
                   total_s, cal_factor, sigma, tare);
 }
 
-void journal_run(float grams, float sigma, const HealthResult& health) {
+void journal_run(float grams, float sigma, const HealthResult& health,
+                 WeightEvent event, float delta) {
     if (strcmp(health.quality, s_prev_quality) != 0) {
         LOG_PREFIX();
         Serial.printf("[RUN] event=QUALITY_CHANGE from=%s to=%s grams=%.1f sigma=%.2f diagnosis=%s\n",
@@ -66,9 +67,8 @@ void journal_run(float grams, float sigma, const HealthResult& health) {
         s_prev_quality[sizeof(s_prev_quality) - 1] = '\0';
     }
 
-    if (s_prev_grams >= 0.0f && fabsf(grams - s_prev_grams) > 4.0f * sigma) {
-        float delta = grams - s_prev_grams;
-        const char* type = delta > 0.0f ? "PLACED" : "REMOVED";
+    if (event == WEIGHT_EVENT_PLACED || event == WEIGHT_EVENT_REMOVED) {
+        const char* type = (event == WEIGHT_EVENT_PLACED) ? "PLACED" : "REMOVED";
         LOG_PREFIX();
         Serial.printf("[RUN] event=WEIGHT_EVENT type=%s grams=%.1f prev=%.1f delta=%.1f\n",
                       type, grams, s_prev_grams, delta);
