@@ -3,6 +3,12 @@
 
 #define NOISE_SAMPLES  200
 
+// 3-cell YZC-161A parallel, ESP32-C3 platform
+// Healthy sigma: 4.68-5.33g verified. PASS gate set at 8g (1.5x margin).
+// Open cell causes sigma ~25g. WARN gate set at 15g to catch degraded state.
+#define NOISE_SIGMA_PASS_G  8.0f
+#define NOISE_SIGMA_WARN_G  15.0f
+
 static float s_samples[NOISE_SAMPLES];
 static float s_sum;
 static int   s_count;
@@ -53,9 +59,13 @@ NoiseResult noise_update(long raw, float tare_raw, float cal_factor) {
     if (sigma_g < 0.5f) {
         snprintf(result.diagnosis, sizeof(result.diagnosis),
                  "Sigma too low - check wiring");
-    } else if (sigma_g > 20.0f) {
+    } else if (sigma_g >= NOISE_SIGMA_WARN_G) {
         snprintf(result.diagnosis, sizeof(result.diagnosis),
                  "Sigma too high - check analog connections");
+    } else if (sigma_g >= NOISE_SIGMA_PASS_G) {
+        result.valid = true;
+        snprintf(result.diagnosis, sizeof(result.diagnosis),
+                 "WARN Sigma=%.2fg threshold=%.2fg", sigma_g, result.threshold_g);
     } else {
         result.valid = true;
         snprintf(result.diagnosis, sizeof(result.diagnosis),
