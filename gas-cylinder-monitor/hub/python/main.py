@@ -26,6 +26,16 @@ from db import (db_init, db_insert_reading, db_get_starting_weight,
                 db_set_starting_weight, db_get_latest_reading,
                 db_get_dev_mode, db_set_dev_mode)
 
+# ── Alert and burn-rate constants ────────────────────────────────────────────
+# V1: population prior. Replace with measured value in Group 5 analytics.
+# WARNING: ALERT_AMBER_G and ALERT_RED_G were derived from this value.
+# Do not change DAILY_USE_DEFAULT_G without re-validating both alert thresholds.
+DAILY_USE_DEFAULT_G = 350.0   # g/day — conservative middle of Indian household range
+ALERT_AMBER_G       = 2000.0  # gas_remaining threshold — "book a refill" (~5-6 days)
+ALERT_RED_G         = 1000.0  # gas_remaining threshold — "order now" (~2-3 days)
+MIN_HISTORY_DAYS    = 7       # minimum days of data before V2 burn rate is trusted
+# ─────────────────────────────────────────────────────────────────────────────
+
 ui = WebUI()
 
 DAILY_USE_DEFAULT_G = 400.0   # g/day — conservative household estimate

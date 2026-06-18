@@ -1543,3 +1543,37 @@ Fix: BUF_SIZE=40 (4-second comparison window). SE of 40-sample mean = sigma/sqrt
 triggers on any static load once creep has settled.
 
 Verified: boot=35, BUF_SIZE=40, zero false WEIGHT_EVENTs. 2026-06-18.
+
+---
+
+## L-064 — Burn Rate: V1 Default vs V2 Measured
+
+**Decision locked:** Days remaining calculation uses two phases.
+
+**V1 (current):** Fixed population default of 350g/day.
+Formula: `days_remaining = gas_remaining_g / 350.0`
+Displayed as: "~N days" — always integer, always tilde prefix.
+Never show decimals. Never claim precision we don't have.
+Rationale: 350g/day is the conservative middle of the Indian household range
+(237g/day light to 473g/day heavy). Errs toward earlier warning.
+
+**V2 (Group 5 analytics):** Replace 350.0 constant with measured
+`burn_rate_g_per_day` from SQLite readings history.
+Formula: same, but denominator comes from real data.
+Gate: requires minimum 7 days of readings to be statistically meaningful.
+Below 7 days — fall back to V1 default with "~N days (est.)" label.
+
+**Why tilde matters:** Drift error of ±150g worst case per 6hr session.
+At 350g/day that is ±0.4 days error on the displayed number.
+Showing "~6 days" is honest. Showing "6.2 days" is a lie.
+
+**Constants (never hardcode inline — always reference these):**
+
+    DAILY_USE_DEFAULT_G = 350.0   # V1 population prior
+    ALERT_AMBER_G       = 2000.0  # ~5-6 days at default rate
+    ALERT_RED_G         = 1000.0  # ~2-3 days at default rate
+    MIN_HISTORY_DAYS    = 7       # minimum before V2 burn rate trusted
+
+**Do not change DAILY_USE_DEFAULT_G without re-validating alert thresholds.**
+ALERT_AMBER_G and ALERT_RED_G were derived from this value + lead time.
+Changing one without the others breaks the alert logic silently.

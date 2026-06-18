@@ -697,3 +697,30 @@ and continues. Log clarity issue, not functional bug.
 - esp32 by Espressif v3.0.7
 - Board: ESP32C3 Dev Module, COM11, USB CDC On Boot: ENABLED
 - #include <cstdio> required for snprintf on ESP32 Arduino toolchain (not in <math.h>)
+
+---
+
+## Drift budget — V1 alert accuracy (from boot=37 journal data)
+
+Measured on 3-cell YZC-161A platform, 1000g load, ambient kitchen conditions.
+
+| Metric | Value |
+|--------|-------|
+| Drift rate typical | ~12.6g/hr |
+| Drift rate worst case | ~25g/hr (temperature oscillation) |
+| Max single-session drift (6hr) | ~150g worst case |
+| Drift character | Non-monotonic — oscillates with temperature |
+| Zero drift vs span drift | Primarily zero drift — does NOT scale with load |
+
+Implication: same ±150g error budget applies regardless of cylinder weight.
+A 29.5kg cylinder drifts the same absolute amount as a 1kg test weight.
+
+Alert accuracy at V1 thresholds:
+- Amber (2000g): fires at 1850g–2150g actual → ±0.4 days error at 350g/day
+- Red   (1000g): fires at  850g–1150g actual → ±0.4 days error at 350g/day
+
+Verdict: acceptable for V1. User gets 5–6 days warning at amber.
+Drift does not cause false alerts under normal conditions.
+
+Source: boot=37 journal, lines 032–258, 110 minutes static load.
+Experiment 3E-009 (long-run 6hr stability) will produce the definitive budget.
