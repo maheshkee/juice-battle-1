@@ -4,6 +4,7 @@ import ctypes
 import threading
 import time
 import json
+import subprocess
 from datetime import datetime
 
 os.environ['GI_TYPELIB_PATH'] = '/app/typelibs'
@@ -212,7 +213,10 @@ class BLESubscriber:
             grams   = float(payload['grams'])
             quality = str(payload['quality'])
             sigma   = float(payload['sigma'])
-            hub_ts  = datetime.now().strftime('%d %b %Y  %H:%M:%S')
+            hub_ts  = subprocess.run(
+                ['date', '+%d %b %Y  %H:%M:%S'],
+                capture_output=True, text=True
+            ).stdout.strip()
             print(f'[HUB] grams={grams} quality={quality} sigma={sigma} ts={hub_ts}',
                   flush=True)
             self.on_weight(grams, quality, sigma, hub_ts)

@@ -28,10 +28,11 @@ from db import (db_init, db_insert_reading, db_get_starting_weight,
 
 ui = WebUI()
 
-g_starting_weight  = None
-g_sw_candidate     = None
-g_sw_candidate_val = 0.0
-g_dev_mode         = True   # overwritten from DB after db_init()
+g_starting_weight    = None
+g_sw_candidate       = None
+g_sw_candidate_val   = 0.0
+g_weight_was_removed = False
+g_dev_mode           = True   # overwritten from DB after db_init()
 g_node_name        = None
 g_node_mac         = None
 g_node_connected   = False
@@ -46,33 +47,36 @@ def _node_status_payload():
 
 
 def on_weight(grams, quality, sigma, hub_ts):
-    global g_starting_weight, g_sw_candidate, g_sw_candidate_val
+    global g_starting_weight, g_sw_candidate, g_sw_candidate_val, g_weight_was_removed
 
     db_insert_reading(hub_ts, grams, quality, sigma)
 
     if g_dev_mode:
-        # DEV: auto re-anchor on every new stable load — no lock-once gate
+        # DEV: re-anchor only on first load or after weight was removed+replaced
         if grams > 500.0:
-            if g_sw_candidate is None:
-                g_sw_candidate     = True
-                g_sw_candidate_val = grams
-                print(f'[MAIN] [DEV] anchor candidate: {grams:.1f}g waiting...', flush=True)
-            else:
-                if abs(grams - g_sw_candidate_val) <= 2.0 * sigma:
-                    settled_val = round((grams + g_sw_candidate_val) / 2.0, 1)
-                    db_set_starting_weight(settled_val)
-                    g_starting_weight  = settled_val
-                    g_sw_candidate     = None
-                    g_sw_candidate_val = 0.0
-                    print(f'[MAIN] [DEV] anchor re-set: {settled_val}g', flush=True)
-                else:
+            if g_starting_weight is None or g_weight_was_removed:
+                if g_sw_candidate is None:
+                    g_sw_candidate     = True
                     g_sw_candidate_val = grams
-                    print(f'[MAIN] [DEV] anchor candidate updated: {grams:.1f}g settling...', flush=True)
+                    print(f'[MAIN] [DEV] anchor candidate: {grams:.1f}g waiting...', flush=True)
+                else:
+                    if abs(grams - g_sw_candidate_val) <= 2.0 * sigma:
+                        settled_val = round((grams + g_sw_candidate_val) / 2.0, 1)
+                        db_set_starting_weight(settled_val)
+                        g_starting_weight    = settled_val
+                        g_sw_candidate       = None
+                        g_sw_candidate_val   = 0.0
+                        g_weight_was_removed = False
+                        print(f'[MAIN] [DEV] anchor re-set: {settled_val}g', flush=True)
+                    else:
+                        g_sw_candidate_val = grams
+                        print(f'[MAIN] [DEV] anchor candidate updated: {grams:.1f}g settling...', flush=True)
         else:
             if g_sw_candidate is not None:
                 print('[MAIN] [DEV] anchor candidate reset — weight < 500g', flush=True)
-            g_sw_candidate     = None
-            g_sw_candidate_val = 0.0
+            g_sw_candidate       = None
+            g_sw_candidate_val   = 0.0
+            g_weight_was_removed = True
     else:
         # PRODUCTION: load anchor once from DB, never auto-reset
         if g_starting_weight is None:
@@ -85,12 +89,20 @@ def on_weight(grams, quality, sigma, hub_ts):
         pct = round((grams / g_starting_weight) * 100, 1)
     # production pct: None until hub Group 4 built
 
+    alert = None
+    if quality != 'WAITING':
+        if grams < 50.0:
+            alert = 'empty'
+        elif pct is not None and pct < 20.0:
+            alert = 'low_gas'
+
     ui.send_message('weight_update', {
         'grams':   round(grams, 1),
         'quality': quality,
         'sigma':   round(sigma, 2),
         'ts':      hub_ts,
         'pct':     pct,
+        'alert':   alert,
     })
     print(f"[MAIN] weight_update: grams={grams:.1f} quality={quality}", flush=True)
 
@@ -112,13 +124,14 @@ def on_node_disconnected():
 
 
 def on_set_dev_mode(data):
-    global g_dev_mode, g_starting_weight, g_sw_candidate, g_sw_candidate_val
+    global g_dev_mode, g_starting_weight, g_sw_candidate, g_sw_candidate_val, g_weight_was_removed
     enabled = bool(data.get('enabled', True))
     g_dev_mode = enabled
     db_set_dev_mode(enabled)
-    g_starting_weight  = None
-    g_sw_candidate     = None
-    g_sw_candidate_val = 0.0
+    g_starting_weight    = None
+    g_sw_candidate       = None
+    g_sw_candidate_val   = 0.0
+    g_weight_was_removed = False
     print(f'[MAIN] dev_mode → {enabled}', flush=True)
     ui.send_message('dev_mode_ack', {'enabled': enabled})
 
@@ -129,6 +142,12 @@ def on_ui_connect(sid):
     pct = None
     if latest and sw and sw > 0:
         pct = round((latest['grams'] / sw) * 100, 1)
+    alert = None
+    if latest and latest['quality'] != 'WAITING':
+        if latest['grams'] < 50.0:
+            alert = 'empty'
+        elif pct is not None and pct < 20.0:
+            alert = 'low_gas'
     if latest:
         ui.send_message('weight_update', {
             'grams':   round(latest['grams'], 1),
@@ -136,6 +155,7 @@ def on_ui_connect(sid):
             'sigma':   round(latest['sigma'], 2),
             'ts':      latest['ts'],
             'pct':     pct,
+            'alert':   alert,
         })
     else:
         ui.send_message('weight_update', {
@@ -144,6 +164,7 @@ def on_ui_connect(sid):
             'sigma':   0.0,
             'ts':      '--',
             'pct':     None,
+            'alert':   None,
         })
     ui.send_message('node_status',  _node_status_payload())
     ui.send_message('dev_mode_ack', {'enabled': g_dev_mode})

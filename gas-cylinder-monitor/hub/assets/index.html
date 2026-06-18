@@ -187,6 +187,20 @@
       color: #3f3f46;
       letter-spacing: 0.04em;
     }
+
+    /* ── alert banner ────────────────────────────────────── */
+    .alert-banner {
+      position: fixed; top: 0; left: 0; right: 0;
+      background: #7f1d1d; color: #fca5a5;
+      text-align: center; padding: 12px;
+      font-size: 15px; font-weight: 600; letter-spacing: 0.05em;
+      z-index: 100;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { background: #7f1d1d; }
+      50%       { background: #991b1b; }
+    }
   </style>
 </head>
 <body>
@@ -206,6 +220,11 @@
       <div class="toggle-opt" id="opt-dev"  onclick="setMode(true)">DEV</div>
       <div class="toggle-opt" id="opt-prod" onclick="setMode(false)">PROD</div>
     </div>
+  </div>
+
+  <!-- alert banner -->
+  <div class="alert-banner" id="alert-banner" style="display:none">
+    <span id="alert-text"></span>
   </div>
 
   <!-- main card -->
@@ -252,8 +271,10 @@
     var nameEl    = document.getElementById('node-name');
     var sepEl     = document.getElementById('node-sep');
     var macEl     = document.getElementById('node-mac');
-    var optDev    = document.getElementById('opt-dev');
-    var optProd   = document.getElementById('opt-prod');
+    var optDev      = document.getElementById('opt-dev');
+    var optProd     = document.getElementById('opt-prod');
+    var bannerEl    = document.getElementById('alert-banner');
+    var alertTextEl = document.getElementById('alert-text');
 
     var qualityClass = { GOOD: 'good', DEGRADED: 'degraded', FAILED: 'failed', WAITING: 'waiting' };
 
@@ -291,6 +312,16 @@
 
       sigmaEl.textContent = waiting ? '' : '±' + parseFloat(data.sigma).toFixed(2) + 'g';
       tsEl.textContent    = waiting ? '' : formatTs(data.ts);
+
+      if (data.alert === 'empty') {
+        bannerEl.style.display = 'block';
+        alertTextEl.textContent = 'Platform empty or cylinder removed';
+      } else if (data.alert === 'low_gas') {
+        bannerEl.style.display = 'block';
+        alertTextEl.textContent = 'Low gas — refill soon';
+      } else {
+        bannerEl.style.display = 'none';
+      }
 
       if (data.pct !== null && data.pct !== undefined) {
         pctRowEl.style.display = 'flex';
