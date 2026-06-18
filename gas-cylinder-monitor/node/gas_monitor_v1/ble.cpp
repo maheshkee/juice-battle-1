@@ -45,6 +45,15 @@ class CmdCallbacks : public NimBLECharacteristicCallbacks {
 
 static CmdCallbacks s_cmd_callbacks;
 
+class ServerCallbacks : public NimBLEServerCallbacks {
+    void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
+        NimBLEDevice::startAdvertising();
+        Serial.println("[BLE] Restarting advertising after disconnect");
+    }
+};
+
+static ServerCallbacks s_server_callbacks;
+
 // ---- Public API ----
 
 void ble_init_command_char() {
@@ -64,6 +73,7 @@ void ble_init() {
     NimBLEDevice::init("GasCylMonitor");
 
     NimBLEServer* server = NimBLEDevice::createServer();
+    server->setCallbacks(&s_server_callbacks);
     s_service = server->createService(SERVICE_UUID);
 
     s_char = s_service->createCharacteristic(
