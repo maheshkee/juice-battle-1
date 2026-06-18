@@ -11,6 +11,9 @@ arduino ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart bluetooth
 arduino ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop bluetooth
 arduino ALL=(ALL) NOPASSWD: /usr/bin/systemctl start bluetooth
 arduino ALL=(ALL) NOPASSWD: /usr/bin/bluetoothctl
+arduino ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart dbus-bridge-gas-cylinder-monitor.service
+arduino ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop dbus-bridge-gas-cylinder-monitor.service
+arduino ALL=(ALL) NOPASSWD: /usr/bin/systemctl start dbus-bridge-gas-cylinder-monitor.service
 EOF
 
 sudo chmod 440 "$SUDOERS_FILE"
