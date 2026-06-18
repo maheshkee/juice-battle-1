@@ -3,6 +3,9 @@
 # gas-cylinder-monitor -- Deploy script
 # Run this to start, restart, or update the app.
 # Usage: bash deploy.sh [--logs]
+#
+# All sudo commands here must have matching NOPASSWD rules in setup_sudoers.sh
+# Run setup_sudoers.sh once on any new device before first deploy
 # =============================================================================
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
