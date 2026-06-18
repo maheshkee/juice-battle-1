@@ -21,33 +21,146 @@ sys.path.insert(0, "/usr/lib/python3/dist-packages")
 from arduino.app_utils import App
 from arduino.app_bricks.web_ui import WebUI
 import threading
-import json
-from datetime import datetime
 from ble_subscriber import BLESubscriber
+from db import (db_init, db_insert_reading, db_get_starting_weight,
+                db_set_starting_weight, db_get_latest_reading,
+                db_get_dev_mode, db_set_dev_mode)
 
 ui = WebUI()
 
+g_starting_weight  = None
+g_sw_candidate     = None
+g_sw_candidate_val = 0.0
+g_dev_mode         = True   # overwritten from DB after db_init()
+g_node_name        = None
+g_node_mac         = None
+g_node_connected   = False
+
+
+def _node_status_payload():
+    return {
+        'connected': g_node_connected,
+        'name':      g_node_name or '',
+        'mac':       g_node_mac  or '',
+    }
+
+
 def on_weight(grams, quality, sigma, hub_ts):
+    global g_starting_weight, g_sw_candidate, g_sw_candidate_val
+
+    db_insert_reading(hub_ts, grams, quality, sigma)
+
+    if g_dev_mode:
+        # DEV: auto re-anchor on every new stable load — no lock-once gate
+        if grams > 500.0:
+            if g_sw_candidate is None:
+                g_sw_candidate     = True
+                g_sw_candidate_val = grams
+                print(f'[MAIN] [DEV] anchor candidate: {grams:.1f}g waiting...', flush=True)
+            else:
+                if abs(grams - g_sw_candidate_val) <= 2.0 * sigma:
+                    settled_val = round((grams + g_sw_candidate_val) / 2.0, 1)
+                    db_set_starting_weight(settled_val)
+                    g_starting_weight  = settled_val
+                    g_sw_candidate     = None
+                    g_sw_candidate_val = 0.0
+                    print(f'[MAIN] [DEV] anchor re-set: {settled_val}g', flush=True)
+                else:
+                    g_sw_candidate_val = grams
+                    print(f'[MAIN] [DEV] anchor candidate updated: {grams:.1f}g settling...', flush=True)
+        else:
+            if g_sw_candidate is not None:
+                print('[MAIN] [DEV] anchor candidate reset — weight < 500g', flush=True)
+            g_sw_candidate     = None
+            g_sw_candidate_val = 0.0
+    else:
+        # PRODUCTION: load anchor once from DB, never auto-reset
+        if g_starting_weight is None:
+            g_starting_weight = db_get_starting_weight()
+        # TODO hub Group 4: steel subtraction → real gas%
+
+    pct = None
+    if g_dev_mode and g_starting_weight and g_starting_weight > 0 \
+            and quality != 'WAITING':
+        pct = round((grams / g_starting_weight) * 100, 1)
+    # production pct: None until hub Group 4 built
+
     ui.send_message('weight_update', {
         'grams':   round(grams, 1),
         'quality': quality,
         'sigma':   round(sigma, 2),
-        'ts':      hub_ts
+        'ts':      hub_ts,
+        'pct':     pct,
     })
-    print(f"[MAIN] weight_update sent: grams={grams:.1f} quality={quality}", flush=True)
+    print(f"[MAIN] weight_update: grams={grams:.1f} quality={quality}", flush=True)
+
+
+def on_node_connected(name, mac):
+    global g_node_name, g_node_mac, g_node_connected
+    g_node_name      = name
+    g_node_mac       = mac
+    g_node_connected = True
+    print(f'[MAIN] Node connected: {name} ({mac})', flush=True)
+    ui.send_message('node_status', _node_status_payload())
+
+
+def on_node_disconnected():
+    global g_node_connected
+    g_node_connected = False
+    print('[MAIN] Node disconnected', flush=True)
+    ui.send_message('node_status', _node_status_payload())
+
+
+def on_set_dev_mode(data):
+    global g_dev_mode, g_starting_weight, g_sw_candidate, g_sw_candidate_val
+    enabled = bool(data.get('enabled', True))
+    g_dev_mode = enabled
+    db_set_dev_mode(enabled)
+    g_starting_weight  = None
+    g_sw_candidate     = None
+    g_sw_candidate_val = 0.0
+    print(f'[MAIN] dev_mode → {enabled}', flush=True)
+    ui.send_message('dev_mode_ack', {'enabled': enabled})
+
 
 def on_ui_connect(sid):
-    ui.send_message('weight_update', {
-        'grams':   0,
-        'quality': 'WAITING',
-        'sigma':   0.0,
-        'ts':      '--'
-    })
+    latest = db_get_latest_reading()
+    sw = db_get_starting_weight()
+    pct = None
+    if latest and sw and sw > 0:
+        pct = round((latest['grams'] / sw) * 100, 1)
+    if latest:
+        ui.send_message('weight_update', {
+            'grams':   round(latest['grams'], 1),
+            'quality': latest['quality'],
+            'sigma':   round(latest['sigma'], 2),
+            'ts':      latest['ts'],
+            'pct':     pct,
+        })
+    else:
+        ui.send_message('weight_update', {
+            'grams':   0,
+            'quality': 'WAITING',
+            'sigma':   0.0,
+            'ts':      '--',
+            'pct':     None,
+        })
+    ui.send_message('node_status',  _node_status_payload())
+    ui.send_message('dev_mode_ack', {'enabled': g_dev_mode})
+
 
 ui.on_connect(on_ui_connect)
+ui.on_message('set_dev_mode', on_set_dev_mode)
 
-ble = BLESubscriber(on_weight=on_weight)
+ble = BLESubscriber(
+    on_weight=on_weight,
+    on_connected=on_node_connected,
+    on_disconnected=on_node_disconnected,
+)
 threading.Thread(target=ble.start, daemon=True).start()
 
 print("[MAIN] Gas cylinder monitor hub started", flush=True)
+db_init()
+g_dev_mode = db_get_dev_mode()
+print(f"[MAIN] dev_mode loaded from DB: {g_dev_mode}", flush=True)
 App.run()

@@ -40,15 +40,17 @@ DEVICE_IFACE = 'org.bluez.Device1'
 
 
 class BLESubscriber:
-    def __init__(self, on_weight):
-        self.on_weight      = on_weight
-        self.bus            = None
-        self.adapter        = None
-        self.target_device  = None
-        self.weight_char    = None
-        self.scanning       = False
-        self._loop          = None
-        self._config        = {}
+    def __init__(self, on_weight, on_connected=None, on_disconnected=None):
+        self.on_weight       = on_weight
+        self.on_connected    = on_connected
+        self.on_disconnected = on_disconnected
+        self.bus             = None
+        self.adapter         = None
+        self.target_device   = None
+        self.weight_char     = None
+        self.scanning        = False
+        self._loop           = None
+        self._config         = {}
 
     def start(self):
         t = threading.Thread(target=self._run, daemon=True)
@@ -194,6 +196,10 @@ class BLESubscriber:
                 path_keyword='path'
             )
             print('[BLE_SUB] Subscribed to weight notifications', flush=True)
+            if self.on_connected:
+                mac = str(self.target_device).split('/')[-1] \
+                          .replace('dev_', '').replace('_', ':')
+                self.on_connected(DEVICE_NAME, mac)
         except Exception as e:
             print(f'[BLE_SUB] Subscribe failed: {e}', flush=True)
 
@@ -206,7 +212,7 @@ class BLESubscriber:
             grams   = float(payload['grams'])
             quality = str(payload['quality'])
             sigma   = float(payload['sigma'])
-            hub_ts  = datetime.now().isoformat(timespec='seconds')
+            hub_ts  = datetime.now().strftime('%d %b %Y  %H:%M:%S')
             print(f'[HUB] grams={grams} quality={quality} sigma={sigma} ts={hub_ts}',
                   flush=True)
             self.on_weight(grams, quality, sigma, hub_ts)
@@ -221,4 +227,6 @@ class BLESubscriber:
                 print('[BLE_SUB] Disconnected -- resuming scan in 5s', flush=True)
                 self.target_device = None
                 self.weight_char   = None
+                if self.on_disconnected:
+                    self.on_disconnected()
                 GLib.timeout_add(5000, lambda: self._start_scan() or False)

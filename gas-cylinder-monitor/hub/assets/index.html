@@ -13,6 +13,70 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       min-height: 100vh;
       display: flex;
+      flex-direction: column;
+    }
+
+    /* ── top bar ─────────────────────────────────────────── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 18px;
+      border-bottom: 1px solid #1a1a1a;
+      flex-shrink: 0;
+    }
+
+    .node-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .node-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #374151;
+      flex-shrink: 0;
+      transition: background 0.4s;
+    }
+    .node-dot.connected { background: #22c55e; }
+
+    .node-text {
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 11px;
+      color: #6b7280;
+      letter-spacing: 0.02em;
+    }
+    .node-text .name { color: #9ca3af; }
+    .node-text .sep  { margin: 0 5px; color: #374151; }
+    .node-text .mac  { color: #4b5563; }
+
+    /* ── mode toggle ─────────────────────────────────────── */
+    .toggle-pill {
+      display: flex;
+      border: 1px solid #27272a;
+      border-radius: 999px;
+      overflow: hidden;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-opt {
+      padding: 4px 14px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: #52525b;
+      transition: background 0.2s, color 0.2s;
+    }
+    .toggle-opt.active-dev  { background: #f59e0b; color: #000; }
+    .toggle-opt.active-prod { background: #22c55e; color: #000; }
+
+    /* ── main card ───────────────────────────────────────── */
+    .main {
+      flex: 1;
+      display: flex;
       align-items: center;
       justify-content: center;
     }
@@ -21,13 +85,15 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 24px;
+      gap: 22px;
+      transition: opacity 0.5s;
     }
+    .card.node-off { opacity: 0.28; }
 
     .weight-row {
       display: flex;
       align-items: baseline;
-      gap: 12px;
+      gap: 10px;
     }
 
     .grams {
@@ -36,84 +102,231 @@
       line-height: 1;
       letter-spacing: -4px;
       color: #ffffff;
+      font-variant-numeric: tabular-nums;
     }
 
     .unit {
       font-size: 48px;
-      font-weight: 400;
-      color: #9ca3af;
+      font-weight: 300;
+      color: #6b7280;
     }
 
     .badge {
-      font-size: 18px;
+      font-size: 17px;
       font-weight: 600;
-      letter-spacing: 0.1em;
-      padding: 6px 20px;
+      letter-spacing: 0.12em;
+      padding: 5px 20px;
       border-radius: 999px;
-      background: #6b7280;
+      background: #27272a;
       color: #ffffff;
       text-transform: uppercase;
       transition: background 0.3s;
     }
+    .badge.good     { background: #166534; color: #86efac; }
+    .badge.degraded { background: #92400e; color: #fcd34d; }
+    .badge.failed   { background: #7f1d1d; color: #fca5a5; }
+    .badge.waiting  { background: #27272a; color: #6b7280; }
 
-    .badge.good     { background: #22c55e; }
-    .badge.degraded { background: #f59e0b; }
-    .badge.failed   { background: #ef4444; }
-    .badge.waiting  { background: #6b7280; }
+    /* ── percentage ──────────────────────────────────────── */
+    .pct-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .pct-value {
+      font-size: 64px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -2px;
+      color: #ffffff;
+      font-variant-numeric: tabular-nums;
+    }
+    .pct-unit {
+      font-size: 28px;
+      font-weight: 300;
+      color: #6b7280;
+    }
+    .pct-label {
+      font-size: 14px;
+      color: #52525b;
+      margin-left: 2px;
+    }
+    .pct-bar-bg {
+      width: 300px;
+      height: 6px;
+      background: #18181b;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .pct-bar-fill {
+      height: 100%;
+      background: #22c55e;
+      border-radius: 3px;
+      transition: width 0.6s ease, background 0.4s;
+      width: 0%;
+    }
 
+    /* ── meta (sigma + timestamp) ────────────────────────── */
     .meta {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
+      margin-top: 4px;
     }
 
     .sigma {
-      font-size: 15px;
-      color: #9ca3af;
+      font-size: 14px;
+      color: #6b7280;
+      font-variant-numeric: tabular-nums;
     }
 
     .ts {
-      font-size: 13px;
-      color: #4b5563;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 12px;
+      color: #3f3f46;
+      letter-spacing: 0.04em;
     }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="weight-row">
-      <span class="grams" id="grams">--</span>
-      <span class="unit">g</span>
+
+  <!-- top bar -->
+  <div class="topbar">
+    <div class="node-info">
+      <div class="node-dot" id="node-dot"></div>
+      <div class="node-text">
+        <span class="name" id="node-name">scanning&hellip;</span>
+        <span class="sep" id="node-sep" style="display:none">&bull;</span>
+        <span class="mac"  id="node-mac"></span>
+      </div>
     </div>
-    <div class="badge waiting" id="badge">WAITING</div>
-    <div class="meta">
-      <div class="sigma" id="sigma"></div>
-      <div class="ts" id="ts"></div>
+
+    <div class="toggle-pill">
+      <div class="toggle-opt" id="opt-dev"  onclick="setMode(true)">DEV</div>
+      <div class="toggle-opt" id="opt-prod" onclick="setMode(false)">PROD</div>
+    </div>
+  </div>
+
+  <!-- main card -->
+  <div class="main">
+    <div class="card node-off" id="card">
+
+      <div class="weight-row">
+        <span class="grams" id="grams">--</span>
+        <span class="unit">g</span>
+      </div>
+
+      <div class="badge waiting" id="badge">WAITING</div>
+
+      <div class="pct-row" id="pct-row" style="display:none">
+        <span class="pct-value" id="pct-value">--</span>
+        <span class="pct-unit">%</span>
+        <span class="pct-label">remaining</span>
+      </div>
+
+      <div class="pct-bar-bg" id="pct-bar-bg" style="display:none">
+        <div class="pct-bar-fill" id="pct-bar-fill"></div>
+      </div>
+
+      <div class="meta">
+        <div class="sigma" id="sigma"></div>
+        <div class="ts"    id="ts"></div>
+      </div>
+
     </div>
   </div>
 
   <script src="/socket.io.min.js"></script>
   <script>
-    var gramsEl = document.getElementById('grams');
-    var badgeEl = document.getElementById('badge');
-    var sigmaEl = document.getElementById('sigma');
-    var tsEl    = document.getElementById('ts');
+    var gramsEl   = document.getElementById('grams');
+    var badgeEl   = document.getElementById('badge');
+    var sigmaEl   = document.getElementById('sigma');
+    var tsEl      = document.getElementById('ts');
+    var pctRowEl  = document.getElementById('pct-row');
+    var pctBarBg  = document.getElementById('pct-bar-bg');
+    var pctValEl  = document.getElementById('pct-value');
+    var pctFillEl = document.getElementById('pct-bar-fill');
+    var cardEl    = document.getElementById('card');
+    var dotEl     = document.getElementById('node-dot');
+    var nameEl    = document.getElementById('node-name');
+    var sepEl     = document.getElementById('node-sep');
+    var macEl     = document.getElementById('node-mac');
+    var optDev    = document.getElementById('opt-dev');
+    var optProd   = document.getElementById('opt-prod');
 
     var qualityClass = { GOOD: 'good', DEGRADED: 'degraded', FAILED: 'failed', WAITING: 'waiting' };
 
+    /* Format: "18 Jun 2026  13:09:59" from server strftime, or parse ISO fallback */
+    var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    function formatTs(ts) {
+      if (!ts || ts === '--') return '';
+      /* If already human-formatted (contains letters), return as-is */
+      if (/[A-Za-z]/.test(ts)) return ts;
+      /* ISO fallback: 2026-06-18T13:09:59 */
+      var m = ts.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2}:\d{2})/);
+      if (m) {
+        return parseInt(m[3], 10) + ' ' + MONTHS[parseInt(m[2], 10) - 1] +
+               ' ' + m[1] + ' ' + m[4];
+      }
+      return ts;
+    }
+
+    function applyMode(enabled) {
+      optDev.className  = 'toggle-opt' + (enabled  ? ' active-dev'  : '');
+      optProd.className = 'toggle-opt' + (!enabled ? ' active-prod' : '');
+    }
+
+    function setMode(enabled) {
+      socket.emit('set_dev_mode', { enabled: enabled });
+    }
+
     function applyUpdate(data) {
-      gramsEl.textContent = data.quality === 'WAITING' ? '--' : Math.round(data.grams);
+      var waiting = data.quality === 'WAITING';
+      gramsEl.textContent = waiting ? '--' : Math.round(data.grams);
+
       var cls = qualityClass[data.quality] || 'waiting';
-      badgeEl.className = 'badge ' + cls;
+      badgeEl.className   = 'badge ' + cls;
       badgeEl.textContent = data.quality;
-      sigmaEl.textContent = data.quality === 'WAITING' ? '' : '±' + parseFloat(data.sigma).toFixed(2) + 'g';
-      tsEl.textContent = data.ts || '';
+
+      sigmaEl.textContent = waiting ? '' : '±' + parseFloat(data.sigma).toFixed(2) + 'g';
+      tsEl.textContent    = waiting ? '' : formatTs(data.ts);
+
+      if (data.pct !== null && data.pct !== undefined) {
+        pctRowEl.style.display = 'flex';
+        pctBarBg.style.display = 'block';
+        pctValEl.textContent   = Math.round(data.pct);
+        var p = Math.min(100, Math.max(0, data.pct));
+        pctFillEl.style.width  = p + '%';
+        pctFillEl.style.background = p > 50 ? '#22c55e' :
+                                     p > 20 ? '#f59e0b' : '#ef4444';
+      } else {
+        pctRowEl.style.display = 'none';
+        pctBarBg.style.display = 'none';
+      }
     }
 
     var socket = io();
 
-    socket.on('weight_update', function(data) {
-      applyUpdate(data);
+    socket.on('weight_update', applyUpdate);
+
+    socket.on('node_status', function(data) {
+      dotEl.className = 'node-dot' + (data.connected ? ' connected' : '');
+      if (data.connected) {
+        nameEl.textContent   = data.name;
+        macEl.textContent    = data.mac;
+        sepEl.style.display  = 'inline';
+        cardEl.classList.remove('node-off');
+      } else {
+        nameEl.innerHTML     = 'scanning&hellip;';
+        macEl.textContent    = '';
+        sepEl.style.display  = 'none';
+        cardEl.classList.add('node-off');
+      }
+    });
+
+    socket.on('dev_mode_ack', function(data) {
+      applyMode(data.enabled);
     });
   </script>
 </body>
