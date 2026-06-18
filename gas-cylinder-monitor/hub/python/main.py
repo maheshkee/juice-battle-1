@@ -135,6 +135,7 @@ def on_weight(grams, quality, sigma, hub_ts):
         'pct':            pct,
         'alert':          alert,
         'days_remaining': days_remaining,
+        'dev_mode':       g_dev_mode,
     })
     print(f"[MAIN] weight_update: grams={grams:.1f} quality={quality}", flush=True)
 
@@ -155,7 +156,7 @@ def on_node_disconnected():
     ui.send_message('node_status', _node_status_payload())
 
 
-def on_set_dev_mode(data):
+def on_set_dev_mode(sid, data):
     global g_dev_mode, g_starting_weight, g_sw_candidate, g_sw_candidate_val, g_weight_was_removed
     enabled = bool(data.get('enabled', True))
     g_dev_mode = enabled
