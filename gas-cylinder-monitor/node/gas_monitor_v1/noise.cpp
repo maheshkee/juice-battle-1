@@ -27,14 +27,12 @@ NoiseResult noise_update(long raw, float tare_raw, float cal_factor) {
     result.valid        = false;
     result.diagnosis[0] = '\0';
 
-    float grams;
-    if (cal_factor == 0.0f) {
-        grams = (float)(raw - (long)tare_raw);
-    } else {
-        grams = ((float)raw - tare_raw) / cal_factor;
-    }
-    s_samples[s_count] = grams;
-    s_sum += grams;
+    /* Store raw counts, not grams — cal_factor applied exactly once at sigma
+       conversion. Storing grams caused double-division when noise_recompute_sigma()
+       ran after CAL, shrinking sigma to ~0.09g and generating false WEIGHT_EVENTs. */
+    float net_raw = (float)raw - tare_raw;
+    s_samples[s_count] = net_raw;
+    s_sum += net_raw;
     s_count++;
 
     if (s_count < NOISE_SAMPLES) {
@@ -53,7 +51,10 @@ NoiseResult noise_update(long raw, float tare_raw, float cal_factor) {
         var_sum += diff * diff;
     }
     float variance = var_sum / (float)NOISE_SAMPLES;
-    float sigma_g  = sqrtf(variance);
+    /* cal_factor > 0 guaranteed: loaded from SPIFFS before STATE_NOISE.
+       Fallback to raw counts if somehow still 0. */
+    float sigma_raw = sqrtf(variance);
+    float sigma_g   = (cal_factor > 0.0f) ? (sigma_raw / cal_factor) : sigma_raw;
 
     result.sigma_g     = sigma_g;
     result.threshold_g = 4.0f * sigma_g;
@@ -77,16 +78,12 @@ NoiseResult noise_update(long raw, float tare_raw, float cal_factor) {
     return result;
 }
 
-// noise_recompute_sigma() - ASSUMPTION WARNING
-// This function assumes s_samples[] contains net raw counts (tare subtracted,
-// cal_factor NOT yet applied). This is true only when called immediately after
-// the V1 boot sequence where noise characterisation runs before CAL.
-// If noise_init() + noise_update() are ever called AFTER cal_factor is known
-// (e.g. recalibration flow), s_samples[] will already be in grams and calling
-// this function will produce wrong sigma (double-divided by cal_factor).
-// For any future recalibration: either add a unit-tracking flag to noise.cpp
-// or re-run full noise characterisation with the real cal_factor instead of
-// using this recompute path.
+// noise_recompute_sigma() — correct after CHANGE 1.
+// s_samples[] now holds net raw counts (tare subtracted, no cal_factor) per CHANGE 1.
+// Dividing by cal_factor here is intentional and correct: first and only application
+// of cal_factor to these samples. Limitation: only valid on the standard single-boot
+// sequence where noise runs before CAL. Any future recalibration flow that re-runs
+// noise_update() after cal_factor is known must not call this function.
 float noise_recompute_sigma(float cal_factor) {
     if (s_count < NOISE_SAMPLES) return 0.0f;
     if (cal_factor == 0.0f)      return 0.0f;
