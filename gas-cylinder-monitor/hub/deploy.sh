@@ -57,7 +57,7 @@ log "$SERVICE_NAME running. dbus.sock ready."
 
 # -- Ensure BT adapter is powered ----------------------------------------------
 echo "[DEPLOY] Restarting bluetooth..."
-sudo systemctl restart bluetooth
+sudo -n systemctl restart bluetooth
 sleep 5
 bluetoothctl power on
 sleep 2

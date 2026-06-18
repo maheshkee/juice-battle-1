@@ -36,14 +36,6 @@ ALERT_RED_G         = 1000.0  # gas_remaining threshold — "order now" (~2-3 da
 MIN_HISTORY_DAYS    = 7       # minimum days of data before V2 burn rate is trusted
 # ─────────────────────────────────────────────────────────────────────────────
 
-import subprocess as _sp
-# Force BT adapter on at startup — adapter can lose powered state on container restart
-try:
-    _sp.run(['bluetoothctl', 'power', 'on'], capture_output=True, timeout=10)
-    print('[MAIN] bluetoothctl power on sent', flush=True)
-except Exception as e:
-    print(f'[MAIN] bluetoothctl power on failed: {e}', flush=True)
-
 ui = WebUI()
 
 g_starting_weight    = None
