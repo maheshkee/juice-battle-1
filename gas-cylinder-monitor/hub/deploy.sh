@@ -55,6 +55,14 @@ if ! systemctl is-active --quiet "$SERVICE_NAME"; then
 fi
 log "$SERVICE_NAME running. dbus.sock ready."
 
+# -- Ensure BT adapter is powered ----------------------------------------------
+echo "[DEPLOY] Restarting bluetooth..."
+sudo systemctl restart bluetooth
+sleep 5
+bluetoothctl power on
+sleep 2
+echo "[DEPLOY] BT adapter ready"
+
 # -- Start app -----------------------------------------------------------------
 log "Starting $APP_NAME..."
 arduino-app-cli app start user:$APP_LAB_ID

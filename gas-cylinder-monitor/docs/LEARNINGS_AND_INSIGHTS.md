@@ -1612,3 +1612,47 @@ Rules for Group 5 implementation:
   measured burn rate does not justify removing the tilde
 - Days remaining label changes from "~N days (est.)" when on default 
   to "~N days" when on measured rate — the only visible difference
+
+---
+
+## L-065 — WCN3990 BT Firmware Crash Pattern
+
+Date: 2026-06-18
+Hardware: Arduino UNO Q AQ3, WCBN3536A (WCN3990 Qualcomm BT chip)
+
+**Symptom:**
+
+    bluetoothctl show → "No default controller available"
+    hciconfig hci0   → DOWN (hardware present but not up)
+    dmesg shows:
+      Bluetooth: hci0: hardware error 0x00
+      Bluetooth: hci0: setting up wcn399x
+      Bluetooth: hci0: Reading QCA version information failed (-110)
+      Bluetooth: hci0: Retry BT power ON: 0/1/2
+
+**Root cause:**
+WCN3990 firmware crash. Triggered by unexpected BlueZ restart during Docker
+container redeploy. Kernel sees device but cannot load QCA firmware — times
+out with ETIMEDOUT (-110).
+
+**Recovery:**
+No software path. `sudo reboot` is the only recovery.
+`modprobe -r btusb / modprobe btusb` did not help.
+`bluetoothctl power on` failed: org.bluez.Error.Failed
+`sudo systemctl restart bluetooth` did not help.
+
+**Prevention (Layer 1 + 2 — already built after this incident):**
+- main.py: `bluetoothctl power on` at container startup
+- deploy.sh: `systemctl restart bluetooth` + power on before docker up
+
+**Prevention (Layer 3 — HUB-WATCHDOG, not yet built):**
+Watchdog detects >10min BT failure → writes reboot trigger file →
+host systemd service reboots on trigger file detection →
+self-healing in production without human intervention.
+
+**Trigger conditions observed:**
+- Docker compose down/up during deploy
+- BlueZ restart while container was running
+
+May also occur from: BLE radio interference, thermal stress,
+sustained heavy BLE traffic, QCA firmware bug.

@@ -700,3 +700,40 @@ boot=35: sigma=3.16g, quality=GOOD, zero false WEIGHT_EVENTs. All 7 bugs verifie
 ### Next
 N-TARE-CHECK — post-tare self-check. Detect if weight was on platform during tare.
 Then: N1 — journal → SPIFFS persistence.
+
+---
+
+## 2026-06-18 Session 2 (afternoon)
+
+### Items completed
+
+- **N-TARE-CHECK:** post-tare self-check built and verified
+- **Hub dev/prod mode toggle:** WebUI toggle, auto re-anchor, g_weight_was_removed gate
+- **IST timestamp fix:** subprocess date call replaces strftime
+- **Two-level alerts:** amber (low_gas) + red (critical/empty) with days remaining
+- **PROD mode placeholder:** "Calibrating..." when steel unknown
+- **Burn rate constants locked:** L-064 + addendum in LEARNINGS
+- **Drift budget documented** in RESEARCH.md
+- **HUB-WATCHDOG designed** and added to backlog
+
+### Bugs fixed
+
+- on_set_dev_mode missing sid parameter
+- Duplicate constant block (400/600 overwriting 350/1000)
+- Re-anchor firing continuously on static load
+- DEV/PROD toggle not responding (sid signature bug)
+
+### BT incident documented
+
+- WCN3990 firmware crash — hci0 wedged
+- Only reboot recovered it
+- HUB-WATCHDOG added as pre-production requirement
+
+### Known open items carried forward
+
+- on_set_dev_mode sid fix: committed, needs deploy
+- BT power-on at startup (Layer 1): needs CLI + deploy
+- deploy.sh BT restart (Layer 2): needs CLI + deploy
+- HUB-WATCHDOG (Layer 3): backlog, before production
+- N1 journal → SPIFFS: next node item
+- tare_check threshold: still at 1000g test value, restore to 2000g before production

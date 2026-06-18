@@ -229,6 +229,33 @@ Backlog:
   HUB-002: Disturbance detection from heartbeat trend anomaly.
       Requires Group 5 burn rate estimate first. Design pending.
 
+  HUB-WATCHDOG: BT adapter watchdog (PRE-PRODUCTION REQUIRED)
+      Status: NOT BUILT
+      Gate: Must exist before device goes into production kitchen.
+            Do not skip. Do not defer past hub Group 4.
+      Problem: WCN3990 Qualcomm BT chip can crash at firmware level
+               (hardware error 0x00, Reading QCA version information failed -110).
+               No software recovery possible — requires full system reboot.
+               Proven 2026-06-18: hci0 wedged, modprobe/bluetoothctl all failed,
+               only reboot recovered it.
+      Three escalation levels:
+        Level 1 (0–2 min failure):  bluetoothctl power on, restart bluetooth, retry scan
+        Level 2 (2–5 min failure):  modprobe -r btusb && modprobe btusb, restart bluetooth, retry
+        Level 3 (>10 min failure):  write /tmp/reboot_requested trigger file, host watchdog reboots
+      Reboot mechanism (DO NOT use sudo reboot inside Docker):
+        - Docker container writes /tmp/reboot_requested
+        - Host systemd service watches for that file
+        - Host reboots when file appears
+        - Keeps container unprivileged
+      Constants (locked):
+        BT_FAILURE_SOFT_THRESHOLD    = 120s   (Level 1)
+        BT_FAILURE_ADAPTER_THRESHOLD = 300s   (Level 2)
+        BT_FAILURE_REBOOT_THRESHOLD  = 600s   (Level 3)
+      Files to change when building:
+        - hub/python/ble_subscriber.py: failure_start_ts tracking + escalation
+        - hub/deploy.sh: systemd reboot-watchdog service install
+        - New: /etc/systemd/system/reboot-watchdog.service on AQ3 host
+
 NOTE: 190g drift over 38 min observed on static load.
   Do NOT interpret heartbeat wander as gas consumption in hub logic.
   Raw heartbeat trend ≠ burn rate until drift is characterised and corrected (3E-009).

@@ -724,3 +724,22 @@ Drift does not cause false alerts under normal conditions.
 
 Source: boot=37 journal, lines 032–258, 110 minutes static load.
 Experiment 3E-009 (long-run 6hr stability) will produce the definitive budget.
+
+---
+
+## BT Watchdog — Threshold Derivations
+
+**BT_FAILURE_SOFT_THRESHOLD = 120s**
+Rationale: normal BLE reconnect after drop takes <30s.
+2 minutes = 4× normal reconnect time. Safe margin before escalating to adapter reset.
+
+**BT_FAILURE_ADAPTER_THRESHOLD = 300s**
+Rationale: modprobe + bluetooth restart takes ~15s.
+5 minutes total = time for 2–3 Level 1 attempts plus adapter reset.
+If still failing after 5 min, adapter is truly wedged.
+
+**BT_FAILURE_REBOOT_THRESHOLD = 600s**
+Rationale: 10 minutes covers Level 1 + Level 2 attempts with margin.
+In production 6hr duty cycle, 10 min silent failure is acceptable.
+Family cooking dinner won't notice a 30s reboot.
+Must not be longer than one duty cycle (360 min).
