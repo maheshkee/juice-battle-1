@@ -38,10 +38,6 @@ MIN_HISTORY_DAYS    = 7       # minimum days of data before V2 burn rate is trus
 
 ui = WebUI()
 
-DAILY_USE_DEFAULT_G = 400.0   # g/day — conservative household estimate
-ALERT_AMBER_G       = 2000.0  # low gas threshold (~5 days at default use)
-ALERT_RED_G         = 600.0   # critical threshold (~1.5 days at default use)
-
 g_starting_weight    = None
 g_sw_candidate       = None
 g_sw_candidate_val   = 0.0
