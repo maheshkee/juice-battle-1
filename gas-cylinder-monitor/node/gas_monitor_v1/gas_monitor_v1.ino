@@ -183,6 +183,10 @@ void loop() {
     }
 
     case STATE_NOISE: {
+        // Load saved cal_factor before NOISE so sigma is in grams not raw counts.
+        // g_cal_factor=0.0f during first boot NOISE phase (CAL not yet run).
+        // Without this, noise_update divides by 0 path → sigma in raw counts → always WARN.
+        if (g_cal_factor == 0.0f) { float _sc = cal_load_last(); if (_sc > 0.0f) g_cal_factor = _sc; }
         NoiseResult nr = noise_update(r.value, g_tare_raw, g_cal_factor);
         if (nr.valid) {
             g_sigma_g = nr.sigma_g;
