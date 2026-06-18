@@ -1,6 +1,12 @@
 #!/bin/bash
-# Run once on AQ3 to allow deploy.sh to run without password prompts.
-# Grants passwordless sudo ONLY for specific bluetooth commands — not blanket.
+# Gas Cylinder Monitor - One-time device setup script
+#
+# Run ONCE on first setup with sudo:
+#     sudo bash hub/setup_sudoers.sh
+#
+# After this runs, all future deploys and re-runs of this script
+# work without password prompts:
+#     bash hub/deploy.sh    (every deploy, no password ever)
 
 SUDOERS_FILE="/etc/sudoers.d/gas-cylinder-monitor"
 
@@ -14,6 +20,9 @@ arduino ALL=(ALL) NOPASSWD: /usr/bin/bluetoothctl
 arduino ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart dbus-bridge-gas-cylinder-monitor.service
 arduino ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop dbus-bridge-gas-cylinder-monitor.service
 arduino ALL=(ALL) NOPASSWD: /usr/bin/systemctl start dbus-bridge-gas-cylinder-monitor.service
+arduino ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/sudoers.d/gas-cylinder-monitor
+arduino ALL=(ALL) NOPASSWD: /usr/sbin/visudo
+arduino ALL=(ALL) NOPASSWD: /bin/chmod 440 /etc/sudoers.d/gas-cylinder-monitor
 EOF
 
 sudo chmod 440 "$SUDOERS_FILE"
