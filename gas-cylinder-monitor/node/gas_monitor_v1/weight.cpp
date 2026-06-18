@@ -1,6 +1,6 @@
 #include "weight.h"
 
-#define BUF_SIZE    20
+#define BUF_SIZE    40
 #define FAIL_LOW    -500.0f
 #define FAIL_HIGH   50000.0f
 
