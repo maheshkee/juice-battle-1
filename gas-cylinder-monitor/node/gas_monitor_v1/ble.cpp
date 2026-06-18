@@ -37,7 +37,7 @@ static void ble_on_command_received(const uint8_t* data, size_t len) {
 }
 
 class CmdCallbacks : public NimBLECharacteristicCallbacks {
-    void onWrite(NimBLECharacteristic* c) override {
+    void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override {
         std::string val = c->getValue();
         ble_on_command_received((const uint8_t*)val.data(), val.length());
     }
