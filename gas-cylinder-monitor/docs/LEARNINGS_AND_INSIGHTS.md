@@ -1420,3 +1420,126 @@ Design requirements for the command characteristic:
 
 Gate: this characteristic must be added to the node before hub Layer 2 development.
 Any future node BLE work must plan for this second characteristic.
+
+---
+
+## SESSION 2026-06-18 LEARNINGS
+Note: docx section 11 labels these L-056–L-063. Appended as L-066–L-073 because
+the file already has L-056–L-065 from 2026-06-17.
+
+### L-066 — NOISE thresholds must be re-evaluated when platform changes
+Date: 2026-06-18
+
+Single-cell STM32 healthy sigma was ~1.87g, so NOISE_SIGMA_PASS_G was set near 2–3g.
+On 3-cell ESP32-C3, healthy sigma is 4.68–5.44g. The old gate fired WARN on every
+healthy boot because it sat below the healthy range. Platform change = full
+re-characterisation of all gates.
+
+Rule: derive NOISE_SIGMA_PASS_G as 1.5× the measured healthy-max sigma for that platform.
+For 3-cell YZC-161A ESP32-C3: NOISE_SIGMA_PASS_G=8.0g, NOISE_SIGMA_WARN_G=15.0g.
+Never carry gate values from a different platform.
+
+Verified: boot=35 NOISE result=OK with sigma=3.16g. 2026-06-18.
+
+### L-067 — Cal_factor must be loaded before NOISE phase; samples still stored as raw counts
+Date: 2026-06-18
+
+When noise characterisation runs before CAL (original boot order), cal_factor=0.0f →
+noise_update() takes the raw-counts branch → sigma comes out in raw-count units (~180).
+Comparing raw-count sigma against a gram-based threshold (15.0g) always produces
+'too high' → always WARN.
+
+Fix: load saved cal_factor from SPIFFS before STATE_NOISE. This lets noise_update()
+convert correctly at sigma computation.
+
+Critical constraint: samples in s_samples[] must still be stored as RAW COUNTS (not
+grams). Cal_factor is applied exactly once — at the sigma_raw → sigma_g conversion step.
+Storing grams at accumulation causes double-division when noise_recompute_sigma() runs
+after CAL. See L-068 for the double-division failure.
+
+### L-068 — Storing grams in s_samples[] causes double-division in noise_recompute_sigma()
+Date: 2026-06-18
+
+noise.cpp was storing (raw - tare_raw) / cal_factor in s_samples[] during noise char.
+noise_recompute_sigma() then divided each sample by cal_factor again after CAL.
+
+Result: sigma_g = sqrt(var(grams / cal_factor)) where grams already contained cal_factor.
+Sigma shrank from ~5g to 0.09g. Threshold = 4 × 0.09g = 0.36g. Every vibration, breath,
+and BLE packet crossed threshold — 200+ false WEIGHT_EVENTs on boot=33.
+
+Fix: s_samples[] stores raw counts only (net_raw = raw - tare_raw). Cal_factor applied
+exactly once: sigma_g = (cal_factor > 0.0f) ? (sigma_raw / cal_factor) : sigma_raw.
+
+Verified: boot=35 sigma=3.16g, zero false WEIGHT_EVENTs. 2026-06-18.
+
+### L-069 — NimBLE-Arduino v1.4+ changed onWrite callback to two-parameter signature
+Date: 2026-06-18
+
+NimBLE-Arduino added NimBLEConnInfo& to the write callback to expose connection info.
+
+Old (compiles on v1.3, rejected by v1.4+):
+  void onWrite(NimBLECharacteristic* c) override
+
+Correct for v1.4+ (required when using esp32 v3.0.7 which ships NimBLE v1.4+):
+  void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override
+
+Rule: when compiler says 'does not override virtual function' on a BLE callback, check
+library changelog. Do not try to fix it with casts or extra declarations.
+
+### L-070 — Lift test is unreliable as cell health check on 3-cell parallel platform
+Date: 2026-06-18
+
+Lifting one corner of a 3-cell parallel platform redistributes load to the other cells.
+Net weight delta depends on platform geometry, lever arms, and hand placement.
+Two hw_test runs on the same healthy hardware gave contradictory lift deltas (some
+positive, some negative in isolation) even though both agreed: Load test PASS at 1004g
+for 1000g placed.
+
+The load test (place a known weight, read output) is the authoritative health check.
+Lift test is only useful for isolating a confirmed-failed cell once failure is proven
+by the load test.
+
+### L-071 — Cal_factor and tare are a PAIR and must come from the same physical session
+Date: 2026-06-18
+
+Cal_factor encodes the platform physical state: cell positions, contact geometry,
+temperature, load distribution. Tare encodes the zero baseline at the same instant.
+
+Loading tare from SPIFFS (derived at temperature T1) while using a freshly derived
+cal_factor (at temperature T2) introduces systematic error: zero reference and gain
+constant no longer correspond to the same physical state.
+
+Rule: hub stores tare_raw and cal_factor together with timestamp. When it sends
+SKIP_TARE (load saved tare), it must also send SET_CAL with the matching cal_factor
+from the same original session — never a freshly derived value.
+
+### L-072 — The cylinder itself is the best calibration weight for production
+Date: 2026-06-18
+
+Development calibration used a 227g reference weight. SNR = (227 × 36) / noise_raw ≈ 25.
+A fresh full LPG cylinder weighs ~29.5kg. SNR = (29500 × 36) / noise_raw ≈ 3800.
+
+Error contribution from noise to cal_factor:
+  SE(cal_factor) ∝ noise_std_raw / (ref_weight_g × cal_factor)
+  At 227g:   SE ≈ 167 / (227 × 36) = 2%
+  At 29500g: SE ≈ 167 / (29500 × 36) = 0.016%
+
+The cylinder reference is ~130× more accurate. Production V1 derives cal_factor using
+the BIS 14.2kg anchor: hub looks up steel weight from company table, derives
+cal_factor from the live gross reading. Node receives via SET_CAL and saves to SPIFFS.
+
+### L-073 — Delay-line window of 20 ticks (2 seconds) is too short on platforms with ongoing creep
+Date: 2026-06-18
+
+At sigma=5.44g, the max expected difference between two independent 20-sample means from
+pure noise is ~3×sigma/sqrt(20)×sqrt(2) ≈ 7.3g. With ongoing mechanical creep adding
+a small directional trend per tick, the actual difference can exceed the 21.76g threshold
+on a static load — a false WEIGHT_EVENT REMOVED with nothing physically removed.
+
+Observed: boot=31, 1000g static load, ~18 minutes after placement (creep ongoing).
+
+Fix: BUF_SIZE=40 (4-second comparison window). SE of 40-sample mean = sigma/sqrt(40)
+= 0.86g. Max natural mean difference drops to ~5.2g. Threshold at 21.76g — no false
+triggers on any static load once creep has settled.
+
+Verified: boot=35, BUF_SIZE=40, zero false WEIGHT_EVENTs. 2026-06-18.

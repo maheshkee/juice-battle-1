@@ -57,29 +57,41 @@ Hub stamps timestamp on receipt. ESP32-C3 has no RTC.
 
 ---
 
-## Current State — 2026-06-17 (SESSION3)
+## Current State — 2026-06-18 (supersedes 2026-06-17)
 
-### Node Layer 1 — COMPLETE + 3E-006B + 3E-007B COMPLETE
+### Node — COMPLETE (boot=35 verified clean)
 - 1A Modular sketch port: DONE
 - 1B Health module: DONE (health.h/health.cpp, 4 checks, bitmask quality)
 - 1C Timing instrumentation: DONE (phase durations in seconds on boot)
 - 1D Structured event journal: DONE (journal.h/journal.cpp, 7 event types)
 - 3E-006B min detectable removal: DONE — min=20g (1 trial), hard floor=10g
 - 3E-007B false positive rate: DONE — 0 false triggers in 38.4 min. PASS ✅
+- BLE command char: DONE (UUID: c8a2f1e3-..., write-without-response)
+  Commands: TARE | SKIP_TARE | SET_CAL:\<value\> | RETARE | DUMP_LOG | CLEAR_LOG (stubs)
+- STATE_TARE_WAIT: DONE — hub sends TARE or SKIP_TARE within 60s timeout
+- Tare SPIFFS persistence: DONE — tare_save_to_spiffs() / tare_load_from_spiffs()
+- STATE_RETARE: DONE (stub) — triggered by RETARE command during RUNNING
+- Boot sequence: SETTLE → TARE_WAIT → TARE → NOISE → CAL → RUNNING
+- 7 bugs fixed this session (NOISE gates, stuck guard, cal-before-NOISE, double-division
+  sigma, BUF_SIZE=40, loose wire, NimBLE onWrite signature)
 
 ### Weight module API (current)
 - weight_update(): (long raw, float tare_raw, float cal_factor, float sigma_g) — 4 args
 - Delay-line detector: 20-tick delay line + s_event_pending lockout flag
 - journal_run(): (float grams, float sigma, HealthResult&, WeightEvent, float delta) — 5 args
 
-### Verified hardware values
-- cal_factor: ~36 raw/g (3-cell parallel, derived every boot)
-- sigma: 3.48–5.33g (boot-to-boot variation normal)
-- threshold: 4 × sigma (~14–21g depending on boot)
+### Verified hardware values (updated 2026-06-18, boot=35)
+- cal_factor: ~36 raw/g (3-cell parallel, derived every boot; boot=35: 36.25–36.27)
+- sigma: 3.16–5.44g boot-to-boot (boot=35: 3.16g clean; boot=33 bug: 0.09g — fixed)
+- threshold: 4 × sigma (~12–21g depending on boot)
+- BUF_SIZE: 40 ticks (4-second delay-line) — LOCKED
+- NOISE_SIGMA_PASS_G: 8.0g | NOISE_SIGMA_WARN_G: 15.0g — LOCKED
 - zero accuracy: ±3g, weight accuracy: ±7g (200g–1700g)
-- Min detectable removal: 20g (1 trial, SESSION2), hard floor 10g
-- False positive rate: 0/hr on static load (SESSION3)
+- 1000g accuracy boot=35: 986.5g first HB
+- Min detectable removal: 20g (1 trial), hard floor 10g
+- False positive rate: 0/hr on static load (BUF_SIZE=40 — verified 2026-06-18)
 - Slow drift: 190g peak-to-trough over 38 min on static load — characterise in 3E-009
+- Boot time: ~103.9s (full TARE_WAIT=60s) | ~63s (TARE_WAIT immediate)
 
 ### Known TODOs (deferred)
 - TODO 1B-stuck: tare_variance_raw always 0.0f — stuck check always fails
@@ -88,11 +100,12 @@ Hub stamps timestamp on receipt. ESP32-C3 has no RTC.
 ### Hub
 - BLE subscriber: _check_known_devices() fix deployed, WebUI at AQ3:7000
 - No gas logic yet — skeleton only
-- New node requirement: writable BLE command characteristic needed for HUB-001/HUB-002
-  Must be added to node before hub Layer 2 development begins
+- BLE command char on node: BUILT (2026-06-18) — hub can now send TARE/SKIP_TARE/SET_CAL/RETARE
+- HUB-001 node-side stub ready; hub-side detection logic still required
 
 ### Next action
-3E-008 — temperature drift experiment. Design in chat first.
+N-TARE-CHECK — post-tare self-check (detect weight on platform at boot, use SPIFFS tare
+as fallback). Design in chat. Implement via Claude Code CLI. Then: N1 journal→SPIFFS.
 
 ---
 
@@ -149,7 +162,12 @@ cal_factor: NOT hardcoded — derived every boot via Phase 3 self-cal (~36 raw/g
 tare source: s2_mean from Phase 2 (200-sample mean) — not Phase 1 window mean
 GPIO4 = DOUT, GPIO3 = SCK | HX711 VCC = 3.3V only
 Transport: BLE confirmed (not WiFi — any WiFi references in older sections are void)
-Production sketch: node/3E004_cal_and_run/3E004_cal_and_run.ino
+Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino
+BUF_SIZE: 40 ticks (4-second delay-line) — LOCKED 2026-06-18
+NOISE_SIGMA_PASS_G: 8.0g | NOISE_SIGMA_WARN_G: 15.0g — LOCKED 2026-06-18
+NimBLE onWrite: (NimBLECharacteristic* c, NimBLEConnInfo& connInfo) — two params required
+BLE command char UUID: c8a2f1e3-4d6b-4a7c-8e9f-1b2d3e4f5a6b (write-NR) — LOCKED 2026-06-18
+BLE log char UUID:     d7b3e2f4-5e7c-4b8d-9f1a-2c3e4f5a6b7c (notify) — LOCKED 2026-06-18
 
 ---
 

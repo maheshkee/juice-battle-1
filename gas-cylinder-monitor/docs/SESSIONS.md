@@ -635,3 +635,68 @@ Delay-line detector validated against real slow drift on hardware.
 
 ### Next
 3E-008 — temperature drift experiment. Design in chat first.
+
+---
+
+## Session — 2026-06-18 — Bug Fixes + BLE Command Char + Boot Sequence Redesign
+
+### Goal
+Fix all false-positive bugs found at session start. Build BLE command characteristic.
+Add STATE_TARE_WAIT and tare SPIFFS persistence. Verify boot=35 clean.
+
+### All 7 bugs fixed this session
+
+| # | Bug | Root cause | Fix applied |
+|---|-----|-----------|-------------|
+| F1 | NOISE result=WARN on every healthy boot | NOISE_SIGMA_PASS_G calibrated for single-cell STM32 (healthy sigma ~1.87g). 3-cell ESP32-C3 healthy sigma 4.68–5.44g — always exceeded old gate | NOISE_SIGMA_PASS_G=8.0g, NOISE_SIGMA_WARN_G=15.0g in noise.cpp |
+| F2 | quality=DEGRADED on every healthy boot | tare_variance_raw always 0.0f — tare.cpp never populates it. Stuck check always fired false positive | Skip stuck check when tare_variance_raw==0.0f in health.cpp (guard until TODO 1B-stuck resolved) |
+| F3 | NOISE result=WARN persisted after F1 fix | cal_factor=0.0f during NOISE phase → raw-count path → sigma in raw counts (~180) vs gram-based threshold (15.0g) → always WARN | Load saved cal_factor from SPIFFS before NOISE phase in gas_monitor_v1.ino |
+| F4 | sigma=0.09g → 200+ false WEIGHT_EVENTs (boot=33) | noise.cpp stored samples in grams (÷ cal_factor). noise_recompute_sigma() divided by cal_factor again. Double-division: sigma ~5g → 0.09g → threshold 0.36g | Store raw counts in s_samples[], divide by cal_factor exactly once at sigma_raw→sigma_g conversion |
+| F5 | False WEIGHT_EVENT REMOVED on static 1000g (boot=31) | BUF_SIZE=20 (2-second delay-line). Two 2-second means could differ >21.76g (4σ) from natural creep on static load | BUF_SIZE=40 (4-second window). SE of 40-sample mean = 0.86g. Natural mean difference drops below threshold |
+| F6 | sigma=25.62g on first boot | Intermittent load cell wire overnight — one cell dropping during NOISE phase. All samples contaminated | Physical: reconnect loose wire. Hardware clean on next boot (sigma=4.74g) |
+| F7 | NimBLE onWrite compile error | NimBLE-Arduino v1.4+ changed callback to two-parameter signature. Old single-parameter form rejected by esp32 v3.0.7 | void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override |
+
+### Hardware-verified values — boot=35
+
+| Parameter | Value | Status |
+|---|---|---|
+| sigma | 3.16g | VERIFIED clean |
+| threshold | 4 × 3.16 = 12.64g | DERIVED |
+| cal_factor | 36.25–36.27 raw/g | VERIFIED (hw_test) |
+| BUF_SIZE | 40 ticks (4-second window) | LOCKED |
+| NOISE_SIGMA_PASS_G | 8.0g | LOCKED |
+| NOISE_SIGMA_WARN_G | 15.0g | LOCKED |
+| TARE_WAIT timeout | 60s | LOCKED |
+| Boot time (full TARE_WAIT) | ~103.9s | VERIFIED |
+| tare_raw boot=35 | -105232.4 | VERIFIED — saved to SPIFFS |
+| 1000g accuracy | 986.5g first HB | VERIFIED |
+| False WEIGHT_EVENTs | 0 | VERIFIED — BUF_SIZE=40 |
+| quality on boot=35 | GOOD | VERIFIED — all 7 bugs fixed |
+
+### Features built this session
+
+1. **BLE Command Characteristic** — writable GATT char on node for hub→node commands
+   - UUID: c8a2f1e3-4d6b-4a7c-8e9f-1b2d3e4f5a6b (write-without-response)
+   - Commands: TARE, SKIP_TARE, SET_CAL:\<value\>, RETARE (DUMP_LOG/CLEAR_LOG stubs)
+2. **STATE_TARE_WAIT** — new boot state between SETTLE and TARE
+   - Node waits up to 60s for hub to send TARE or SKIP_TARE. 60s timeout = fail-safe.
+   - Boot sequence now: SETTLE → TARE_WAIT → TARE → NOISE → CAL → RUNNING
+3. **Tare SPIFFS persistence** — tare_save_to_spiffs() / tare_load_from_spiffs() in tare.cpp
+   - Saved after every fresh tare. Sanity check [-200000, -50000] on load.
+4. **STATE_RETARE** — new state in RUNNING. Triggered by RETARE command. Runs fresh N=200 tare, saves to SPIFFS, returns to RUNNING. HUB-001 path ready.
+5. **Log char UUID registered** — d7b3e2f4-5e7c-4b8d-9f1a-2c3e4f5a6b7c (notify) — streaming not yet built (1E backlog)
+
+### Architecture decisions locked this session
+
+- V1 cal_factor derived from cylinder via BIS 14.2kg anchor — hub computes, node stores and uses
+- Tare + cal_factor are a PAIR — hub stores both together, always sends matching pair via SKIP_TARE + SET_CAL
+- Log transport: node auto-pushes at 25KB threshold + hub requests on new boot number detected
+- CLEAR_LOG sent only after hub confirms file written to disk — no log loss on BLE drop
+- WebUI three-tab design: Live / Boot log / Serial feed + command input box
+
+### Gate
+boot=35: sigma=3.16g, quality=GOOD, zero false WEIGHT_EVENTs. All 7 bugs verified fixed.
+
+### Next
+N-TARE-CHECK — post-tare self-check. Detect if weight was on platform during tare.
+Then: N1 — journal → SPIFFS persistence.

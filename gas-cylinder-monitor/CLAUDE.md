@@ -1,6 +1,6 @@
 # CLAUDE.md — gas-cylinder-monitor
 # Board: Arduino UNO Q AQ3 | IP: 192.168.1.161 | user: arduino
-# Last updated: 2026-06-17
+# Last updated: 2026-06-18
 # Read this FULLY before doing anything in this directory.
 
 ---
@@ -134,11 +134,12 @@ The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ---
 
-## Current State — 2026-06-17 (SESSION3)
+## Current State — 2026-06-18
 
-Status:         Node Layer 1 COMPLETE + 3E-006B COMPLETE + 3E-007B COMPLETE
+Status:         Node Layer 1 COMPLETE + 3E-006B + 3E-007B COMPLETE + BLE command char + STATE_TARE_WAIT + Tare SPIFFS persistence — boot=35 clean
 Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino
-Modules:        hx711, tare, noise, cal, weight, ble, health, journal — all .h/.cpp
+Modules:        hx711, tare (+ SPIFFS persistence), noise, cal, weight, ble (+ command char), health, journal — all .h/.cpp
+Boot sequence:  SETTLE → TARE_WAIT → TARE → NOISE → CAL → RUNNING
 
 Transport:      BLE-only (WiFi removed entirely)
 Platform:       3-cell YZC-161A parallel → HX711 → ESP32-C3 SuperMini
@@ -164,12 +165,26 @@ Verified hardware values:
   slow drift:             190g peak-to-trough over 38 min — do NOT interpret
                           as gas consumption in hub logic without drift correction
 
-Boot timing (verified 2026-06-17):
-  SETTLE: ~2.1s
-  TARE:   ~21s (200 samples × 100ms)
-  NOISE:  ~20s (200 samples × 100ms)
-  CAL:    variable (waits for human input)
-  Total boot: ~60s excluding CAL wait
+Boot timing (verified 2026-06-18):
+  SETTLE:    ~2.1s
+  TARE_WAIT: 0–60s (hub sends TARE or SKIP_TARE; 60s fail-safe timeout)
+  TARE:      ~21s (200 samples × 100ms)
+  NOISE:     ~20s (200 samples × 100ms)
+  CAL:       ~0.1s (SET_CAL from hub) or variable (interactive fallback)
+  Total boot: ~103.9s (full TARE_WAIT) | ~63s (TARE_WAIT immediate)
+
+Code constants locked (2026-06-18):
+  BUF_SIZE:           40 ticks (4-second delay-line comparison window — was 20)
+  NOISE_SIGMA_PASS_G: 8.0g (healthy max 5.33g + 1.5× margin)
+  NOISE_SIGMA_WARN_G: 15.0g (midpoint between healthy and open-cell ~25g)
+  NimBLE onWrite:     two-parameter: (NimBLECharacteristic* c, NimBLEConnInfo& connInfo)
+
+BLE characteristics locked (all sessions):
+  Service UUID:   aa206b91-235b-42aa-b370-453a3feedf35
+  Weight char:    b9b25bb1-f2a9-4545-b48f-295ab2789f41 (notify)
+  Command char:   c8a2f1e3-4d6b-4a7c-8e9f-1b2d3e4f5a6b (write-without-response) — BUILT
+  Log char:       d7b3e2f4-5e7c-4b8d-9f1a-2c3e4f5a6b7c (notify) — registered, 1E not yet built
+  Commands:       TARE | SKIP_TARE | SET_CAL:\<value\> | RETARE | DUMP_LOG | CLEAR_LOG
 
 Journal format (1D — verified 2026-06-17):
   #SEQ t=T boot=B [TAG] event=NAME key=val key=val
@@ -195,10 +210,12 @@ Known TODOs (deferred, tracked):
 Hub status: DEPLOYED skeleton at arduino@AQ3 gas-cylinder-monitor/hub
             WebUI at AQ3:7000 — no gas logic yet
             BLE subscriber: _check_known_devices() fix applied (SESSION2)
+            BLE command char on node now ready — hub can send TARE/SKIP_TARE/SET_CAL/RETARE
 
-Current position: 3E-007B COMPLETE. False positive rate = 0/hr. PASS.
-Next action:      3E-008 — temperature drift experiment.
-                  Design in chat. Implement via Claude Code CLI on ESP32-C3.
+Current position: boot=35 verified clean. BLE command char built. STATE_TARE_WAIT built.
+                  Tare SPIFFS persistence built. Next: N-TARE-CHECK then N1.
+Next action:      N-TARE-CHECK — post-tare self-check (detect weight on platform at boot,
+                  use SPIFFS saved tare as fallback). Design in chat. Implement via Claude Code CLI.
 
 Backlog:
   1E: BLE journal transport — see PROJECT_CONTEXT.md for design.
@@ -206,9 +223,8 @@ Backlog:
       Requires a second BLE characteristic, separate UUID.
 
   HUB-001: Auto-retare on cylinder removal.
-      Requires writable BLE command characteristic on node (hub→node direction).
-      This is a NEW node requirement — must be added before hub Layer 2 work.
-      Any future node BLE work must plan for this second characteristic.
+      BLE command char now BUILT on node (2026-06-18). RETARE command handler built (stub).
+      Hub-side logic (detect removal, send RETARE, verify) still required before hub Layer 2.
 
   HUB-002: Disturbance detection from heartbeat trend anomaly.
       Requires Group 5 burn rate estimate first. Design pending.
@@ -247,12 +263,13 @@ NOTE: 190g drift over 38 min observed on static load.
 | Hardcode APP_NAME in hub scripts | Read from app.yaml — folder name ≠ app name | Hub |
 | List package names in requirements.txt for wheels | Must be /app/wheels/ file paths | Hub |
 | Detect weight events by tick-to-tick delta in journal.cpp | journal is a service module — detection belongs in weight.cpp (computation module). Cross-module detection causes cascade events. | Node 2026-06-17 |
+| Store grams in noise s_samples[] array | Double-division with noise_recompute_sigma() shrinks sigma from ~5g to 0.09g → threshold 0.36g → 200+ false WEIGHT_EVENTs | Node 2026-06-18 |
 
 ---
 
 ## Known assumptions
 
-- noise_recompute_sigma() assumes s_samples[] is in raw-count units.  Only valid when called after boot-sequence noise char (cal_factor=0 path).  Do not call after any recalibration flow without reviewing this assumption.
+- noise_recompute_sigma(): s_samples[] now correctly stores raw counts (fixed 2026-06-18 — see L-068). Division by cal_factor here is intentional and correct. Limitation: only valid on the standard single-boot sequence where NOISE runs before CAL. Any future recalibration flow that re-runs noise_update() after cal_factor is known must not call this function.
 
 - health.cpp: tare_variance_raw is always 0.0f — tare.h does not yet expose variance. Stuck check (bit 1) always passes. TODO 1B-stuck: update TareResult struct to include a variance field and pass it through the orchestrator.
 
