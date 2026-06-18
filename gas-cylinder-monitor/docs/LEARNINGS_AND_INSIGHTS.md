@@ -1577,3 +1577,38 @@ Showing "~6 days" is honest. Showing "6.2 days" is a lie.
 **Do not change DAILY_USE_DEFAULT_G without re-validating alert thresholds.**
 ALERT_AMBER_G and ALERT_RED_G were derived from this value + lead time.
 Changing one without the others breaks the alert logic silently.
+
+---
+
+### L-064 Addendum — When constants become dynamic
+
+| Constant | Current value | Becomes dynamic | Gate |
+|---|---|---|---|
+| DAILY_USE_DEFAULT_G | 350.0 — stays as fallback forever | Group 5 burn rate | 7 days readings + steel known |
+| ALERT_AMBER_G | 2000.0 — stays as fallback forever | Group 5 burn rate | same |
+| ALERT_RED_G | 1000.0 — stays as fallback forever | Group 5 burn rate | same |
+| MIN_HISTORY_DAYS | 7 — never dynamic | Statistical minimum | N/A |
+
+Transition pattern for Group 5 (do not implement now — document only):
+
+    def get_burn_rate():
+        history_days = db_get_history_days()
+        if history_days >= MIN_HISTORY_DAYS:
+            return db_get_burn_rate()      # measured slope from SQLite
+        else:
+            return DAILY_USE_DEFAULT_G     # prior — not enough data yet
+
+    def get_alert_thresholds():
+        rate = get_burn_rate()
+        return rate * 7, rate * 3          # amber = 7 days, red = 3 days
+
+Rules for Group 5 implementation:
+- Constants are NEVER deleted — they become the fallback, not dead code
+- Code that references DAILY_USE_DEFAULT_G directly gets replaced by 
+  get_burn_rate() calls
+- Code that references ALERT_AMBER_G/ALERT_RED_G directly gets replaced by
+  get_alert_thresholds() calls
+- The "~N days" tilde display rule applies to V2 exactly as V1 — 
+  measured burn rate does not justify removing the tilde
+- Days remaining label changes from "~N days (est.)" when on default 
+  to "~N days" when on measured rate — the only visible difference
