@@ -248,6 +248,11 @@
         <div class="pct-bar-fill" id="pct-bar-fill"></div>
       </div>
 
+      <div id="calibrating-label" style="display:none;
+           font-size:13px; color:#4b5563; letter-spacing:0.05em">
+        Calibrating&hellip;
+      </div>
+
       <div class="meta">
         <div class="sigma" id="sigma"></div>
         <div class="ts"    id="ts"></div>
@@ -315,12 +320,23 @@
 
       if (data.alert === 'empty') {
         bannerEl.style.display = 'block';
+        bannerEl.style.animation = 'pulse 2s ease-in-out infinite';
         alertTextEl.textContent = 'Platform empty or cylinder removed';
+      } else if (data.alert === 'critical') {
+        bannerEl.style.display = 'block';
+        bannerEl.style.animation = 'pulse 2s ease-in-out infinite';
+        var d = data.days_remaining || '?';
+        alertTextEl.textContent = 'Order now — ~' + d + ' days remaining';
       } else if (data.alert === 'low_gas') {
         bannerEl.style.display = 'block';
-        alertTextEl.textContent = 'Low gas — refill soon';
+        bannerEl.style.animation = 'none';
+        bannerEl.style.background = '#92400e';
+        var d = data.days_remaining || '?';
+        alertTextEl.textContent = 'Gas low — ~' + d + ' days remaining. Book a refill.';
       } else {
         bannerEl.style.display = 'none';
+        bannerEl.style.background = '#7f1d1d';
+        bannerEl.style.animation = 'pulse 2s ease-in-out infinite';
       }
 
       if (data.pct !== null && data.pct !== undefined) {
@@ -334,6 +350,16 @@
       } else {
         pctRowEl.style.display = 'none';
         pctBarBg.style.display = 'none';
+      }
+
+      if (!data.dev_mode && !data.prod_ready) {
+        pctRowEl.style.display = 'none';
+        pctBarBg.style.display = 'none';
+        var calEl = document.getElementById('calibrating-label');
+        if (calEl) calEl.style.display = 'block';
+      } else {
+        var calEl = document.getElementById('calibrating-label');
+        if (calEl) calEl.style.display = 'none';
       }
     }
 

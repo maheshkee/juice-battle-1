@@ -28,6 +28,10 @@ from db import (db_init, db_insert_reading, db_get_starting_weight,
 
 ui = WebUI()
 
+DAILY_USE_DEFAULT_G = 400.0   # g/day — conservative household estimate
+ALERT_AMBER_G       = 2000.0  # low gas threshold (~5 days at default use)
+ALERT_RED_G         = 600.0   # critical threshold (~1.5 days at default use)
+
 g_starting_weight    = None
 g_sw_candidate       = None
 g_sw_candidate_val   = 0.0
@@ -90,19 +94,41 @@ def on_weight(grams, quality, sigma, hub_ts):
     # production pct: None until hub Group 4 built
 
     alert = None
-    if quality != 'WAITING':
+    days_remaining = None
+
+    if g_dev_mode:
+        # DEV simulation alerts — relative to anchor weight
         if grams < 50.0:
             alert = 'empty'
         elif pct is not None and pct < 20.0:
             alert = 'low_gas'
+            days_remaining = max(1, round(
+                (g_starting_weight * 0.20) / DAILY_USE_DEFAULT_G
+            ))
+
+    else:
+        # PRODUCTION alerts — absolute gas remaining
+        # steel_g = None until Group 4 built
+        steel_g = None  # TODO Group 4: load from config
+
+        if steel_g is not None:
+            gas_remaining = grams - steel_g
+            if gas_remaining < ALERT_RED_G:
+                alert = 'critical'
+                days_remaining = max(1, round(gas_remaining / DAILY_USE_DEFAULT_G))
+            elif gas_remaining < ALERT_AMBER_G:
+                alert = 'low_gas'
+                days_remaining = max(1, round(gas_remaining / DAILY_USE_DEFAULT_G))
+        # else: steel unknown → alert stays None, pct stays None (Option B)
 
     ui.send_message('weight_update', {
-        'grams':   round(grams, 1),
-        'quality': quality,
-        'sigma':   round(sigma, 2),
-        'ts':      hub_ts,
-        'pct':     pct,
-        'alert':   alert,
+        'grams':          round(grams, 1),
+        'quality':        quality,
+        'sigma':          round(sigma, 2),
+        'ts':             hub_ts,
+        'pct':            pct,
+        'alert':          alert,
+        'days_remaining': days_remaining,
     })
     print(f"[MAIN] weight_update: grams={grams:.1f} quality={quality}", flush=True)
 
@@ -143,28 +169,51 @@ def on_ui_connect(sid):
     if latest and sw and sw > 0:
         pct = round((latest['grams'] / sw) * 100, 1)
     alert = None
-    if latest and latest['quality'] != 'WAITING':
-        if latest['grams'] < 50.0:
-            alert = 'empty'
-        elif pct is not None and pct < 20.0:
-            alert = 'low_gas'
+    days_remaining = None
+
+    if latest:
+        if g_dev_mode:
+            if latest['grams'] < 50.0:
+                alert = 'empty'
+            elif pct is not None and pct < 20.0:
+                alert = 'low_gas'
+                days_remaining = max(1, round(
+                    (sw * 0.20) / DAILY_USE_DEFAULT_G
+                ))
+        else:
+            steel_g = None  # TODO Group 4: load from config
+            if steel_g is not None:
+                gas_remaining = latest['grams'] - steel_g
+                if gas_remaining < ALERT_RED_G:
+                    alert = 'critical'
+                    days_remaining = max(1, round(gas_remaining / DAILY_USE_DEFAULT_G))
+                elif gas_remaining < ALERT_AMBER_G:
+                    alert = 'low_gas'
+                    days_remaining = max(1, round(gas_remaining / DAILY_USE_DEFAULT_G))
+
     if latest:
         ui.send_message('weight_update', {
-            'grams':   round(latest['grams'], 1),
-            'quality': latest['quality'],
-            'sigma':   round(latest['sigma'], 2),
-            'ts':      latest['ts'],
-            'pct':     pct,
-            'alert':   alert,
+            'grams':          round(latest['grams'], 1),
+            'quality':        latest['quality'],
+            'sigma':          round(latest['sigma'], 2),
+            'ts':             latest['ts'],
+            'pct':            pct,
+            'alert':          alert,
+            'days_remaining': days_remaining,
+            'prod_ready':     False,
+            'dev_mode':       g_dev_mode,
         })
     else:
         ui.send_message('weight_update', {
-            'grams':   0,
-            'quality': 'WAITING',
-            'sigma':   0.0,
-            'ts':      '--',
-            'pct':     None,
-            'alert':   None,
+            'grams':          0,
+            'quality':        'WAITING',
+            'sigma':          0.0,
+            'ts':             '--',
+            'pct':            None,
+            'alert':          None,
+            'days_remaining': None,
+            'prod_ready':     False,
+            'dev_mode':       g_dev_mode,
         })
     ui.send_message('node_status',  _node_status_payload())
     ui.send_message('dev_mode_ack', {'enabled': g_dev_mode})
