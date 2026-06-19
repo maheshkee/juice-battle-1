@@ -18,4 +18,16 @@ Thumbs.db
 # Editor
 .vscode/
 *.swp
-*.swo
+*.swo# Runtime state files
+bt_connected.txt
+bt_result.txt
+bt_cmd.txt
+wifi_result.txt
+wifi_cmd.txt
+wifi_last.txt
+# User data (regenerated at runtime)
+history.json
+schedule.json
+playlists.json
+watchlater.json
+display_mode.json
