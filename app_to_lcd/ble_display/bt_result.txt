@@ -1,29 +1,0 @@
-[BT] Scanning for 1F:10:00:9D:63:E2...
-Waiting to connect to bluetoothd...[0;94m[bluetoothctl]> [0m        [0;94m[Galaxy F05]> [0mscan on
-[0;94m[Galaxy F05]> [0m                                                                               Agent registered
-[0;94m[Galaxy F05]> [0m                                                                               SetDiscoveryFilter success
-[0;94m[Galaxy F05]> [0m                                                                               Discovery started
-[0;94m[Galaxy F05]> [0m                                                                               [[0;91mDEL[0m] [1;30mDevice 0B:8F:63:71:69:04 0B-8F-63-71-69-04[0m
-[0;94m[Galaxy F05]> [0mscan off
-[0;94m[Galaxy F05]> [0m                                                                               Discovery stopped
-[0;94m[Galaxy F05]> [0m                         [BT] Connecting 1F:10:00:9D:63:E2...
-Attempting to pair with 1F:10:00:9D:63:E2
-[[0;91mDEL[0m] [1;30mDevice 26:88:40:13:A2:89 26-88-40-13-A2-89[0m
-[[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 Connected: yes
-[[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 Bonded: yes
-[[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 UUIDs: 0000110b-0000-1000-8000-00805f9b34fb
-[[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 UUIDs: 0000110c-0000-1000-8000-00805f9b34fb
-[[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 UUIDs: 0000110e-0000-1000-8000-00805f9b34fb
-[[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 UUIDs: 0000111e-0000-1000-8000-00805f9b34fb
-[[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 ServicesResolved: yes
-[[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 Paired: yes
-Pairing successful
-[[0;93mCHG[0m] Device 1F:10:00:9D:63:E2 Trusted: yes
-Changing 1F:10:00:9D:63:E2 trust succeeded
-Attempting to connect to 1F:10:00:9D:63:E2
-[[0;92mNEW[0m] Endpoint /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep1 
-[[0;92mNEW[0m] Endpoint /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep2 
-[[0;92mNEW[0m] Transport /org/bluez/hci0/dev_1F_10_00_9D_63_E2/sep1/fd3 
-Connection successful
-[BT] Set default sink to 0
-connected:1F:10:00:9D:63:E2|HBTS001
