@@ -208,19 +208,25 @@ class _HubScreenState extends State<HubScreen> {
                       onModeIdle: () {
                         final board = ctx.read<BoardState>();
                         if (board.mode == 'idle') {
-                          ble.setModeYouTube(); board.mode = 'youtube';
-                        } else {
-                          ble.setModeIdle(); board.mode = 'idle';
+                          if (board.nowPlaying != null && board.nowPlaying!.isNotEmpty) {
+                            ble.setModeYouTube(); board.mode = 'youtube';
+                            board.notifyListeners();
+                          }
+                          return;
                         }
+                        ble.setModeIdle(); board.mode = 'idle';
                         board.notifyListeners();
                       },
                       onModeClock: () {
                         final board = ctx.read<BoardState>();
                         if (board.mode == 'clock') {
-                          ble.setModeYouTube(); board.mode = 'youtube';
-                        } else {
-                          ble.setModeClock(); board.mode = 'clock';
+                          if (board.nowPlaying != null && board.nowPlaying!.isNotEmpty) {
+                            ble.setModeYouTube(); board.mode = 'youtube';
+                            board.notifyListeners();
+                          }
+                          return;
                         }
+                        ble.setModeClock(); board.mode = 'clock';
                         board.notifyListeners();
                       },
                       onSchedule: _openSchedule,
@@ -267,11 +273,12 @@ class _HubScreenState extends State<HubScreen> {
 
                 const SizedBox(height: 12),
 
-                Selector<BoardState, String?>(
-                  selector: (_, b) => b.nowPlaying,
-                  builder: (ctx, nowPlaying, __) => PlayerControls(
-                    enabled:       connected,
-                    nowPlaying:    nowPlaying,
+                Selector<BoardState, (String?, String)>(
+                  selector: (_, b) => (b.nowPlaying, b.mode),
+                  builder: (ctx, data, __) => PlayerControls(
+                    enabled:       connected && data.$2 == 'youtube',
+                    nowPlaying:    data.$1,
+
                     onPause:       () => ble.playerPause(),
                     onResume:      () => ble.playerResume(),
                     onStop:        () => ble.playerStop(),
@@ -343,6 +350,7 @@ class _HubScreenState extends State<HubScreen> {
             Selector<BoardState, String>(
               selector: (_, b) => b.displayMode,
               builder: (ctx, mode, __) {
+                final connected = context.read<BleService>().state == ConnState.connected;
                 final isSplit = mode == 'split';
                 return Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
