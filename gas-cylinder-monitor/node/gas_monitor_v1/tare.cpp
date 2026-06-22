@@ -151,3 +151,10 @@ bool tare_load_from_spiffs(float* tare_raw_out) {
     Serial.printf("[TARE] Loaded tare_raw=%.1f from SPIFFS\n", *tare_raw_out);
     return true;
 }
+
+TareCheckResult tare_self_check(float fresh_tare_raw, float saved_tare_raw, float cal_factor) {
+    if (saved_tare_raw == -1.0f) return TARE_CHECK_NO_REF;
+    if (cal_factor <= 0.0f)      return TARE_CHECK_NO_REF;
+    float delta_g = fabsf(fresh_tare_raw - saved_tare_raw) / cal_factor;
+    return (delta_g >= TARE_CHECK_THRESHOLD_G) ? TARE_CHECK_SUSPECT : TARE_CHECK_CLEAN;
+}

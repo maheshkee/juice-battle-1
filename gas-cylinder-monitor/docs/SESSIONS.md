@@ -737,3 +737,166 @@ Then: N1 — journal → SPIFFS persistence.
 - HUB-WATCHDOG (Layer 3): backlog, before production
 - N1 journal → SPIFFS: next node item
 - tare_check threshold: still at 1000g test value, restore to 2000g before production
+
+---
+
+## Session 003 - 2026-06-18 morning - node bugs, BLE command char, TARE_WAIT
+
+### Goal
+Fix all node false positives. Build BLE command characteristic. Build STATE_TARE_WAIT.
+
+### What happened
+- Fixed sigma=25g bug (loose load cell wire at junction — physical reconnect)
+- Fixed NOISE=WARN every boot: thresholds recalibrated for 3-cell platform (PASS=8g, WARN=15g)
+- Fixed quality=DEGRADED every boot: skip_stuck guard for tare_variance_raw=0.0f
+- Fixed NOISE=WARN after threshold fix: load SPIFFS cal_factor before NOISE phase
+- Fixed sigma=0.09g / 200+ false WEIGHT_EVENTs: store raw counts in s_samples[], divide by cal_factor exactly once
+- Fixed false WEIGHT_EVENT REMOVED on static load: BUF_SIZE 20→40 ticks
+- Fixed NimBLE onWrite compile error: add NimBLEConnInfo& as second parameter
+- Built BLE command characteristic: TARE / SKIP_TARE / SET_CAL / RETARE / DUMP_LOG(stub) / CLEAR_LOG(stub)
+- Built STATE_TARE_WAIT: hub decides tare path, 60s timeout fallback
+- Built tare SPIFFS save/load: tare_save_to_spiffs() / tare_load_from_spiffs()
+
+### Real hardware outputs
+| Parameter | Value | Status |
+|---|---|---|
+| sigma boot=35 | 3.16g | VERIFIED |
+| sigma boot=31 | 5.44g | VERIFIED |
+| cal_factor | 36.2689 raw/g | VERIFIED |
+| weight accuracy | ±6g on 1000g | VERIFIED |
+| SETTLE duration | ~2.1s | VERIFIED |
+| TARE duration | ~21.1s (N=200 at 10 SPS) | VERIFIED |
+| NOISE duration | ~20.1s (N=200 at 10 SPS) | VERIFIED |
+| Boot total (timeout path) | ~103.9s | VERIFIED |
+| tare_raw boot=35 | -105232.4 | VERIFIED |
+
+### Gate
+Node clean on boot=35. All seven false positives eliminated. BLE command char compiled and running.
+
+---
+
+## Session 004 - 2026-06-18 afternoon - hub dev mode, alerts, WebUI, first working demo
+
+### Goal
+Hub DEV mode with auto-anchor and percentage tracking. Two-level alerts. DEV/PROD toggle.
+First end-to-end working demo verified on hardware.
+
+### What happened
+- Node: N-TARE-CHECK built — post-tare self-check, TARE_CHECK_THRESHOLD_G=1000g (DEV)
+- Node: NimBLE advertising restart on disconnect — node always findable after hub reconnect
+- Hub: db_get/set_dev_mode() in db.py — DEV/PROD mode stored in SQLite
+- Hub: Auto re-anchor with 3-reading spread window (ANCHOR_SPREAD_THRESHOLD_G=30g)
+- Hub: g_weight_was_removed gate — anchor only fires after removal + replacement
+- Hub: Two-level alerts: amber pct<20% + days_remaining, red grams<50g
+- Hub: PROD mode scaffold — Calibrating... placeholder, no pct until steel known
+- Hub: dev_mode field in every weight_update payload
+- Hub: node_status events — connected/disconnected, name, MAC shown in topbar
+- Hub: IST timestamp fix — subprocess date call replaces Python strftime
+- Hub: on_set_dev_mode(sid, data) signature fix
+- Hub: BT power-on added to deploy.sh — prevents adapter power loss on redeploy
+- Hub: setup_sudoers.sh created — passwordless sudo for all deploy commands
+- Hub: DEVICE_SETUP.md created — one-time device commissioning guide
+- Constants locked: DAILY_USE_DEFAULT_G=350, ALERT_AMBER_G=2000, ALERT_RED_G=1000, MIN_HISTORY_DAYS=7, ANCHOR_SPREAD_THRESHOLD_G=30
+- L-064 through L-070 appended to LEARNINGS_AND_INSIGHTS.md
+- WCN3990 BT firmware crash incident — documented in L-065, L-070, RESEARCH.md
+- HUB-WATCHDOG designed and added to pre-production backlog
+
+### Real hardware outputs — demo verified
+| Check | Result |
+|---|---|
+| Anchor at correct weight | 1694.9g VERIFIED |
+| pct 1786g=100%, 998g=56%, 352g=20% | VERIFIED |
+| Amber alert at 20% with days text | VERIFIED |
+| Red alert at <50g | VERIFIED |
+| Progress bar green→amber→red | VERIFIED |
+| DEV/PROD toggle | VERIFIED |
+| NimBLE advertising restart | VERIFIED — [BLE] Restarting advertising after disconnect in journal |
+| IST timestamp | VERIFIED — 18 Jun 2026 10:56:38 |
+| Node MAC in topbar | VERIFIED — 10:00:3B:CD:63:32 |
+
+### Gate
+First end-to-end DEV mode demo working. Percentage tracks real consumption.
+Alerts fire at correct thresholds. Hub stable. Node auto-reconnects after hub restart.
+
+---
+
+## Session 003 - 2026-06-18 morning - node bugs, BLE command char, TARE_WAIT
+
+### Goal
+Fix all node false positives. Build BLE command characteristic. Build STATE_TARE_WAIT.
+
+### What happened
+- Fixed sigma=25g bug (loose load cell wire at junction — physical reconnect)
+- Fixed NOISE=WARN every boot: thresholds recalibrated for 3-cell platform (PASS=8g, WARN=15g)
+- Fixed quality=DEGRADED every boot: skip_stuck guard for tare_variance_raw=0.0f
+- Fixed NOISE=WARN after threshold fix: load SPIFFS cal_factor before NOISE phase
+- Fixed sigma=0.09g / 200+ false WEIGHT_EVENTs: store raw counts in s_samples[], divide by cal_factor exactly once
+- Fixed false WEIGHT_EVENT REMOVED on static load: BUF_SIZE 20→40 ticks
+- Fixed NimBLE onWrite compile error: add NimBLEConnInfo& as second parameter
+- Built BLE command characteristic: TARE / SKIP_TARE / SET_CAL / RETARE / DUMP_LOG(stub) / CLEAR_LOG(stub)
+- Built STATE_TARE_WAIT: hub decides tare path, 60s timeout fallback
+- Built tare SPIFFS save/load: tare_save_to_spiffs() / tare_load_from_spiffs()
+
+### Real hardware outputs
+| Parameter | Value | Status |
+|---|---|---|
+| sigma boot=35 | 3.16g | VERIFIED |
+| sigma boot=31 | 5.44g | VERIFIED |
+| cal_factor | 36.2689 raw/g | VERIFIED |
+| weight accuracy | ±6g on 1000g | VERIFIED |
+| SETTLE duration | ~2.1s | VERIFIED |
+| TARE duration | ~21.1s (N=200 at 10 SPS) | VERIFIED |
+| NOISE duration | ~20.1s (N=200 at 10 SPS) | VERIFIED |
+| Boot total (timeout path) | ~103.9s | VERIFIED |
+| tare_raw boot=35 | -105232.4 | VERIFIED |
+
+### Gate
+Node clean on boot=35. All seven false positives eliminated. BLE command char running.
+
+---
+
+## Session 004 - 2026-06-18 afternoon - hub dev mode, alerts, WebUI, first working demo
+
+### Goal
+Hub DEV mode with auto-anchor and percentage tracking. Two-level alerts. DEV/PROD toggle.
+First end-to-end working demo verified on hardware.
+
+### What happened
+- Node: N-TARE-CHECK built — post-tare self-check, TARE_CHECK_THRESHOLD_G=1000g (DEV)
+- Node: NimBLE advertising restart on disconnect (ble.cpp — NimBLEDevice::startAdvertising())
+- Hub: db_get_dev_mode() / db_set_dev_mode() in db.py
+- Hub: DEV/PROD branching in on_weight() — auto-anchor vs PROD scaffold
+- Hub: 3-reading spread window anchor (ANCHOR_SPREAD_THRESHOLD_G=30g)
+- Hub: g_weight_was_removed gate — anchor only fires after removal and replacement
+- Hub: two-level alerts — amber pct<20% + days_remaining, red grams<50g
+- Hub: PROD mode scaffold — Calibrating... placeholder, no pct until steel known
+- Hub: dev_mode field in every weight_update payload
+- Hub: node_status events — connected/disconnected, name, MAC shown in topbar
+- Hub: IST timestamp fix — subprocess date call replaces Python strftime
+- Hub: on_set_dev_mode(sid, data) — sid parameter fix
+- Hub: BT power-on added to deploy.sh — prevents adapter power loss on redeploy
+- Hub: setup_sudoers.sh — passwordless sudo for all deploy commands
+- Hub: DEVICE_SETUP.md — one-time device commissioning guide
+- Constants locked: DAILY_USE_DEFAULT_G=350, ALERT_AMBER_G=2000, ALERT_RED_G=1000, MIN_HISTORY_DAYS=7, ANCHOR_SPREAD_THRESHOLD_G=30
+- L-064 through L-070 appended to LEARNINGS_AND_INSIGHTS.md
+- WCN3990 BT firmware crash incident — documented L-065, L-070, RESEARCH.md
+- HUB-WATCHDOG designed and added to pre-production backlog
+
+### Real hardware outputs — demo verified
+| Check | Result |
+|---|---|
+| Anchor at correct weight | 1694.9g VERIFIED |
+| 1786g=100%, 998g=56%, 352g=20% | VERIFIED |
+| Amber alert at 20% with days text | VERIFIED |
+| Red alert at <50g | VERIFIED |
+| Progress bar green→amber→red | VERIFIED |
+| DEV/PROD toggle | VERIFIED |
+| NimBLE advertising restart | VERIFIED |
+| IST timestamp | VERIFIED — 18 Jun 2026 |
+| Node MAC in topbar | VERIFIED — 10:00:3B:CD:63:32 |
+
+### Gate
+First end-to-end DEV mode demo working. Percentage tracks real consumption.
+Alerts fire at correct thresholds. Hub stable. Node auto-reconnects after hub restart.
+
+Do not commit yet.

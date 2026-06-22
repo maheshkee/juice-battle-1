@@ -136,8 +136,8 @@ The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ## Current State — 2026-06-18
 
-Status:         Node Layer 1 COMPLETE + 3E-006B + 3E-007B COMPLETE + BLE command char + STATE_TARE_WAIT + Tare SPIFFS persistence — boot=35 clean
-Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino
+Status:         Hub + Node WORKING end-to-end. First DEV mode demo verified. boot=41 clean.
+Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino (boot=41, NimBLE advertising restart added)
 Modules:        hx711, tare (+ SPIFFS persistence), noise, cal, weight, ble (+ command char), health, journal — all .h/.cpp
 Boot sequence:  SETTLE → TARE_WAIT → TARE → NOISE → CAL → RUNNING
 
@@ -178,6 +178,8 @@ Code constants locked (2026-06-18):
   NOISE_SIGMA_PASS_G: 8.0g (healthy max 5.33g + 1.5× margin)
   NOISE_SIGMA_WARN_G: 15.0g (midpoint between healthy and open-cell ~25g)
   NimBLE onWrite:     two-parameter: (NimBLECharacteristic* c, NimBLEConnInfo& connInfo)
+  NimBLE onDisconnect: must call NimBLEDevice::startAdvertising() - node invisible otherwise
+  App Lab on_message: callbacks must be (sid, data) - not just (data)
 
 BLE characteristics locked (all sessions):
   Service UUID:   aa206b91-235b-42aa-b370-453a3feedf35
@@ -185,6 +187,14 @@ BLE characteristics locked (all sessions):
   Command char:   c8a2f1e3-4d6b-4a7c-8e9f-1b2d3e4f5a6b (write-without-response) — BUILT
   Log char:       d7b3e2f4-5e7c-4b8d-9f1a-2c3e4f5a6b7c (notify) — registered, 1E not yet built
   Commands:       TARE | SKIP_TARE | SET_CAL:\<value\> | RETARE | DUMP_LOG | CLEAR_LOG
+
+Hub constants locked (2026-06-18 session 2):
+  DAILY_USE_DEFAULT_G      = 350.0   (V1 prior - see L-064 in LEARNINGS)
+  ALERT_AMBER_G            = 2000.0  (~5-6 days at 350g/day)
+  ALERT_RED_G              = 1000.0  (~2-3 days at 350g/day)
+  MIN_HISTORY_DAYS         = 7       (statistical minimum - never dynamic)
+  ANCHOR_SPREAD_THRESHOLD_G = 30.0   (from observed ~15g platform noise on static 1700g load)
+  NOTE: ALERT thresholds were derived from DAILY_USE_DEFAULT_G. Never change one without re-validating the others.
 
 Journal format (1D — verified 2026-06-17):
   #SEQ t=T boot=B [TAG] event=NAME key=val key=val
@@ -207,15 +217,22 @@ Known TODOs (deferred, tracked):
   TODO 1B-persistence: prev_cal_factor/prev_sigma_g not read from config.json
                        Fix: read/write at boot and after CAL_SUCCESS
 
-Hub status: DEPLOYED skeleton at arduino@AQ3 gas-cylinder-monitor/hub
-            WebUI at AQ3:7000 — no gas logic yet
-            BLE subscriber: _check_known_devices() fix applied (SESSION2)
-            BLE command char on node now ready — hub can send TARE/SKIP_TARE/SET_CAL/RETARE
+Hub status: DEPLOYED and WORKING at arduino@AQ3:7000
+            DEV mode: auto-anchor (3-reading spread window, ANCHOR_SPREAD_THRESHOLD_G=30g)
+            PROD mode: scaffold - Calibrating... placeholder until Group 4
+            DEV/PROD toggle: working - WebUI pill, SQLite flag
+            Two-level alerts: amber pct<20% + days_remaining, red grams<50g
+            node_status topbar: green dot, MAC, name
+            IST timestamp: fixed - subprocess date call
+            Gas domain (Group 4): NOT BUILT
+            Log directory: NOT BUILT
 
-Current position: boot=35 verified clean. BLE command char built. STATE_TARE_WAIT built.
-                  Tare SPIFFS persistence built. Next: N-TARE-CHECK then N1.
-Next action:      N-TARE-CHECK — post-tare self-check (detect weight on platform at boot,
-                  use SPIFFS saved tare as fallback). Design in chat. Implement via Claude Code CLI.
+Current position: boot=41 clean. N-TARE-CHECK complete. First end-to-end DEV mode demo verified.
+                  Hub DEV mode working: anchor, percentage, alerts, toggle all working.
+                  Next node: N1 (journalSPIFFS). Next hub: CAL timeout fix, then Group 4.
+Next action:      N1 - journal.cpp appends every line to /node_journal.log on SPIFFS.
+                  RAM counter g_journal_file_bytes. Transfer pending flag at 25KB.
+                  Design in chat. Implement via Claude Code CLI.
 
 Backlog:
   1E: BLE journal transport — see PROJECT_CONTEXT.md for design.

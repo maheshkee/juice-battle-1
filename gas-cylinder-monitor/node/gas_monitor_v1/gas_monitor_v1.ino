@@ -145,6 +145,10 @@ void loop() {
     }
 
     case STATE_TARE: {
+        // Load saved tare once for N-TARE-CHECK (fresh-tare path only)
+        static float s_saved_tare_raw    = -1.0f;
+        static bool  s_saved_tare_loaded = false;
+
         // SPIFFS fast-load path — one-shot on first tick when hub sent SKIP_TARE
         static bool s_spiffs_attempted = false;
         if (!s_spiffs_attempted && s_tare_from_spiffs) {
@@ -164,12 +168,37 @@ void loop() {
             tare_init();
         }
 
+        if (!s_saved_tare_loaded) {
+            s_saved_tare_loaded = true;
+            float sv;
+            if (!tare_load_from_spiffs(&sv)) sv = -1.0f;
+            s_saved_tare_raw = sv;
+        }
+
         TareResult tr = tare_update(r.value);
         if (tr.status == TARE_SUCCESS || tr.status == TARE_DEGRADED) {
             g_tare_raw = tr.tare_raw;
             // g_tare_variance_raw stays 0.0f — TareResult has no variance field yet
             // (see TODO 1B-stuck comment in globals)
             tare_save_to_spiffs(g_tare_raw);
+
+            {
+                TareCheckResult tc = tare_self_check(g_tare_raw, s_saved_tare_raw, g_cal_factor);
+                if (tc == TARE_CHECK_CLEAN) {
+                    float delta_g = fabsf(g_tare_raw - s_saved_tare_raw) / g_cal_factor;
+                    Serial.printf("#%04u t=%.1f boot=%lu [BOOT] tare_check=CLEAN delta=%.1fg\n",
+                                  0, millis() / 1000.0f, (unsigned long)g_boot_count, delta_g);
+                } else if (tc == TARE_CHECK_SUSPECT) {
+                    float delta_g = fabsf(g_tare_raw - s_saved_tare_raw) / g_cal_factor;
+                    Serial.printf("#%04u t=%.1f boot=%lu [BOOT] tare_check=SUSPECT delta=%.1fg\n",
+                                  0, millis() / 1000.0f, (unsigned long)g_boot_count, delta_g);
+                    strncpy(g_health.quality, "DEGRADED", sizeof(g_health.quality));
+                } else {
+                    Serial.printf("#%04u t=%.1f boot=%lu [BOOT] tare_check=NO_REF (first boot)\n",
+                                  0, millis() / 1000.0f, (unsigned long)g_boot_count);
+                }
+            }
+
             uint32_t tare_ms = millis() - phase_start_ms;
             journal_phase_complete("TARE", "OK", tare_ms / 1000.0f, tr.tare_raw, 0.0f, 0);
             noise_init();

@@ -1656,3 +1656,77 @@ self-healing in production without human intervention.
 
 May also occur from: BLE radio interference, thermal stress,
 sustained heavy BLE traffic, QCA firmware bug.
+
+---
+
+## L-066 - NimBLE advertising must be explicitly restarted on disconnect
+
+Date: 2026-06-18
+
+When a BLE central (hub) disconnects from the ESP32-C3 node, NimBLE does NOT automatically resume advertising. The node becomes invisible to scanning centrals. This is not a NimBLE bug - it is correct BLE behaviour. The application must call NimBLEDevice::startAdvertising() in the onDisconnect() server callback.
+
+Without this fix: every hub restart or BT adapter crash requires a node power cycle.
+With this fix: hub reconnects automatically within 30 seconds of any disconnect.
+
+Rule: always add NimBLEDevice::startAdvertising() to onDisconnect() in any NimBLE GATT server.
+
+---
+
+## L-067 - App Lab WebUI brick callbacks receive (sid, data) not just (data)
+
+Date: 2026-06-18
+
+The App Lab WebUI brick (arduino.app_bricks.web_ui) passes the socket session ID as the first argument to every ui.on_message() callback, then the data dict second. Python function signature must be def my_handler(sid, data) not def my_handler(data).
+
+This matches the on_connect pattern: def on_ui_connect(sid).
+Symptom when wrong: "takes 1 positional argument but 2 were given" on every client event.
+Rule: all ui.on_message() callbacks must have sid as first parameter.
+
+---
+
+## L-068 - Hub anchor requires 3-reading spread window, not a consecutive pair
+
+Date: 2026-06-18
+
+Two-reading settle gate is too loose. During weight placement, readings jump: 34g  1086g  1793g in three heartbeats. Any two can accidentally satisfy a consecutive-delta gate during the transition.
+
+3-reading window with max spread < 30g cleanly separates the two populations:
+  Static load: typical 3-reading spread = 5-15g  anchors correctly
+  Active placement: spread = 100-500g  never anchors mid-placement
+
+30g threshold derived from observed platform noise: ~15g typical on 1700g static load.
+Rule: anchor detection requires min 3 readings all within ANCHOR_SPREAD_THRESHOLD_G=30g.
+
+---
+
+## L-069 - Docker containers cannot call host binaries
+
+Date: 2026-06-18
+
+bluetoothctl and other host binaries in /usr/bin are not accessible inside Docker containers unless explicitly mounted. Calling subprocess.run(['bluetoothctl', ...]) from inside an App Lab container fails with [Errno 2] No such file or directory.
+
+Correct approach:
+  deploy.sh (runs on host) calls bluetoothctl directly - works
+  Container communicates with BlueZ only via D-Bus through the socat socket bridge
+
+Rule: never call host binaries from inside Docker. Use D-Bus or host-side scripts only.
+
+---
+
+## L-070 - WCN3990 BT firmware crash requires full system reboot
+
+Date: 2026-06-18
+
+When the WCN3990 chip on the WCBN3536A module crashes at firmware level:
+  dmesg shows: "hardware error 0x00" then "setting up wcn399x" then
+  "Reading QCA version information failed (-110)" repeated
+  bluetoothctl power on fails: org.bluez.Error.Failed
+  modprobe -r btusb / modprobe btusb does NOT recover it
+  systemctl restart bluetooth does NOT recover it
+  Only sudo reboot recovers it.
+
+Root cause: QCA firmware cannot reload without a full power cycle. ETIMEDOUT (-110) means the chip stopped responding to the firmware upload sequence entirely.
+
+Trigger observed: Docker container restart  socat D-Bus bridge torn down  BlueZ resets adapter  WCN3990 firmware crashes.
+
+Production implication: HUB-WATCHDOG must detect hci0 DOWN for >10 min, power on failing, and trigger automatic reboot via host systemd watchdog service.
