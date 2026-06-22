@@ -31,6 +31,7 @@ class BoardState extends ChangeNotifier {
 
   String displayMode = 'overlay';
   String boardName = '';
+  String boardKey  = '';
 
   String wifiStatus = '';
   String wifiSsid   = '';
@@ -114,15 +115,18 @@ class BoardState extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       boardName = prefs.getString('board_name') ?? '';
+      boardKey  = prefs.getString('board_key')  ?? '';
       notifyListeners();
     } catch (_) {}
   }
 
-  Future<void> saveBoardName(String name) async {
+  Future<void> saveBoardName(String name, {String key = ''}) async {
     boardName = name;
+    boardKey  = key;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('board_name', name);
+      await prefs.setString('board_key',  key);
     } catch (_) {}
     notifyListeners();
   }

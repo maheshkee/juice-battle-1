@@ -25,14 +25,18 @@ class _QrScanScreenState extends State<QrScanScreen> {
     if (_processing) return;
     final raw = capture.barcodes.firstOrNull?.rawValue;
     if (raw == null || raw.isEmpty) return;
-    if (!raw.startsWith('BLE-Hub')) return;
+    final parts = raw.split('||');
+    final name  = parts[0].trim();
+    final key   = parts.length > 1 ? parts[1].trim() : '';
+    if (!name.startsWith('BLE-Hub')) return;
     setState(() { _processing = true; });
     await _ctrl.stop();
     if (!mounted) return;
     final board = context.read<BoardState>();
     final ble   = context.read<BleService>();
-    await board.saveBoardName(raw);
-    ble.setTargetName(raw);
+    await board.saveBoardName(name, key: key);
+    ble.setTargetName(name);
+    ble.setBoardKey(key);
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const HubScreen()));

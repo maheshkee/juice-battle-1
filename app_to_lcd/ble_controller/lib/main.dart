@@ -27,6 +27,7 @@ void main() async {
   await plService.load();
   final prefs     = await SharedPreferences.getInstance();
   final boardName = prefs.getString('board_name') ?? '';
+  final boardKey  = prefs.getString('board_key')  ?? '';
   runApp(
     MultiProvider(
       providers: [
@@ -36,14 +37,15 @@ void main() async {
         ChangeNotifierProvider.value(value: wlService),
         ChangeNotifierProvider.value(value: plService),
       ],
-      child: BleHubApp(boardName: boardName),
+      child: BleHubApp(boardName: boardName, boardKey: boardKey),
     ),
   );
 }
 
 class BleHubApp extends StatefulWidget {
   final String boardName;
-  const BleHubApp({super.key, required this.boardName});
+  final String boardKey;
+  const BleHubApp({super.key, required this.boardName, required this.boardKey});
   @override
   State<BleHubApp> createState() => _BleHubAppState();
 }
@@ -102,6 +104,7 @@ class _BleHubAppState extends State<BleHubApp> {
       };
       if (widget.boardName.isNotEmpty) {
         context.read<BleService>().setTargetName(widget.boardName);
+        context.read<BleService>().setBoardKey(widget.boardKey);
       }
     });
   }

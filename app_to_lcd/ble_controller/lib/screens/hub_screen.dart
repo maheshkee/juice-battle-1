@@ -49,7 +49,7 @@ class _HubScreenState extends State<HubScreen> {
           board.addLog('[APP] Connected to board');
           startKeepAlive();
           Future.delayed(const Duration(milliseconds: 500), () {
-            ble.getStatus();
+
             if (board.scheduleDirty) {
               ble.sendSchedule(board.scheduleEntries);
               board.markScheduleClean();

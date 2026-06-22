@@ -34,9 +34,19 @@ class BleService {
   void _setState(ConnState s) { _state = s; _connState.add(s); }
 
   String _targetName = 'BLE-Hub';
+  String _boardKey    = '';
+  bool   _authSent    = false;
   void setTargetName(String name) { _targetName = name; }
+  void setBoardKey(String key)    { _boardKey   = key; }
+
+  Future<void> _sendAuth() async {
+    if (_boardKey.isEmpty) return;
+    _log('[AUTH] Sending key');
+    await _write('AUTH:$_boardKey');
+  }
 
   Future<void> startScan() async {
+    _authSent = false;
     if (_state == ConnState.scanning) return;
     _setState(ConnState.scanning);
     _log('[SCAN] Looking for $_targetName...');
@@ -84,6 +94,7 @@ class BleService {
           _log('[BLE] Disconnected from board');
           _setState(ConnState.disconnected);
           _cmdChar = null;
+          _authSent = false;
         }
       });
       _log('[BLE] Discovering services...');
@@ -98,7 +109,13 @@ class BleService {
               await c.setNotifyValue(true);
               c.onValueReceived.listen((value) {
                 final evt = BoardEvent.tryFromBytes(value);
-                if (evt != null && evt.event != 'unknown') {
+                if (evt != null && evt.event == 'auth_required') {
+                  if (!_authSent) {
+                    _authSent = true;
+                    _setState(ConnState.connected);
+                    _sendAuth();
+                  }
+                } else if (evt != null && evt.event != 'unknown') {
                   _events.add(evt);
                 }
               });
@@ -108,9 +125,7 @@ class BleService {
         }
       }
       _devName.add(device.platformName);
-      _setState(ConnState.connected);
-      _log('[BLE] Connected to ${device.platformName}');
-      await _write('CMD:GET_STATUS');
+      _log('[BLE] Connected to ${device.platformName}, waiting for auth...');
     } catch (e) {
       _log('[ERROR] $e');
       _setState(ConnState.disconnected);
