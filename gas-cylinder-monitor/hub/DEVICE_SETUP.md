@@ -33,3 +33,21 @@ After the first run, setup_sudoers.sh can be re-run without sudo:
 ```bash
 bash hub/setup_sudoers.sh
 ```
+
+## Step 4 - Set app to auto-start on boot (run once only)
+
+```
+arduino-app-cli properties set default user:gas-cylinder-monitor/hub
+```
+
+This makes the hub start automatically every time the board powers on.
+
+Verify with:
+
+```
+arduino-app-cli app list | grep gas-cylinder
+```
+
+Should show DEFAULT in the status column.
+
+After this, bash deploy.sh is only needed for code updates - not for everyday operation.
