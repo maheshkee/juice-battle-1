@@ -70,6 +70,16 @@ def _load_board_name() -> str:
         pass
     return 'BLE-Hub'
 
+def _load_board_key() -> str:
+    try:
+        if os.path.exists(BOARD_ID_FILE):
+            with open(BOARD_ID_FILE, 'r') as f:
+                data = json.load(f)
+            return data.get('key', '').strip()
+    except Exception:
+        pass
+    return ''
+
 PHONE_SVC_UUID = 'a00b0000-0000-0000-0000-000000000000'
 PHONE_CMD_UUID = 'a00b0002-0000-0000-0000-000000000000'
 PHONE_EVT_UUID = 'a00b0003-0000-0000-0000-000000000000'
@@ -131,6 +141,8 @@ whistle_last_detect = -999.0
 whistle_lock        = threading.Lock()
 
 display_mode = 'overlay'
+
+_phone_authenticated = False
 
 ALARM_PATH = '/app/assets/alarm.wav'
 
@@ -739,6 +751,22 @@ def handle_phone_command(text: str):
     text = text.strip()
     log(f'[PHONE] {text[:80]}')
 
+    if text.startswith('AUTH:'):
+        global _phone_authenticated
+        received_key = text[5:].strip()
+        board_key    = _load_board_key()
+        if board_key and received_key == board_key:
+            _phone_authenticated = True
+            log('[AUTH] Phone authenticated')
+            GLib.idle_add(_push_full_status_to_phone)
+        else:
+            log('[AUTH] Wrong key')
+        return
+
+    if not _phone_authenticated:
+        log('[AUTH] Rejected -- not authenticated')
+        return
+
     if text.startswith('YT:'):
         parts = text[3:].strip().split('||', 1)
         url   = parts[0].strip()
@@ -1240,6 +1268,7 @@ class BLEObjectWatcher:
         if mac in trusted and mac not in connected:
             threading.Timer(1.0, lambda m=mac: connect_device(m)).start()
 
+
     def _interfaces_removed(self, path, interfaces):
         if DEVICE_IFACE not in interfaces: return
         for mac, d in list(scan_results.items()):
@@ -1354,12 +1383,15 @@ class PhoneEvtChar(dbus.service.Object):
     def StartNotify(self):
         if self.notifying: return
         self.notifying = True
-        GLib.idle_add(_push_full_status_to_phone)
-        GLib.idle_add(_stop_advertising)
+        global _phone_authenticated
+        _phone_authenticated = False
+        GLib.idle_add(_send_auth_required)
 
     @dbus.service.method(GATT_CHRC_IFACE)
     def StopNotify(self):
+        global _phone_authenticated
         self.notifying = False
+        _phone_authenticated = False
         GLib.idle_add(_start_advertising)
 
     @dbus.service.signal(DBUS_PROP_IFACE, signature='sa{sv}as')
@@ -1371,6 +1403,12 @@ class PhoneEvtChar(dbus.service.Object):
 
 
 
+def _send_auth_required():
+    push_to_phone('auth_required', {'time': now_str()})
+    log('[AUTH] Challenge sent to phone')
+    _stop_advertising()
+
+
 def _stop_advertising():
     global adv_mgr_global, adv_global
     if adv_mgr_global and adv_global:
@@ -1380,13 +1418,14 @@ def _stop_advertising():
         except Exception as e:
             log(f'[PHONE] Stop adv failed: {e}')
 
+
 def _start_advertising():
     global adv_mgr_global, adv_global
     if adv_mgr_global and adv_global:
         try:
             adv_mgr_global.RegisterAdvertisement(dbus.ObjectPath(adv_global.path), {},
                 reply_handler=lambda: log(f'[PHONE] Advertising resumed as {_load_board_name()}'),
-                error_handler=lambda e: log(f'[PHONE] Resume adv failed: {e}'))
+                error_handler=lambda e: None)
         except Exception as e:
             log(f'[PHONE] Start adv failed: {e}')
 
@@ -1515,12 +1554,33 @@ if launcher_ping():
 else:
     log('[LAUNCHER] WARNING - chromium-launcher not reachable')
 
+def _auth_enforcer():
+    while True:
+        time.sleep(30)
+        if not _phone_authenticated and (evt_char_global is None or not evt_char_global.notifying):
+            try:
+                objects = get_all_objects()
+                for path, ifaces in objects.items():
+                    if DEVICE_IFACE in ifaces:
+                        if bool(ifaces[DEVICE_IFACE].get('Connected', False)):
+                            mac = str(ifaces[DEVICE_IFACE].get('Address', ''))
+                            log(f'[AUTH] Unauthenticated device found: {mac} -- disconnecting')
+                            try:
+                                dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, path),
+                                    DEVICE_IFACE).Disconnect()
+                            except Exception as e:
+                                log(f'[AUTH] Enforcer disconnect failed: {e}')
+                            GLib.idle_add(_start_advertising)
+            except Exception as e:
+                log(f'[AUTH] Enforcer error: {e}')
+
 def _schedule_loop():
     while True:
         time.sleep(60)
         GLib.idle_add(schedule_tick)
 
 threading.Thread(target=_schedule_loop, daemon=True).start()
+threading.Thread(target=_auth_enforcer, daemon=True).start()
 threading.Thread(target=ble_main, daemon=True).start()
 threading.Thread(target=whistle_audio_loop, daemon=True).start()
 App.run()
