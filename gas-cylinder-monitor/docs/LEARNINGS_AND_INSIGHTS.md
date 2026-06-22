@@ -1729,4 +1729,120 @@ Root cause: QCA firmware cannot reload without a full power cycle. ETIMEDOUT (-1
 
 Trigger observed: Docker container restart  socat D-Bus bridge torn down  BlueZ resets adapter  WCN3990 firmware crashes.
 
+---
+
+## L-071 - SPIFFS survives power cycle, not firmware flash
+
+Date: 2026-06-22
+
+SPIFFS (SPI Flash File System) on ESP32-C3 is a persistent filesystem that survives
+power cycles and software reboots. The file /node_journal.log written during one
+boot session is fully available on the next boot — g_journal_file_bytes reads the
+actual file size and starts counting from there, not from zero.
+
+However, flashing new firmware via Arduino IDE performs a full chip erase before
+writing. This wipes SPIFFS completely. After a flash, file_bytes=0 is correct and
+expected — not a bug.
+
+Rule: to verify SPIFFS accumulation across boots, power cycle only (unplug/replug).
+Never use Arduino IDE upload as the reboot mechanism for SPIFFS tests.
+
+Verified: boot=45 session wrote 3531 bytes. boot=46 power cycle showed file_bytes=3531.
+boot=43 (first boot after flash) correctly showed file_bytes=0.
+
+---
+
+## L-072 - journal_append: open/write/close on every call, not held open
+
+Date: 2026-06-22
+
+The journal_append() function opens /node_journal.log, writes one line, and closes
+the file on every single call. This is intentional and non-negotiable for two reasons:
+
+Reason 1 — power cut safety: SPIFFS uses a write buffer. file.close() forces a flush
+to flash storage. Without close(), data in the buffer is lost on power cut. Since the
+journal exists specifically to survive power cuts, every line must be committed to
+flash before journal_append() returns. flush() alone does not guarantee this on the
+ESP32 Arduino framework — only close() does.
+
+Reason 2 — file handle exhaustion: SPIFFS has a limited number of simultaneously open
+file handles. Other modules (tare.cpp, cal.cpp) also open SPIFFS files (config.json).
+Holding the journal file open permanently risks running out of handles during boot
+phases when multiple SPIFFS operations overlap.
+
+Cost: open/close on every call adds ~1-2ms latency. At 10Hz loop with journal calls
+every 30 seconds (heartbeat) plus occasional events, this is negligible.
+
+---
+
+## L-073 - BLE MTU: default 23 bytes, NimBLE negotiates 247 after connect
+
+Date: 2026-06-22
+
+BLE ATT protocol has a default MTU of 23 bytes: 1 byte opcode + 2 bytes handle +
+20 bytes payload. This is the guaranteed minimum all devices support.
+
+NimBLE on ESP32-C3 automatically initiates an MTU exchange after connection,
+requesting MTU=247. This gives 244 bytes of payload — sufficient for any journal
+line (longest ~100 bytes).
+
+The MTU exchange takes 200-500ms after connection. During this window MTU is still
+23 bytes. Attempting to notify data larger than 20 bytes before MTU exchange
+completes causes silent truncation or rejection.
+
+Correct approach for 1E log streaming:
+  Wait for onMTUChange() callback with MTU > 23 before starting any log transfer.
+  In practice, by the time hub connects, discovers services, and sends DUMP_LOG
+  command, MTU exchange is already complete. The flag is belt-and-suspenders safety.
+
+Rule: never start BLE notify streaming without confirming MTU exchange is complete.
+Gate condition: MTU >= 64 (conservative threshold that fits any journal line with
+room to spare).
+
+---
+
+## L-074 - Hub anchor bug: g_starting_weight=None at startup causes spurious re-anchor
+
+Date: 2026-06-22
+
+In DEV mode, g_starting_weight was initialised to None at hub process startup.
+The DB load only happened in the PROD mode branch (line 101-102). In DEV mode,
+g_starting_weight stayed None until the first weight reading arrived.
+
+Combined with g_weight_was_removed=False at startup, the anchor condition
+(g_starting_weight is None OR g_weight_was_removed) was True on every hub restart.
+The first weight reading above 500g triggered anchor logic immediately — including
+during mid-settling transitions where readings jump wildly (0→200→578→5020g).
+
+The anchor fired at 578g (first accidental 3-reading stable window during settling)
+instead of the final settled value of ~5020g.
+
+Fix: load g_starting_weight from DB immediately after db_init() at startup.
+If a valid anchor exists, g_starting_weight is populated before any weight readings
+arrive. The anchor condition correctly evaluates to False — no spurious re-anchor.
+
+---
+
+## L-075 - Anchor spread threshold must be fixed, not derived from sigma
+
+Date: 2026-06-22
+
+The original anchor stability check used abs(grams - prev) <= 2.0 * sigma where
+sigma is the node's noise floor (~3-7g). This gave a spread window of ~6-14g.
+
+During cylinder/weight placement, readings jump: 0g → 200g → 500g → 578g → 5020g.
+Each consecutive pair differs by hundreds of grams — far above the 6-14g window.
+The candidate resets repeatedly. Eventually during settling, three readings happen
+to fall within 6-14g of each other at mid-settling (e.g. 575g, 580g, 578g) and the
+anchor fires at the wrong value.
+
+Fix: use ANCHOR_SPREAD_THRESHOLD_G = 30g (a fixed constant, not derived from sigma).
+30g was derived from observed platform noise: ~15g typical spread on a static load.
+2x safety factor gives 30g. This cleanly separates static load (spread 5-15g,
+always anchors) from active placement (spread 100-500g, never anchors mid-flight).
+
+Rule: anchor spread threshold must always be a fixed constant, not a function of
+the noise sigma. Sigma measures noise floor. Placement dynamics are orders of
+magnitude larger and require a separate, independently-derived threshold.
+
 Production implication: HUB-WATCHDOG must detect hci0 DOWN for >10 min, power on failing, and trigger automatic reboot via host systemd watchdog service.

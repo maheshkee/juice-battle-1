@@ -186,16 +186,13 @@ void loop() {
                 TareCheckResult tc = tare_self_check(g_tare_raw, s_saved_tare_raw, g_cal_factor);
                 if (tc == TARE_CHECK_CLEAN) {
                     float delta_g = fabsf(g_tare_raw - s_saved_tare_raw) / g_cal_factor;
-                    Serial.printf("#%04u t=%.1f boot=%lu [BOOT] tare_check=CLEAN delta=%.1fg\n",
-                                  0, millis() / 1000.0f, (unsigned long)g_boot_count, delta_g);
+                    journal_tare_check("CLEAN", delta_g);
                 } else if (tc == TARE_CHECK_SUSPECT) {
                     float delta_g = fabsf(g_tare_raw - s_saved_tare_raw) / g_cal_factor;
-                    Serial.printf("#%04u t=%.1f boot=%lu [BOOT] tare_check=SUSPECT delta=%.1fg\n",
-                                  0, millis() / 1000.0f, (unsigned long)g_boot_count, delta_g);
+                    journal_tare_check("SUSPECT", delta_g);
                     strncpy(g_health.quality, "DEGRADED", sizeof(g_health.quality));
                 } else {
-                    Serial.printf("#%04u t=%.1f boot=%lu [BOOT] tare_check=NO_REF (first boot)\n",
-                                  0, millis() / 1000.0f, (unsigned long)g_boot_count);
+                    journal_tare_check("NO_REF", 0.0f);
                 }
             }
 
@@ -320,6 +317,16 @@ void loop() {
             g_cmd_dump_log_pending = false;
             // stub — log transfer FSM to be built in next session
         }
+        if (g_transfer_pending) {
+            // TODO N-LOG-TRANSFER: transfer FSM not yet built
+            // Log once so we can see the flag fires in Serial Monitor
+            static bool s_pending_logged = false;
+            if (!s_pending_logged) {
+                s_pending_logged = true;
+                Serial.printf("[RUN] g_transfer_pending=true journal_bytes=%u\n",
+                              g_journal_file_bytes);
+            }
+        }
         if (g_cmd_clear_log_pending) {
             g_cmd_clear_log_pending = false;
             Serial.println("[LOG] CLEAR_LOG received — stub, not yet implemented");
@@ -352,10 +359,7 @@ void loop() {
             tare_save_to_spiffs(g_tare_raw);
             g_prev_gross_g = -1.0f;
             weight_init();
-            Serial.printf("#%04u t=%.1f boot=%lu [RUN] event=RETARE result=OK "
-                          "new_tare=%.1f old_tare=%.1f\n",
-                          0, millis() / 1000.0f, (unsigned long)g_boot_count,
-                          g_tare_raw, old_tare);
+            journal_retare(g_tare_raw, old_tare);
             g_state = STATE_RUNNING;
             phase_start_ms = millis();
         } else if (tr.status == TARE_FAILED) {

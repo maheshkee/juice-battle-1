@@ -34,11 +34,12 @@ DAILY_USE_DEFAULT_G = 350.0   # g/day — conservative middle of Indian househol
 ALERT_AMBER_G       = 2000.0  # gas_remaining threshold — "book a refill" (~5-6 days)
 ALERT_RED_G         = 1000.0  # gas_remaining threshold — "order now" (~2-3 days)
 MIN_HISTORY_DAYS    = 7       # minimum days of data before V2 burn rate is trusted
+ANCHOR_SPREAD_THRESHOLD_G = 30.0  # grams - stable window for anchor detection
 # ─────────────────────────────────────────────────────────────────────────────
 
 ui = WebUI()
 
-g_starting_weight    = None
+g_starting_weight    = None   # will be loaded from DB after db_init()
 g_sw_candidate       = None
 g_sw_candidate_val   = 0.0
 g_sw_stable_count    = 0
@@ -71,7 +72,7 @@ def on_weight(grams, quality, sigma, hub_ts):
                     g_sw_candidate_val = grams
                     print(f'[MAIN] [DEV] anchor candidate: {grams:.1f}g waiting...', flush=True)
                 else:
-                    if abs(grams - g_sw_candidate_val) <= 2.0 * sigma:
+                    if abs(grams - g_sw_candidate_val) <= ANCHOR_SPREAD_THRESHOLD_G:
                         g_sw_stable_count += 1
                         g_sw_candidate_val = grams
                         if g_sw_stable_count >= 3:
@@ -250,4 +251,10 @@ print("[MAIN] Gas cylinder monitor hub started", flush=True)
 db_init()
 g_dev_mode = db_get_dev_mode()
 print(f"[MAIN] dev_mode loaded from DB: {g_dev_mode}", flush=True)
+_sw = db_get_starting_weight()
+if _sw and _sw > 0:
+    g_starting_weight = _sw
+    print(f"[MAIN] starting_weight loaded from DB: {_sw}g", flush=True)
+else:
+    print("[MAIN] no starting_weight in DB - will anchor on first stable reading", flush=True)
 App.run()

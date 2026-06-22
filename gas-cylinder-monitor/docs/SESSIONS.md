@@ -900,3 +900,61 @@ First end-to-end DEV mode demo working. Percentage tracks real consumption.
 Alerts fire at correct thresholds. Hub stable. Node auto-reconnects after hub restart.
 
 Do not commit yet.
+
+---
+
+## Session 006 - 2026-06-22 - N1 journal SPIFFS + anchor fix
+
+### Goal
+Build N1: persist journal lines to SPIFFS flash so logs survive power cuts.
+Fix hub anchor logic bug causing spurious re-anchoring on hub restart.
+
+### What happened
+
+#### Node — N1 journal SPIFFS (journal.h, journal.cpp, gas_monitor_v1.ino)
+- Added g_journal_file_bytes (uint32_t) and g_transfer_pending (bool) globals
+- Added JOURNAL_TRANSFER_THRESHOLD_BYTES = 25600 (25KB)
+- Added journal_append() private static helper: opens /node_journal.log in
+  FILE_APPEND mode, writes line, closes immediately (flush guarantee), increments
+  g_journal_file_bytes, sets g_transfer_pending when threshold crossed
+- journal_init() now reads actual SPIFFS file size at boot to initialise
+  g_journal_file_bytes honestly (handles reboot-without-clear correctly)
+- All 7 journal functions rewritten: LOG_PREFIX() + Serial.printf replaced with
+  ++s_seq / full snprintf into 256-byte buffer / Serial.print / journal_append
+  Complete line (prefix + body) written to both Serial and SPIFFS identically
+- Added journal_tare_check(result, delta_g) and journal_retare(new_tare, old_tare)
+  as new journal functions — same full-line pattern with proper sequence numbers
+- Replaced 4 raw Serial.printf calls in gas_monitor_v1.ino with journal calls:
+  3x tare_check lines in STATE_TARE → journal_tare_check()
+  1x RETARE line in STATE_RETARE → journal_retare()
+- Added [DBG] journal_init print at boot showing file_bytes and pending state
+- Added g_transfer_pending stub check in STATE_RUNNING (logs once when flag true)
+
+#### Hub — anchor logic fix (main.py)
+- Added ANCHOR_SPREAD_THRESHOLD_G = 30.0 constant (was using 2.0*sigma ~7g)
+- Fixed anchor spread check: abs(grams - g_sw_candidate_val) <= ANCHOR_SPREAD_THRESHOLD_G
+  (previously used 2.0*sigma which caused mid-settling false anchors)
+- Fixed g_starting_weight initialisation: now loaded from DB immediately after
+  db_init() at startup in DEV mode (previously stayed None until first weight
+  arrived, causing spurious re-anchor on every hub restart)
+
+### Real hardware outputs
+| Check | Result |
+|---|---|
+| journal_init boot=43 file_bytes=0 | VERIFIED — first boot after flash, no file |
+| journal_init boot=46 file_bytes=3531 | VERIFIED — 3.5KB accumulated from boot 45 survived power cycle |
+| Boot sequence complete boot=46 | VERIFIED — all phases normal |
+| sigma boot=46 | 3.56g (healthy range) |
+| tare_check=NO_REF routed correctly | VERIFIED — seq#4 boot=45, not seq#0 |
+| Anchor fix: 5kg weight anchors at ~5021g | VERIFIED — previously anchoring at 578g |
+| WebUI 5028g = 100% after anchor fix | VERIFIED |
+| g_transfer_pending fires at 25KB | NOT YET TESTED — threshold requires ~2hr of heartbeats |
+
+### Gate
+N1 COMPLETE — journal lines persist to SPIFFS across power cycles. File accumulates
+correctly across boots. All journal events including tare_check and retare now
+route through journal functions with correct sequence numbers.
+Anchor fix COMPLETE — hub no longer spuriously re-anchors on restart or during
+mid-settling weight placement.
+Next: 1E — activate BLE log characteristic, MTU gate, stream /node_journal.log
+line-by-line to hub on DUMP_LOG command.

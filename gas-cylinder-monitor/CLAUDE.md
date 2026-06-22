@@ -134,11 +134,11 @@ The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ---
 
-## Current State — 2026-06-18
+## Current State — 2026-06-22
 
-Status:         Hub + Node WORKING end-to-end. First DEV mode demo verified. boot=41 clean.
-Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino (boot=41, NimBLE advertising restart added)
-Modules:        hx711, tare (+ SPIFFS persistence), noise, cal, weight, ble (+ command char), health, journal — all .h/.cpp
+Status:         Hub + Node WORKING end-to-end. N1 journal SPIFFS complete. boot=46 clean.
+Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino (boot=46, N1 journal SPIFFS, journal_tare_check, journal_retare)
+Modules:        hx711, tare (+ SPIFFS persistence), noise, cal, weight, ble (+ command char), health, journal (+ SPIFFS, g_journal_file_bytes, g_transfer_pending, journal_tare_check, journal_retare) — all .h/.cpp
 Boot sequence:  SETTLE → TARE_WAIT → TARE → NOISE → CAL → RUNNING
 
 Transport:      BLE-only (WiFi removed entirely)
@@ -216,9 +216,16 @@ Known TODOs (deferred, tracked):
                        Fix: update TareResult struct to expose variance
   TODO 1B-persistence: prev_cal_factor/prev_sigma_g not read from config.json
                        Fix: read/write at boot and after CAL_SUCCESS
+  TODO-N1-RAW-SERIAL:  Four raw Serial.printf calls in gas_monitor_v1.ino
+  bypass journal and do not write to SPIFFS:
+    - tare_check=CLEAN line in STATE_TARE (now replaced by journal_tare_check)
+    - tare_check=SUSPECT line in STATE_TARE (now replaced by journal_tare_check)
+    - tare_check=NO_REF line in STATE_TARE (now replaced by journal_tare_check)
+    - event=RETARE line in STATE_RETARE (now replaced by journal_retare)
+  STATUS: RESOLVED this session. All four routed through journal functions.
 
 Hub status: DEPLOYED and WORKING at arduino@AQ3:7000
-            DEV mode: auto-anchor (3-reading spread window, ANCHOR_SPREAD_THRESHOLD_G=30g)
+            DEV mode: auto-anchor (3-reading spread window, ANCHOR_SPREAD_THRESHOLD_G=30g, g_starting_weight loaded from DB at startup — spurious re-anchor bug fixed 2026-06-22)
             PROD mode: scaffold - Calibrating... placeholder until Group 4
             DEV/PROD toggle: working - WebUI pill, SQLite flag
             Two-level alerts: amber pct<20% + days_remaining, red grams<50g
@@ -227,12 +234,14 @@ Hub status: DEPLOYED and WORKING at arduino@AQ3:7000
             Gas domain (Group 4): NOT BUILT
             Log directory: NOT BUILT
 
-Current position: boot=41 clean. N-TARE-CHECK complete. First end-to-end DEV mode demo verified.
-                  Hub DEV mode working: anchor, percentage, alerts, toggle all working.
-                  Next node: N1 (journalSPIFFS). Next hub: CAL timeout fix, then Group 4.
-Next action:      N1 - journal.cpp appends every line to /node_journal.log on SPIFFS.
-                  RAM counter g_journal_file_bytes. Transfer pending flag at 25KB.
-                  Design in chat. Implement via Claude Code CLI.
+Current position: boot=46 clean. N1 complete — journal persists to SPIFFS, accumulation verified
+                  across power cycles. g_journal_file_bytes + g_transfer_pending in journal.h/journal.cpp.
+                  journal_tare_check() + journal_retare() built — all raw Serial.printf routed through journal.
+                  Hub anchor fix: ANCHOR_SPREAD_THRESHOLD_G=30g fixed constant in spread check;
+                  g_starting_weight loaded from DB at startup in DEV mode — spurious re-anchor eliminated.
+                  Next: 1E — activate log char notify, MTU gate, line-by-line stream, LOG_END sentinel.
+Next action:      1E design in chat. Node: ble.h/cpp MTU callback + onMTUChange, streaming FSM.
+                  Hub: subscribe to log char, write temp file, rename on LOG_END, send CLEAR_LOG.
 
 Backlog:
   1E: BLE journal transport — see PROJECT_CONTEXT.md for design.
