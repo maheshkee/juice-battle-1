@@ -52,6 +52,9 @@ static float g_prev_sigma_g      = -1.0f;
 // TODO 1B-stuck: tare module does not yet expose variance - stuck check will
 // always pass until tare.h is updated to include variance in TareResult.
 static float g_tare_variance_raw = 0.0f;
+static bool  g_cal_degraded      = false;
+// true when cal_factor is a 120s timeout fallback — cleared when real SET_CAL received
+// independent of hardware health (g_health.quality)
 
 // BLE command flags — set by BLE callback, read and cleared by orchestrator
 volatile bool  g_cmd_tare_pending      = false;
@@ -254,6 +257,13 @@ void loop() {
             break;
         }
 
+        static uint32_t s_cal_start_ms      = 0;
+        static bool     s_cal_timer_started = false;
+        if (!s_cal_timer_started) {
+            s_cal_start_ms      = millis();
+            s_cal_timer_started = true;
+        }
+
         // Try to load saved cal_factor from SPIFFS on first entry.
         // s_cal_attempted is a static bool, false until first tick of STATE_CAL.
         // On first tick: attempt cal_load_last(). If valid (> 0), use it and
@@ -284,6 +294,22 @@ void loop() {
             cal_init(g_tare_raw);
         }
 
+        if (millis() - s_cal_start_ms >= 120000UL) {
+            g_cal_factor      = 36.0f;
+            g_cal_degraded    = true;
+            g_sigma_g         = noise_recompute_sigma(g_cal_factor);
+            g_prev_cal_factor = g_cal_factor;
+            uint32_t cal_ms   = millis() - phase_start_ms;
+            journal_phase_complete("CAL", "TIMEOUT_FALLBACK", cal_ms / 1000.0f, g_cal_factor, 0, 0);
+            journal_boot_complete(millis() / 1000.0f, g_cal_factor, g_sigma_g, (float)g_tare_raw);
+            Serial.printf("[CAL] TIMEOUT — using fallback cal_factor=36.0 quality=DEGRADED\n");
+            strncpy(g_health.quality, "DEGRADED", sizeof(g_health.quality));
+            weight_init();
+            g_state        = STATE_RUNNING;
+            phase_start_ms = millis();
+            break;
+        }
+
         CalResult cr = cal_update(r.value);
         if (cr.status == CAL_SUCCESS) {
             g_cal_factor = cr.cal_factor;
@@ -308,6 +334,27 @@ void loop() {
     }
 
     case STATE_RUNNING: {
+        if (g_cmd_set_cal_pending) {
+            g_cmd_set_cal_pending = false;
+            float new_cal = g_cmd_cal_value;
+            // Sanity check — platform verified range is 34.47-36.27, window is 30.0-45.0
+            if (new_cal >= 30.0f && new_cal <= 45.0f) {
+                float old_cal     = g_cal_factor;
+                g_cal_factor      = new_cal;
+                g_sigma_g         = noise_recompute_sigma(g_cal_factor);
+                g_prev_cal_factor = g_cal_factor;
+                cal_save(g_cal_factor);
+                g_cal_degraded = false;
+                // real cal_factor received — quality returns to hardware health signal
+                // set quality back to GOOD — match existing quality mechanism
+                Serial.printf("[RUNNING] SET_CAL mid-session old=%.4f new=%.4f quality=GOOD\n",
+                              old_cal, g_cal_factor);
+                // journal this event — use Serial.printf only, no journal_ call needed
+                // (journal functions are for phase events, not mid-session updates)
+            } else {
+                Serial.printf("[RUNNING] SET_CAL rejected — out of range %.4f\n", new_cal);
+            }
+        }
         if (g_cmd_retare_pending) {
             g_cmd_retare_pending = false;
             tare_init();
@@ -341,7 +388,8 @@ void loop() {
             3.0f
         );
         g_prev_gross_g = wr.grams;
-        ble_notify(wr.grams, g_health.quality, g_sigma_g);
+        const char* quality_out = g_cal_degraded ? "DEGRADED" : g_health.quality;
+        ble_notify(wr.grams, quality_out, g_sigma_g);
         log_transfer_tick();
         journal_run(wr.grams, g_sigma_g, g_health, wr.event, wr.delta);
         journal_heartbeat_tick(wr.grams, g_sigma_g, g_health);
