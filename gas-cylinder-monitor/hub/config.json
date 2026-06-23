@@ -4,5 +4,14 @@
   "service_uuid": "aa206b91-235b-42aa-b370-453a3feedf35",
   "weight_char_uuid": "b9b25bb1-f2a9-4545-b48f-295ab2789f41",
   "reconnect_delay_s": 5.0,
-  "scan_timeout_s": 10.0
+  "scan_timeout_s": 10.0,
+  "brand": null,
+  "install_mode": null,
+  "cylinder_state": "UNINSTALLED",
+  "steel_g": null,
+  "steel_source": null,
+  "steel_anchored_at": null,
+  "cal_factor": null,
+  "tare_raw": null,
+  "cal_tare_session": null
 }

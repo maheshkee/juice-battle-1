@@ -52,27 +52,6 @@
     .node-text .sep  { margin: 0 5px; color: #374151; }
     .node-text .mac  { color: #4b5563; }
 
-    /* ── mode toggle ─────────────────────────────────────── */
-    .toggle-pill {
-      display: flex;
-      border: 1px solid #27272a;
-      border-radius: 999px;
-      overflow: hidden;
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .toggle-opt {
-      padding: 4px 14px;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      color: #52525b;
-      transition: background 0.2s, color 0.2s;
-    }
-    .toggle-opt.active-dev  { background: #f59e0b; color: #000; }
-    .toggle-opt.active-prod { background: #22c55e; color: #000; }
-
     /* ── main card ───────────────────────────────────────── */
     .main {
       flex: 1;
@@ -216,10 +195,6 @@
       </div>
     </div>
 
-    <div class="toggle-pill">
-      <div class="toggle-opt" id="opt-dev"  onclick="setMode(true)">DEV</div>
-      <div class="toggle-opt" id="opt-prod" onclick="setMode(false)">PROD</div>
-    </div>
   </div>
 
   <!-- alert banner -->
@@ -276,8 +251,6 @@
     var nameEl    = document.getElementById('node-name');
     var sepEl     = document.getElementById('node-sep');
     var macEl     = document.getElementById('node-mac');
-    var optDev      = document.getElementById('opt-dev');
-    var optProd     = document.getElementById('opt-prod');
     var bannerEl    = document.getElementById('alert-banner');
     var alertTextEl = document.getElementById('alert-text');
 
@@ -296,15 +269,6 @@
                ' ' + m[1] + ' ' + m[4];
       }
       return ts;
-    }
-
-    function applyMode(enabled) {
-      optDev.className  = 'toggle-opt' + (enabled  ? ' active-dev'  : '');
-      optProd.className = 'toggle-opt' + (!enabled ? ' active-prod' : '');
-    }
-
-    function setMode(enabled) {
-      socket.emit('set_dev_mode', { enabled: enabled });
     }
 
     function applyUpdate(data) {
@@ -352,15 +316,8 @@
         pctBarBg.style.display = 'none';
       }
 
-      if (!data.dev_mode && !data.prod_ready) {
-        pctRowEl.style.display = 'none';
-        pctBarBg.style.display = 'none';
-        var calEl = document.getElementById('calibrating-label');
-        if (calEl) calEl.style.display = 'block';
-      } else {
-        var calEl = document.getElementById('calibrating-label');
-        if (calEl) calEl.style.display = 'none';
-      }
+      var calEl = document.getElementById('calibrating-label');
+      if (calEl) calEl.style.display = (data.cylinder_state === 'BOOTSTRAP_ANCHOR') ? 'block' : 'none';
     }
 
     var socket = io();
@@ -382,9 +339,6 @@
       }
     });
 
-    socket.on('dev_mode_ack', function(data) {
-      applyMode(data.enabled);
-    });
-  </script>
+</script>
 </body>
 </html>

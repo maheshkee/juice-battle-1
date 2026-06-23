@@ -958,3 +958,82 @@ Anchor fix COMPLETE — hub no longer spuriously re-anchors on restart or during
 mid-settling weight placement.
 Next: 1E — activate BLE log characteristic, MTU gate, stream /node_journal.log
 line-by-line to hub on DUMP_LOG command.
+
+---
+
+## Session 7 — 2026-06-22
+
+**Goal:** Build 1E — BLE log characteristic streaming. Full DUMP_LOG/stream/LOG_END/CLEAR_LOG pipeline.
+
+**What was built:**
+- Node: log_transfer.h / log_transfer.cpp — full transfer FSM (IDLE/SENDING/DONE)
+- Node: ble.cpp — g_mtu_ready flag, onMTUChange callback, log_transfer_abort in onDisconnect
+- Node: gas_monitor_v1.ino — wired DUMP_LOG/g_transfer_pending/CLEAR_LOG stubs to real calls, log_transfer_tick in RUNNING
+- Node: delay(10) added to STATE_TARE_WAIT — fixes FreeRTOS watchdog starvation crash
+- Hub: ble_subscriber.py — log char + cmd char discovered, _subscribe_log_notify, _on_log_notify, write_command, _connecting guard
+- Hub: main.py — on_log_line handler, LOG_START/LOG_END sentinels, temp file→logs/node/, DUMP_LOG trigger on connect, CLEAR_LOG after verify, duplicate LOG_START guard
+
+**Hardware verified:**
+- MTU negotiated: 255 bytes (QRB2210 BlueZ → ESP32-C3 NimBLE)
+- Transfer: 233 lines streamed, 21102 bytes, at ~10Hz pace
+- CLEAR_LOG received and SPIFFS cleared — g_journal_file_bytes reset to 0
+- Second transfer after clear: 16 lines, 1468 bytes — clean no duplicates
+- Abort-and-preserve: BLE drop mid-transfer → file preserved → retransfer on reconnect verified
+- FreeRTOS watchdog: boot=1 crashed at t=11.978s (TARE_WAIT starvation) — fixed with delay(10), boot=6 ran 5000+ seconds clean
+
+**Gate result:** PASSED — 1E complete end-to-end verified on hardware
+
+**Key fixes discovered:**
+- hub write_command must strip newline — node strcmp requires exact match without \n
+- BLESubscriber needs _connecting guard to prevent duplicate connect on hub restart
+- on_log_line needs LOG_START guard to prevent duplicate temp file open
+- delay(10) mandatory in STATE_TARE_WAIT to yield FreeRTOS IDLE task
+- Full chip erase (Erase All Flash) destroys 2nd stage bootloader — never use for flash failures
+
+**Next session:** CAL timeout fix (HIGH PRIORITY) — 120s timeout on STATE_CAL → 36.0 fallback → DEGRADED quality
+
+---
+
+## Session — 2026-06-23 — CAL timeout fix + g_cal_degraded flag
+
+**Goal:** CAL timeout fix — prevent indefinite hang in STATE_CAL when hub is offline and SPIFFS is empty.
+
+**What was built:**
+- 120s timeout in STATE_CAL → 36.0 fallback → g_cal_degraded = true
+- SET_CAL accepted in STATE_RUNNING → updates g_cal_factor immediately, clears g_cal_degraded
+- g_cal_degraded = false on real SET_CAL received (in either STATE_CAL or STATE_RUNNING)
+- g_cal_degraded overrides BLE payload quality to DEGRADED when cal is a fallback
+- Journal always records true hardware health — never masked by g_cal_degraded
+
+**Gate result:** VERIFIED on boot=8 — SPIFFS fast-load path confirmed working
+
+**Node boot count at session end:** boot=8
+
+---
+
+## Session — 2026-06-23 — G4 hub domain logic: modular reorg + state machine + gas%
+
+**Goal:** G4 hub domain logic — modular reorganisation, production state machine, gas% calculation, setup endpoint.
+
+**What was built:**
+- log_transfer.py extracted from main.py (chunk 1) — owns LOG_DIR, LOG_TMP, LOG_START/LOG_END pipeline
+- domain.py created: all constants, state machine, anchor window, steel derivation,
+  gas% calc, bootstrap regimes (FRESH/PARTIAL_BRAND/PARTIAL_PRIOR), first-reading cross-check,
+  setup endpoint handler (chunks 2–4)
+- main.py: 267 → 113 lines, DEV mode fully deleted, wired to domain.py (chunk 3)
+- db.py: new columns gas_pct, gas_g, alert_level, cylinder_state; dead DEV functions removed (chunks 5–6)
+- index.html: DEV/PROD toggle removed, calibrating-label wired to cylinder_state === 'BOOTSTRAP_ANCHOR' (chunk 6)
+- config.json: G4 schema fields added (brand, install_mode, cylinder_state, steel_g,
+  steel_source, steel_anchored_at, cal_factor, tare_raw, cal_tare_session)
+
+**What was verified:**
+- UNINSTALLED state on empty platform — correct
+- setup endpoint fires BOOTSTRAP_ANCHOR transition — confirmed
+- Anchor window correctly ignores readings < 26000g — confirmed
+- config.json persists state across deploy — confirmed
+- DEV/PROD toggle gone from WebUI — confirmed visually
+- Full pipeline: [DOMAIN] → [DB] → [MAIN] clean on every reading
+
+**Hub module count:** 5 files, each single responsibility
+**Node boot at session end:** boot=9
+**Gate result:** G4 COMPLETE

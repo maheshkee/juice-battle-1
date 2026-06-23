@@ -1,4 +1,5 @@
 #include "ble.h"
+#include "log_transfer.h"
 #include <NimBLEDevice.h>
 
 #define SERVICE_UUID "aa206b91-235b-42aa-b370-453a3feedf35"
@@ -6,7 +7,8 @@
 
 static NimBLECharacteristic* s_char    = nullptr;
 static NimBLEService*        s_service = nullptr;
-NimBLECharacteristic*        g_log_char = nullptr;
+NimBLECharacteristic*  g_log_char  = nullptr;
+bool                   g_mtu_ready = false;  // set true in onMTUChange - gates log transfer
 
 // ---- Command write callback ----
 
@@ -49,6 +51,11 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
         NimBLEDevice::startAdvertising();
         Serial.println("[BLE] Restarting advertising after disconnect");
+        log_transfer_abort();
+    }
+    void onMTUChange(uint16_t MTU, NimBLEConnInfo& connInfo) override {
+        g_mtu_ready = true;
+        Serial.printf("[BLE] MTU exchanged: %u - log transfer enabled\n", MTU);
     }
 };
 

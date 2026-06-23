@@ -9,6 +9,7 @@ static const char* BLE_LOG_CHAR_UUID = "d7b3e2f4-5e7c-4b8d-9f1a-2c3e4f5a6b7c";
 
 // Log characteristic handle — journal.cpp calls g_log_char->notify() to stream lines
 extern NimBLECharacteristic* g_log_char;
+extern bool g_mtu_ready;   // true after MTU exchange completes - gate for log transfer
 
 // BLE command flags — defined in gas_monitor_v1.ino, set by BLE write callback
 extern volatile bool  g_cmd_tare_pending;

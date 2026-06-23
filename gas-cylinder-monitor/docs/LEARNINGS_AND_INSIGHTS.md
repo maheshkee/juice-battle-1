@@ -1846,3 +1846,189 @@ the noise sigma. Sigma measures noise floor. Placement dynamics are orders of
 magnitude larger and require a separate, independently-derived threshold.
 
 Production implication: HUB-WATCHDOG must detect hci0 DOWN for >10 min, power on failing, and trigger automatic reboot via host systemd watchdog service.
+
+---
+
+## L-076 — BLE MTU must be negotiated before GATT notify can carry large payloads
+Date: 2026-06-22
+
+Default BLE MTU = 23 bytes, 3 bytes GATT overhead = 20 bytes usable payload.
+NimBLE notify() silently truncates values larger than the negotiated MTU payload.
+No error, no indication — hub receives truncated data silently.
+BlueZ on QRB2210 automatically requests MTU=517 on connect. NimBLE caps at 247.
+After negotiation: 247 - 3 bytes notify opcode = 244 bytes usable.
+MTU exchange completes BEFORE ServicesResolved — so by the time hub sends DUMP_LOG,
+g_mtu_ready is already true. The flag is a safety gate only, not a real wait.
+Verified: MTU=255 reported by onMTUChange callback on QRB2210+NimBLE pairing.
+
+---
+
+## L-077 — FreeRTOS watchdog fires when loop() spins without yielding during long waits
+Date: 2026-06-22
+
+ESP32-C3 FreeRTOS has a task watchdog that fires if the IDLE task is starved.
+STATE_TARE_WAIT runs for up to 60 seconds with no delay() or yield() calls.
+loop() spins thousands of times per second — IDLE task never gets CPU time.
+Watchdog timeout: ~12 seconds on default config.
+Fix: delay(10) in STATE_TARE_WAIT yields 10ms per tick to FreeRTOS scheduler.
+This is sufficient for IDLE task to reset the watchdog without affecting command response time.
+Verified: boot=1 crashed at t=11.978s with "IDLE (CPU 0)" watchdog message.
+After fix: boot=6 ran 5000+ seconds with no watchdog trigger.
+Rule: any state with a long timeout window must have delay() or vTaskDelay() — no exceptions.
+
+---
+
+## L-078 — BLE notify pacing must be rate-limited — TX queue overflow causes silent packet loss
+Date: 2026-06-22
+
+NimBLE notify() is non-blocking — copies to internal TX queue and returns in microseconds.
+TX queue depth: 3-12 entries depending on NimBLE config.
+loop() between HX711 ready events runs ~7000 times per second.
+One notify per loop tick = queue fills in milliseconds = silent packet drop.
+Hub receives incomplete log with no error signal.
+Fix: gate log_transfer_tick() on HX711 DOUT ready event — natural 10Hz pacer.
+10Hz = 100ms between notifies — TX queue drains completely between calls.
+No extra timer needed. The HX711 itself is the clock.
+Verified: 233 lines transferred cleanly at 10Hz with no missing lines.
+
+---
+
+## L-079 — hub write_command must strip trailing newline — node strcmp requires exact match
+Date: 2026-06-22
+
+Node command handler uses strcmp(buf, "DUMP_LOG") for exact string matching.
+hub write_command was sending "DUMP_LOG\n" with trailing newline.
+buf contained "DUMP_LOG\n" and strcmp failed — logged as "Unknown command".
+Fix: cmd_clean = cmd.strip() before encoding and WriteValue.
+Rule: BLE command strings must be sent without trailing newline.
+The \n convention from Serial is not appropriate for BLE write characteristics.
+Verified: after strip fix, [CMD] Received: DUMP_LOG appeared correctly.
+
+---
+
+## L-080 — Full chip erase destroys 2nd stage bootloader — ESP32-C3 loses USB CDC
+Date: 2026-06-22
+
+ESP32-C3 has two bootloaders: ROM (permanent, in silicon) and 2nd stage (flashed at 0x0).
+USB CDC On Boot feature requires 2nd stage bootloader to initialize the USB serial stack.
+"Erase All Flash" in Arduino IDE wipes 0x0 — destroys 2nd stage bootloader.
+Without it: USB CDC not initialized → no COM port → normal flashing impossible.
+Recovery: ROM bootloader exposes USB Serial/JTAG hardware controller independently.
+Use esptool --no-stub with merged.bin at 115200 baud to restore everything in one pass.
+merged.bin = complete 4MB flash image including bootloader + partitions + sketch.
+Arduino IDE always generates it in the build cache folder.
+Rule: never use Erase All Flash to fix flash failures. Lower baud rate to 115200 instead.
+Verified: recovery via esptool --no-stub write_flash 0x0 merged.bin succeeded after full erase.
+
+---
+
+## L-081 — Log transfer idempotency: SPIFFS file is ground truth, never cleared without disk confirm
+Date: 2026-06-22
+
+Hub sends CLEAR_LOG only after verifying: os.path.exists(dst) and os.path.getsize(dst) > 0.
+Node never clears SPIFFS without receiving CLEAR_LOG.
+On any BLE drop: node resets FSM to IDLE, preserves SPIFFS file.
+On reconnect: hub sends DUMP_LOG again → full retransfer from SPIFFS → hub overwrites temp file.
+Result: transfer is idempotent — repeat as many times as needed, always same result.
+This is the write-ahead log principle: confirm durable copy exists before discarding original.
+Verified: BLE drop mid-transfer logged "SPIFFS file preserved" — retransfer on reconnect clean.
+Verified: empty temp file on LOG_END correctly withheld CLEAR_LOG — file survived on node.
+
+---
+
+## L-082 — g_cal_degraded is a calibration confidence flag, not a hardware health flag
+Date: 2026-06-23
+
+g_cal_degraded and g_health.quality are independent signals.
+Hardware health lives in g_health.quality, owned by health_check().
+Calibration confidence lives in g_cal_degraded, owned by the CAL state machine.
+BLE payload uses g_cal_degraded to override quality to DEGRADED when cal is a fallback.
+Journal always records true hardware health — never masked by g_cal_degraded.
+Never conflate hardware health with calibration confidence.
+
+---
+
+## L-083 — SET_CAL accepted mid-session in STATE_RUNNING is correct
+Date: 2026-06-23
+
+cal_factor is a pure mathematical scalar — a unit conversion ratio (raw counts per gram).
+Swapping it mid-session means "use this better conversion ratio from now on."
+No physical reality is violated. The physical zero reference is unchanged.
+tare_raw cannot be swapped mid-session for the opposite reason: it encodes physical
+state — the actual zero baseline of the load cell in its current mounting and load condition.
+Changing tare_raw mid-session would corrupt all subsequent weight calculations.
+
+---
+
+## L-084 — Windowed average for steel_g derivation is mandatory
+Date: 2026-06-23
+
+steel_g is a permanent constant for the cylinder lifetime (~45-60 days).
+A single noisy reading bakes platform drift error into every gas% calculation permanently.
+A windowed average of N stable readings reduces noise by sqrt(N).
+The stability gate (spread < ANCHOR_STABILITY_WINDOW_G) filters transient disturbances simultaneously.
+Same window is used for both the stability gate AND the steel_g mean — no separate passes needed.
+Error in steel_g compounds into every gas% reading for the entire cylinder lifetime.
+
+---
+
+## L-085 — Explicit state machine is correct over a flat alert-flag model
+Date: 2026-06-23
+
+UNINSTALLED / TRACKING / LOW_GAS / EMPTY are explicit separate states.
+LOW_GAS is NOT a flag inside TRACKING.
+Future features need clean state boundaries: EMPTY detection, polling frequency changes,
+watchdog escalation scaling, prediction module gating.
+Adding explicit states is additive — each new state is isolated.
+Adding flags to a flat model creates tangled conditionals that grow harder to reason about.
+Both TRACKING and LOW_GAS share the same gas% calculation and the same steel_g reference.
+The state machine boundary is purely about behaviour and future extensibility.
+
+---
+
+## L-086 — DEV mode scaffolding must be deleted, not kept alongside production logic
+Date: 2026-06-23
+
+Two parallel code paths (DEV and PROD) create a silent failure risk. If the PROD path has a
+bug, DEV mode masks it during development. The developer tests DEV, ships PROD, bug surfaces
+in production only. Delete DEV mode the moment the production replacement is built and verified.
+Keeping "dev_mode" branches alongside the production state machine means every new feature must
+be written twice, and the two paths will inevitably diverge. The correct sequence: build the
+production path, verify it, then delete the scaffold entirely in the same session.
+
+---
+
+## L-087 — Hub modular orchestra rule mirrors node modular rule exactly
+Date: 2026-06-23
+
+Orchestrator (main.py) owns zero logic — only wires callbacks and passes data between modules.
+Domain logic in domain.py. Transport in ble_subscriber.py. Log pipeline in log_transfer.py.
+Storage in db.py. Each file answerable to a single question: "what does this file do?"
+If the answer has an "and" in it, the file needs splitting. This is the same rule as the node
+(gas_monitor_v1.ino = orchestrator, hx711/tare/noise/cal/weight/health/journal = modules).
+The seam between hub modules is function calls and return values, not shared globals.
+
+---
+
+## L-088 — config.json is the hub's source of truth for persistent state
+Date: 2026-06-23
+
+config.json must be read at startup (load_config) and written on every state transition
+(_save_config). Two invariants must never be violated:
+(1) Never overwrite BLE transport keys when writing domain keys — always read-modify-write the
+    full JSON, update only the domain keys, write back. BLE keys (device_name, device_address,
+    service_uuid, etc.) belong to ble_subscriber and must not be clobbered by domain saves.
+(2) cal_factor and tare_raw are always stored as a pair with timestamp (cal_tare_session).
+    The hub must never load one without the other — they encode the same physical session.
+
+---
+
+## L-089 — python-socketio emit with polling transport delivers correctly despite warning
+Date: 2026-06-23
+
+Triggering the setup endpoint from a test script via python-socketio on the AQ3 host works
+with polling transport even without the websocket-client package installed.
+The warning "Only polling transport is available — install the websocket-client package" is
+non-fatal. emit() still delivers the message correctly over HTTP long-polling.
+This is useful for one-shot CLI testing of hub endpoints without installing extra packages.
+Do not mistake the warning for a failure. Check the hub logs for the actual handler output.

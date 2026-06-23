@@ -14,6 +14,7 @@
 #include "ble.h"
 #include "health.h"
 #include "journal.h"
+#include "log_transfer.h"
 
 enum BootState {
     STATE_SETTLE,
@@ -141,6 +142,7 @@ void loop() {
             g_state = STATE_TARE;
             phase_start_ms = millis();
         }
+        delay(10);  // yield to FreeRTOS IDLE task — prevents watchdog starvation during 60s wait
         break;
     }
 
@@ -315,21 +317,15 @@ void loop() {
         }
         if (g_cmd_dump_log_pending) {
             g_cmd_dump_log_pending = false;
-            // stub — log transfer FSM to be built in next session
+            log_transfer_start();
         }
-        if (g_transfer_pending) {
-            // TODO N-LOG-TRANSFER: transfer FSM not yet built
-            // Log once so we can see the flag fires in Serial Monitor
-            static bool s_pending_logged = false;
-            if (!s_pending_logged) {
-                s_pending_logged = true;
-                Serial.printf("[RUN] g_transfer_pending=true journal_bytes=%u\n",
-                              g_journal_file_bytes);
-            }
+        if (g_transfer_pending && g_lt_state == LT_IDLE) {
+            // 25KB threshold crossed - auto-push without waiting for hub DUMP_LOG
+            log_transfer_start();
         }
         if (g_cmd_clear_log_pending) {
             g_cmd_clear_log_pending = false;
-            Serial.println("[LOG] CLEAR_LOG received — stub, not yet implemented");
+            log_transfer_clear();
         }
 
         WeightResult wr = weight_update(r.value, g_tare_raw, g_cal_factor, g_sigma_g);
@@ -346,6 +342,7 @@ void loop() {
         );
         g_prev_gross_g = wr.grams;
         ble_notify(wr.grams, g_health.quality, g_sigma_g);
+        log_transfer_tick();
         journal_run(wr.grams, g_sigma_g, g_health, wr.event, wr.delta);
         journal_heartbeat_tick(wr.grams, g_sigma_g, g_health);
         break;

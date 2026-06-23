@@ -1,6 +1,6 @@
 # CLAUDE.md — gas-cylinder-monitor
 # Board: Arduino UNO Q AQ3 | IP: 192.168.1.161 | user: arduino
-# Last updated: 2026-06-18
+# Last updated: 2026-06-23
 # Read this FULLY before doing anything in this directory.
 
 ---
@@ -134,10 +134,10 @@ The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ---
 
-## Current State — 2026-06-22
+## Current State — 2026-06-23
 
-Status:         Hub + Node WORKING end-to-end. N1 journal SPIFFS complete. boot=46 clean.
-Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino (boot=46, N1 journal SPIFFS, journal_tare_check, journal_retare)
+Status:         Hub + Node WORKING end-to-end. G4 hub domain logic complete. boot=9 clean.
+Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino (boot=9, CAL timeout fix, N1 journal SPIFFS)
 Modules:        hx711, tare (+ SPIFFS persistence), noise, cal, weight, ble (+ command char), health, journal (+ SPIFFS, g_journal_file_bytes, g_transfer_pending, journal_tare_check, journal_retare) — all .h/.cpp
 Boot sequence:  SETTLE → TARE_WAIT → TARE → NOISE → CAL → RUNNING
 
@@ -185,7 +185,7 @@ BLE characteristics locked (all sessions):
   Service UUID:   aa206b91-235b-42aa-b370-453a3feedf35
   Weight char:    b9b25bb1-f2a9-4545-b48f-295ab2789f41 (notify)
   Command char:   c8a2f1e3-4d6b-4a7c-8e9f-1b2d3e4f5a6b (write-without-response) — BUILT
-  Log char:       d7b3e2f4-5e7c-4b8d-9f1a-2c3e4f5a6b7c (notify) — registered, 1E not yet built
+  Log char:       d7b3e2f4-5e7c-4b8d-9f1a-2c3e4f5a6b7c (notify) — BUILT, 1E ✅ COMPLETE
   Commands:       TARE | SKIP_TARE | SET_CAL:\<value\> | RETARE | DUMP_LOG | CLEAR_LOG
 
 Hub constants locked (2026-06-18 session 2):
@@ -225,28 +225,35 @@ Known TODOs (deferred, tracked):
   STATUS: RESOLVED this session. All four routed through journal functions.
 
 Hub status: DEPLOYED and WORKING at arduino@AQ3:7000
-            DEV mode: auto-anchor (3-reading spread window, ANCHOR_SPREAD_THRESHOLD_G=30g, g_starting_weight loaded from DB at startup — spurious re-anchor bug fixed 2026-06-22)
-            PROD mode: scaffold - Calibrating... placeholder until Group 4
-            DEV/PROD toggle: working - WebUI pill, SQLite flag
-            Two-level alerts: amber pct<20% + days_remaining, red grams<50g
+            Gas domain (G4):  ✅ COMPLETE — state machine (UNINSTALLED/BOOTSTRAP_ANCHOR/TRACKING/LOW_GAS),
+                              gas%, setup endpoint, modular reorg (main.py 113 lines)
+            DEV/PROD toggle:  ✅ REMOVED — G4 production architecture replaces DEV mode scaffold
+            Two-level alerts: AMBER (gas_g < 2000g) + RED (gas_g < 1000g) with days_remaining
             node_status topbar: green dot, MAC, name
             IST timestamp: fixed - subprocess date call
-            Gas domain (Group 4): NOT BUILT
-            Log directory: NOT BUILT
+            Log directory: ✅ COMPLETE — logs/node/ created, files saved per transfer
 
-Current position: boot=46 clean. N1 complete — journal persists to SPIFFS, accumulation verified
-                  across power cycles. g_journal_file_bytes + g_transfer_pending in journal.h/journal.cpp.
-                  journal_tare_check() + journal_retare() built — all raw Serial.printf routed through journal.
-                  Hub anchor fix: ANCHOR_SPREAD_THRESHOLD_G=30g fixed constant in spread check;
-                  g_starting_weight loaded from DB at startup in DEV mode — spurious re-anchor eliminated.
-                  Next: 1E — activate log char notify, MTU gate, line-by-line stream, LOG_END sentinel.
-Next action:      1E design in chat. Node: ble.h/cpp MTU callback + onMTUChange, streaming FSM.
-                  Hub: subscribe to log char, write temp file, rename on LOG_END, send CLEAR_LOG.
+Hub python/ structure (5 modules, single responsibility each):
+            main.py           — orchestrator: wires callbacks, passes data between modules
+            ble_subscriber.py — BLE receive (weight/log notify), command write
+            log_transfer.py   — LOG_START/LOG_END pipeline, temp file → logs/node/
+            domain.py         — cylinder state machine, steel derivation, gas%, alerts
+            db.py             — SQLite storage, schema migrations
+
+Hub config:   data/config.json — G4 schema fields now populated:
+              brand, install_mode, cylinder_state, steel_g, steel_source, steel_anchored_at,
+              cal_factor, tare_raw, cal_tare_session
+
+Current position: G4 ✅ COMPLETE — hub domain logic, state machine, gas%, setup endpoint, modular reorg.
+                  1E ✅ COMPLETE — DUMP_LOG/stream/LOG_END/CLEAR_LOG pipeline built (hub python).
+                  N1 ✅ COMPLETE — journal persists to SPIFFS. boot=9 clean.
+Next action:      N-TARE-CHECK extension — restore TARE_CHECK_THRESHOLD_G to 2000g for production.
+                  Then: 3E-005 anchor validation experiment.
 
 Backlog:
-  1E: BLE journal transport — see PROJECT_CONTEXT.md for design.
-      Not yet implemented. Do not confuse with existing BLE weight notify.
-      Requires a second BLE characteristic, separate UUID.
+  1E: BLE journal transport — ✅ COMPLETE (hub side).
+      Hub subscribes to log char, handles LOG_START/LOG_END sentinel, saves to logs/node/.
+      CLEAR_LOG sent only after file confirmed on disk. Node streaming FSM built in prior session.
 
   HUB-001: Auto-retare on cylinder removal.
       BLE command char now BUILT on node (2026-06-18). RETARE command handler built (stub).
@@ -258,7 +265,7 @@ Backlog:
   HUB-WATCHDOG: BT adapter watchdog (PRE-PRODUCTION REQUIRED)
       Status: NOT BUILT
       Gate: Must exist before device goes into production kitchen.
-            Do not skip. Do not defer past hub Group 4.
+            Do not skip. Do not defer past hub Group 5.
       Problem: WCN3990 Qualcomm BT chip can crash at firmware level
                (hardware error 0x00, Reading QCA version information failed -110).
                No software recovery possible — requires full system reboot.

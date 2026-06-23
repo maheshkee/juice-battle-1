@@ -10,61 +10,51 @@ def db_init():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.execute('''CREATE TABLE IF NOT EXISTS readings (
-        id      INTEGER PRIMARY KEY AUTOINCREMENT,
-        ts      TEXT NOT NULL,
-        grams   REAL NOT NULL,
-        quality TEXT NOT NULL,
-        sigma   REAL NOT NULL
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts             TEXT NOT NULL,
+        grams          REAL NOT NULL,
+        quality        TEXT NOT NULL,
+        sigma          REAL NOT NULL,
+        gas_pct        REAL,
+        gas_g          REAL,
+        alert_level    TEXT,
+        cylinder_state TEXT
     )''')
     conn.execute('''CREATE TABLE IF NOT EXISTS config (
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
     )''')
+    # Add new columns to existing DBs — safe to run repeatedly
+    for col_sql in [
+        'ALTER TABLE readings ADD COLUMN gas_pct        REAL',
+        'ALTER TABLE readings ADD COLUMN gas_g          REAL',
+        'ALTER TABLE readings ADD COLUMN alert_level    TEXT',
+        'ALTER TABLE readings ADD COLUMN cylinder_state TEXT',
+    ]:
+        try:
+            conn.execute(col_sql)
+        except Exception:
+            pass  # column already exists
     conn.commit()
     conn.close()
 
 
-def db_insert_reading(ts, grams, quality, sigma):
+def db_insert_reading(ts, grams, quality, sigma,
+                      gas_pct=None, gas_g=None,
+                      alert_level=None, cylinder_state=None):
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.execute(
-            'INSERT INTO readings (ts, grams, quality, sigma) VALUES (?, ?, ?, ?)',
-            (ts, grams, quality, sigma)
+            '''INSERT INTO readings
+               (ts, grams, quality, sigma, gas_pct, gas_g, alert_level, cylinder_state)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+            (ts, grams, quality, sigma, gas_pct, gas_g, alert_level, cylinder_state)
         )
         conn.commit()
         conn.close()
         print(f'[DB] inserted: grams={grams:.1f} quality={quality}', flush=True)
     except Exception as e:
         print(f'[DB] insert error: {e}', flush=True)
-
-
-def db_get_starting_weight():
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        row = conn.execute(
-            "SELECT value FROM config WHERE key='starting_weight'"
-        ).fetchone()
-        conn.close()
-        if row:
-            return float(row[0])
-        return None
-    except Exception as e:
-        print(f'[DB] get_starting_weight error: {e}', flush=True)
-        return None
-
-
-def db_set_starting_weight(grams):
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute(
-            "INSERT OR REPLACE INTO config (key, value) VALUES ('starting_weight', ?)",
-            (str(round(grams, 1)),)
-        )
-        conn.commit()
-        conn.close()
-        print(f'[DB] starting_weight set to {round(grams, 1)}', flush=True)
-    except Exception as e:
-        print(f'[DB] set_starting_weight error: {e}', flush=True)
 
 
 def db_get_latest_reading():
@@ -83,30 +73,3 @@ def db_get_latest_reading():
         return None
 
 
-def db_get_dev_mode():
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        row = conn.execute(
-            "SELECT value FROM config WHERE key='dev_mode'"
-        ).fetchone()
-        conn.close()
-        if row:
-            return row[0] == '1'
-        return True  # default: dev mode on
-    except Exception as e:
-        print(f'[DB] get_dev_mode error: {e}', flush=True)
-        return True
-
-
-def db_set_dev_mode(enabled: bool):
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute(
-            "INSERT OR REPLACE INTO config (key, value) VALUES ('dev_mode', ?)",
-            ('1' if enabled else '0',)
-        )
-        conn.commit()
-        conn.close()
-        print(f'[DB] dev_mode set to {enabled}', flush=True)
-    except Exception as e:
-        print(f'[DB] set_dev_mode error: {e}', flush=True)
