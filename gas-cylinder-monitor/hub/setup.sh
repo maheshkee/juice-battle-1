@@ -150,8 +150,31 @@ if systemctl is-active --quiet "dbus-bridge-hub.service" 2>/dev/null; then
     log "Old service removed."
 fi
 
-# -- 6. Copy socket.io.min.js from system pip or fail gracefully --------------
-log "Step 6 -- Checking socket.io.min.js..."
+# -- 6. Install host watchdog service -----------------------------------------
+WATCHDOG_SERVICE="gas-cylinder-watchdog.service"
+WATCHDOG_SRC="$PROJECT_DIR/gas-cylinder-watchdog.service"
+log "Step 6 -- Checking $WATCHDOG_SERVICE..."
+if ! systemctl list-unit-files | grep -q gas-cylinder-watchdog; then
+    if [ ! -f "$WATCHDOG_SRC" ]; then
+        err "$WATCHDOG_SRC not found — cannot install watchdog service."
+    fi
+    chmod +x "$PROJECT_DIR/watchdog_host.sh"
+    sudo tee /etc/systemd/system/$WATCHDOG_SERVICE > /dev/null < "$WATCHDOG_SRC"
+    sudo systemctl daemon-reload
+    sudo systemctl enable "$WATCHDOG_SERVICE"
+    sudo systemctl start "$WATCHDOG_SERVICE"
+    sleep 2
+    if systemctl is-active --quiet "$WATCHDOG_SERVICE"; then
+        log "$WATCHDOG_SERVICE installed, enabled, and started."
+    else
+        warn "$WATCHDOG_SERVICE failed to start. Check: sudo journalctl -u $WATCHDOG_SERVICE"
+    fi
+else
+    log "$WATCHDOG_SERVICE already installed -- skipping."
+fi
+
+# -- 7. Copy socket.io.min.js from system pip or fail gracefully --------------
+log "Step 7 -- Checking socket.io.min.js..."
 mkdir -p "$PROJECT_DIR/assets"
 SOCKETIO_DST="$PROJECT_DIR/assets/socket.io.min.js"
 
@@ -170,8 +193,8 @@ else
     fi
 fi
 
-# -- 7. Auto-generate python/requirements.txt from actual wheel filenames -----
-log "Step 7 -- Generating requirements.txt from wheels..."
+# -- 8. Auto-generate python/requirements.txt from actual wheel filenames -----
+log "Step 8 -- Generating requirements.txt from wheels..."
 REQS_FILE="$PROJECT_DIR/python/requirements.txt"
 > "$REQS_FILE"
 for whl in "$WHEELS_DIR"/*.whl; do
@@ -181,11 +204,11 @@ done
 log "requirements.txt written:"
 cat "$REQS_FILE"
 
-# -- 8. Mark setup complete ---------------------------------------------------
+# -- 9. Mark setup complete ---------------------------------------------------
 touch "$HOME/.${APP_NAME}-setup-done"
 
-# -- 9. Set default App Lab app -----------------------------------------------
-log "Step 9 -- Setting gas-cylinder-monitor as default app..."
+# -- 10. Set default App Lab app -----------------------------------------------
+log "Step 10 -- Setting gas-cylinder-monitor as default app..."
 arduino-app-cli properties set default user:gas-cylinder-monitor/hub 2>/dev/null && \
     log "Default app set to gas-cylinder-monitor." || \
     warn "Could not set default app -- set manually in App Lab if needed."
@@ -199,6 +222,7 @@ echo -n "  PyGObject wheel: "; ls "$WHEELS_DIR"/PyGObject*.whl &>/dev/null && ec
 echo -n "  Shared libs:     "; [ -f "$WHEELS_DIR/libdbus-1.so.3" ] && echo "OK" || echo "MISSING"
 echo -n "  Typelibs:        "; [ -f "$TYPELIBS_DIR/GLib-2.0.typelib" ] && echo "OK" || echo "MISSING"
 echo -n "  D-Bus bridge:    "; systemctl is-active --quiet "$SERVICE_NAME" && echo "OK (running)" || echo "NOT RUNNING"
+echo -n "  Watchdog svc:    "; systemctl is-active --quiet "gas-cylinder-watchdog" && echo "OK (running)" || echo "NOT RUNNING"
 echo -n "  socket.io:       "; [ -f "$SOCKETIO_DST" ] && echo "OK" || echo "MISSING (see warn above)"
 echo "========================================================"
 echo ""

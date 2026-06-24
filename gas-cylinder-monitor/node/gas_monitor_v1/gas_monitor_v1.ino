@@ -65,7 +65,10 @@ volatile bool  g_cmd_retare_pending    = false;
 volatile bool  g_cmd_dump_log_pending  = false;
 volatile bool  g_cmd_clear_log_pending = false;
 
-static const uint32_t TARE_WAIT_TIMEOUT_MS = 60000UL;
+static const uint32_t TARE_WAIT_TIMEOUT_MS   = 60000UL;
+static const uint32_t BLE_NOTIFY_INTERVAL_MS = 30000UL;  // 30s — matches heartbeat rhythm
+static const float    HEAVY_LOAD_THRESHOLD_G = 2000.0f;  // production threshold - was 1000g DEV
+static uint32_t g_last_notify_ms = 0;
 // Carries TARE_WAIT decision into STATE_TARE
 static bool s_tare_from_spiffs = false;
 
@@ -139,11 +142,33 @@ void loop() {
             g_state = STATE_TARE;
             phase_start_ms = millis();
         } else if (millis() - s_wait_start >= TARE_WAIT_TIMEOUT_MS) {
-            journal_tare_wait_result("TIMEOUT");
-            s_tare_from_spiffs = false;
-            tare_init();
-            g_state = STATE_TARE;
-            phase_start_ms = millis();
+            float sv_tare = 0.0f;
+            float sv_cal  = cal_load_last();
+            bool  has_spiffs = tare_load_from_spiffs(&sv_tare);
+            bool  use_saved  = false;
+            if (has_spiffs && sv_cal > 0.0f) {
+                HX711Result r = hx711_read();
+                if (r.valid) {
+                    float approx_gross = (r.value - sv_tare) / sv_cal;
+                    if (approx_gross > HEAVY_LOAD_THRESHOLD_G) {
+                        g_tare_raw     = sv_tare;
+                        g_cal_factor   = sv_cal;
+                        g_cal_degraded = true;
+                        use_saved      = true;
+                        journal_tare_wait_result("TIMEOUT_SAVED_TARE");
+                        noise_init();
+                        g_state        = STATE_NOISE;
+                        phase_start_ms = millis();
+                    }
+                }
+            }
+            if (!use_saved) {
+                journal_tare_wait_result("TIMEOUT");
+                s_tare_from_spiffs = false;
+                tare_init();
+                g_state        = STATE_TARE;
+                phase_start_ms = millis();
+            }
         }
         delay(10);  // yield to FreeRTOS IDLE task — prevents watchdog starvation during 60s wait
         break;
@@ -389,7 +414,10 @@ void loop() {
         );
         g_prev_gross_g = wr.grams;
         const char* quality_out = g_cal_degraded ? "DEGRADED" : g_health.quality;
-        ble_notify(wr.grams, quality_out, g_sigma_g);
+        if (now - g_last_notify_ms >= BLE_NOTIFY_INTERVAL_MS) {
+            g_last_notify_ms = now;
+            ble_notify(wr.grams, quality_out, g_sigma_g);
+        }
         log_transfer_tick();
         journal_run(wr.grams, g_sigma_g, g_health, wr.event, wr.delta);
         journal_heartbeat_tick(wr.grams, g_sigma_g, g_health);

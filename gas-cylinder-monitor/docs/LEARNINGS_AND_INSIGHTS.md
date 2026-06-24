@@ -2032,3 +2032,55 @@ The warning "Only polling transport is available — install the websocket-clien
 non-fatal. emit() still delivers the message correctly over HTTP long-polling.
 This is useful for one-shot CLI testing of hub endpoints without installing extra packages.
 Do not mistake the warning for a failure. Check the hub logs for the actual handler output.
+
+---
+
+## L-090 — Docker volume mounts determine which config.json is real
+Date: 2026-06-24
+
+hub/config.json is baked into the container image at deploy time — it is the file the app reads.
+hub/data/config.json is in a separate directory that is NOT mounted by Docker.
+Writing to hub/data/config.json has no effect: no error, no exception, silent failure.
+The only way to verify which file is live: `docker inspect <container>` and check the Mounts section.
+
+Root cause of bug: deploy.sh copies hub/ into the image. If the app reads a relative path like
+`data/config.json`, that resolves to hub/data/config.json inside the container's /app directory,
+which is NOT a mounted volume. The developer assumes hub/data/ is persistent; Docker does not see it.
+
+Fix: always write to hub/config.json directly (the file at the image root, always mounted).
+Never write to hub/data/config.json expecting the container to pick it up.
+
+---
+
+## L-091 — SKIP_TARE + SET_CAL reduces boot time by 74%
+Date: 2026-06-24
+
+TARE path:      SETTLE(2s) + TARE_WAIT + TARE(21s) + NOISE(20s) + CAL(0.1s) ≈ 103.9s total
+SKIP_TARE path: SETTLE(2s) + TARE_WAIT(7s) + NOISE(20s) + CAL(0.1s) ≈ 27.5s total
+
+The 21-second tare measurement is skipped entirely when hub sends SKIP_TARE.
+Hub decides which command to send by checking config.json: cal_factor present → SKIP_TARE.
+This is the correct production boot path after first install.
+
+The 74% time saving is significant for reconnect scenarios — the node returns to RUNNING
+in 27.5s instead of 104s. This also eliminates tare corruption: TARE sent while weight
+is on platform corrupts tare_raw. SKIP_TARE is always safe regardless of platform state.
+
+Verified on boot=21: TARE_WAIT result=CMD_SKIP_TARE at t=7.2s, BOOT_COMPLETE total_s=27.5.
+
+---
+
+## L-092 — Hub must send SKIP_TARE not TARE after first install
+Date: 2026-06-24
+
+TARE sent on reconnect while load is on the platform = tare corruption.
+Once cal_factor and tare_raw are derived (first install), they should never change
+until the cylinder is physically replaced or the platform is disturbed.
+
+Hub decision rule:
+- config.json has cal_factor → send SKIP_TARE + SET_CAL:<value>
+- config.json has no cal_factor → send TARE (first install only)
+
+This is implemented in main.py on_node_connected(). Pre-populating config.json with
+known-good cal_factor=36.2231 ensures SKIP_TARE fires on all subsequent reboots
+without requiring the user to go through a calibration ceremony every time.

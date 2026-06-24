@@ -23,6 +23,8 @@ arduino ALL=(ALL) NOPASSWD: /usr/bin/systemctl start dbus-bridge-gas-cylinder-mo
 arduino ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/sudoers.d/gas-cylinder-monitor
 arduino ALL=(ALL) NOPASSWD: /usr/sbin/visudo
 arduino ALL=(ALL) NOPASSWD: /bin/chmod 440 /etc/sudoers.d/gas-cylinder-monitor
+# HUB-WATCHDOG Level 3 - container writes /tmp/reboot_requested, host watchdog calls reboot
+arduino ALL=(ALL) NOPASSWD: /sbin/reboot
 EOF
 
 sudo chmod 440 "$SUDOERS_FILE"

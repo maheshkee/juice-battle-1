@@ -1,6 +1,6 @@
 # CLAUDE.md — gas-cylinder-monitor
 # Board: Arduino UNO Q AQ3 | IP: 192.168.1.161 | user: arduino
-# Last updated: 2026-06-23
+# Last updated: 2026-06-24
 # Read this FULLY before doing anything in this directory.
 
 ---
@@ -134,10 +134,10 @@ The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ---
 
-## Current State — 2026-06-23
+## Current State — 2026-06-24
 
-Status:         Hub + Node WORKING end-to-end. G4 hub domain logic complete. boot=9 clean.
-Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino (boot=9, CAL timeout fix, N1 journal SPIFFS)
+Status:         Hub + Node WORKING end-to-end. G4 + N-TARE-CHECK + HUB-WATCHDOG + SKIP_TARE complete. boot=21 clean. System stable 17h.
+Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino (boot=21, CAL timeout fix, N1 journal SPIFFS, N-TARE-CHECK, BLE_NOTIFY_INTERVAL_MS=30000)
 Modules:        hx711, tare (+ SPIFFS persistence), noise, cal, weight, ble (+ command char), health, journal (+ SPIFFS, g_journal_file_bytes, g_transfer_pending, journal_tare_check, journal_retare) — all .h/.cpp
 Boot sequence:  SETTLE → TARE_WAIT → TARE → NOISE → CAL → RUNNING
 
@@ -171,12 +171,13 @@ Boot timing (verified 2026-06-18):
   TARE:      ~21s (200 samples × 100ms)
   NOISE:     ~20s (200 samples × 100ms)
   CAL:       ~0.1s (SET_CAL from hub) or variable (interactive fallback)
-  Total boot: ~103.9s (full TARE_WAIT) | ~63s (TARE_WAIT immediate)
+  Total boot: ~103.9s (full TARE path) | ~27.5s (SKIP_TARE path — production after first install)
 
 Code constants locked (2026-06-18):
-  BUF_SIZE:           40 ticks (4-second delay-line comparison window — was 20)
-  NOISE_SIGMA_PASS_G: 8.0g (healthy max 5.33g + 1.5× margin)
-  NOISE_SIGMA_WARN_G: 15.0g (midpoint between healthy and open-cell ~25g)
+  BUF_SIZE:               40 ticks (4-second delay-line comparison window — was 20)
+  NOISE_SIGMA_PASS_G:     8.0g (healthy max 5.33g + 1.5× margin)
+  NOISE_SIGMA_WARN_G:     15.0g (midpoint between healthy and open-cell ~25g)
+  HEAVY_LOAD_THRESHOLD_G: 2000.0g (hub-offline tare: use saved tare if load > 2000g — restored from 1000g DEV value 2026-06-23)
   NimBLE onWrite:     two-parameter: (NimBLECharacteristic* c, NimBLEConnInfo& connInfo)
   NimBLE onDisconnect: must call NimBLEDevice::startAdvertising() - node invisible otherwise
   App Lab on_message: callbacks must be (sid, data) - not just (data)
@@ -232,23 +233,31 @@ Hub status: DEPLOYED and WORKING at arduino@AQ3:7000
             node_status topbar: green dot, MAC, name
             IST timestamp: fixed - subprocess date call
             Log directory: ✅ COMPLETE — logs/node/ created, files saved per transfer
+            hub_logger.py:    ✅ COMPLETE — persistent hub log (logs/hub/hub.log), session counter, 5 log functions (BLE/WEIGHT/DOMAIN/WATCHDOG/HUB)
+            HUB-WATCHDOG:     ✅ COMPLETE — hub_watchdog.py (3-level BT escalation) + watchdog_host.sh + gas-cylinder-watchdog.service (host systemd)
+            TARE on connect:  ✅ COMPLETE — hub sends TARE/SKIP_TARE+SET_CAL in on_node_connected
 
-Hub python/ structure (5 modules, single responsibility each):
-            main.py           — orchestrator: wires callbacks, passes data between modules
+Hub python/ structure (7 modules, single responsibility each):
+            main.py           — orchestrator: wires callbacks, passes data between modules; sends TARE/SKIP_TARE+SET_CAL on connect
             ble_subscriber.py — BLE receive (weight/log notify), command write
             log_transfer.py   — LOG_START/LOG_END pipeline, temp file → logs/node/
             domain.py         — cylinder state machine, steel derivation, gas%, alerts
             db.py             — SQLite storage, schema migrations
+            hub_logger.py     — persistent hub log (logs/hub/hub.log), session counter, 5 log functions (BLE/WEIGHT/DOMAIN/WATCHDOG/HUB)
+            hub_watchdog.py   — 3-level BT watchdog, 60s health checks, trigger file escalation
 
-Hub config:   data/config.json — G4 schema fields now populated:
+Hub config:   hub/config.json — G4 schema fields now populated (NOTE: NOT hub/data/config.json — Docker mounts hub/ not hub/data/):
               brand, install_mode, cylinder_state, steel_g, steel_source, steel_anchored_at,
               cal_factor, tare_raw, cal_tare_session
 
 Current position: G4 ✅ COMPLETE — hub domain logic, state machine, gas%, setup endpoint, modular reorg.
                   1E ✅ COMPLETE — DUMP_LOG/stream/LOG_END/CLEAR_LOG pipeline built (hub python).
                   N1 ✅ COMPLETE — journal persists to SPIFFS. boot=9 clean.
-Next action:      N-TARE-CHECK extension — restore TARE_CHECK_THRESHOLD_G to 2000g for production.
-                  Then: 3E-005 anchor validation experiment.
+                  N-TARE-CHECK ✅ COMPLETE — hub-offline tare extension. HEAVY_LOAD_THRESHOLD_G=2000g. boot=16 clean.
+                  HUB-WATCHDOG ✅ COMPLETE — 3-level BT watchdog, hub_logger, TARE on connect. hub.log verified session=16.
+                  SKIP_TARE ✅ VERIFIED — hub sends SKIP_TARE+SET_CAL:36.2231 on connect. Boot time 27.5s (was 104s). boot=21.
+                  config.json path fixed — hub/config.json is correct (Docker mounts hub/). hub/data/config.json is never read.
+Next action:      3E-005 anchor validation experiment (water bowl simulation).
 
 Backlog:
   1E: BLE journal transport — ✅ COMPLETE (hub side).
@@ -324,6 +333,8 @@ NOTE: 190g drift over 38 min observed on static load.
 | List package names in requirements.txt for wheels | Must be /app/wheels/ file paths | Hub |
 | Detect weight events by tick-to-tick delta in journal.cpp | journal is a service module — detection belongs in weight.cpp (computation module). Cross-module detection causes cascade events. | Node 2026-06-17 |
 | Store grams in noise s_samples[] array | Double-division with noise_recompute_sigma() shrinks sigma from ~5g to 0.09g → threshold 0.36g → 200+ false WEIGHT_EVENTs | Node 2026-06-18 |
+| Use hciconfig inside Docker | Not available in container — use reading_fresh only for BT health detection | Hub watchdog 2026-06-23 |
+| Write config.json to hub/data/config.json | Docker mounts hub/ not hub/data/ — writes to hub/data/ have no effect (silent failure) | Hub 2026-06-24 |
 
 ---
 

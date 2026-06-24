@@ -1037,3 +1037,48 @@ line-by-line to hub on DUMP_LOG command.
 **Hub module count:** 5 files, each single responsibility
 **Node boot at session end:** boot=9
 **Gate result:** G4 COMPLETE
+
+---
+
+## Session — 2026-06-24 — BLE stability + config.json path fix + SKIP_TARE verification
+
+**Goal:** Confirm overnight BLE stability. Fix config.json path bug. Verify SKIP_TARE+SET_CAL on connect. Boot time reduction.
+
+### What happened
+
+- **17-hour stability confirmed** — session=16 ran from 11:33 IST Jun 23 to 04:19 IST Jun 24 without reboot.
+  BLE supervision-timeout disconnects (every ~3-4 min) all recovered within 30s. Watchdog never fired.
+
+- **config.json path bug found and fixed** — hub was reading hub/data/config.json but Docker mounts hub/ not
+  hub/data/. The file at hub/data/config.json was never read — no error, silent failure. Fix: wrote
+  cal_factor=36.2231 and tare_raw=-107041.4 to hub/config.json (the file the container actually reads).
+
+- **Redeployed hub** — hub now correctly finds cal_factor in config.json and sends SKIP_TARE+SET_CAL:36.2231
+  on every node connect instead of TARE.
+
+- **boot=21 verified clean** — TARE_WAIT result=CMD_SKIP_TARE at t=7.2s.
+  BOOT_COMPLETE total_s=27.5 (was 103.9s — 74% faster). CAL loaded via SET_CAL command
+  (not SPIFFS fallback) — g_cal_degraded=false confirmed.
+
+- **Tare corruption on reconnect permanently prevented** — SKIP_TARE path safe regardless of platform state.
+
+- **Cal_factor and BLE reference documents created** — GasMonitor_CalFactor_BLE_Reference.docx
+  covering all 6 tare scenarios documented.
+
+### Real hardware outputs
+
+| Parameter | Value | Status |
+|---|---|---|
+| System uptime (session=16) | 17+ hours (11:33 Jun23 → 04:19 Jun24) | VERIFIED |
+| Boot count | 21 | VERIFIED |
+| Boot time (SKIP_TARE path) | 27.5s | VERIFIED — was 103.9s |
+| TARE_WAIT result | CMD_SKIP_TARE at t=7.2s | VERIFIED |
+| cal_factor loaded | 36.2231 via SET_CAL command | VERIFIED |
+| g_cal_degraded | false | VERIFIED — not SPIFFS fallback |
+| BLE reconnects | Every ~3-4 min, recover in <30s | VERIFIED normal behaviour |
+| Watchdog triggers | 0 | VERIFIED |
+
+### Gate result
+
+SKIP_TARE+SET_CAL VERIFIED. config.json path fixed. System stable 17h. Boot time 74% faster.
+Ready for 3E-005 water bowl anchor validation.

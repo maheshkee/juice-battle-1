@@ -1,6 +1,7 @@
 import os
 import json
 import subprocess
+import hub_logger
 
 # ── Physical constants ────────────────────────────────────────────────────────
 NET_GAS_G = 14200.0  # BIS IS 3196 — fixed for 14.2 kg domestic cylinder, never change
@@ -38,6 +39,15 @@ _steel_g             = None   # derived steel weight in grams
 _install_mode        = None   # 'FRESH' | 'PARTIAL_BRAND' | 'PARTIAL_PRIOR'
 _candidate_window    = []     # anchor candidate readings list
 _first_reading_check = False  # True after first reading post-connect
+_last_alert_level    = None
+
+
+def get_config():
+    try:
+        with open(_CONFIG_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
 def load_config():
@@ -150,6 +160,8 @@ def _run_anchor_window(grams):
     _cylinder_state   = 'TRACKING'
     _candidate_window = []
     _save_config()
+    hub_logger.log_domain('ANCHOR_COMPLETE', steel_g=_steel_g, mean_gross=round(mean_gross, 1))
+    hub_logger.log_domain('STATE_CHANGE', new_state='TRACKING', source='ANCHOR')
 
     print(f'[DOMAIN] *** ANCHOR COMPLETE: mean_gross={mean_gross:.1f}g '
           f'steel_g={_steel_g}g source=ANCHOR  TRACKING ***', flush=True)
@@ -200,13 +212,14 @@ def set_install_mode(mode, brand=None):
         _cylinder_state = 'TRACKING'
 
     _save_config()
+    hub_logger.log_domain('STATE_CHANGE', new_state=_cylinder_state, source=f'INSTALL_{mode}')
     print(f'[DOMAIN] install mode set: mode={mode} brand={brand} '
           f'state={_cylinder_state} steel_g={_steel_g}', flush=True)
 
 
 def process_reading(grams, quality, sigma, hub_ts):
     global _cylinder_state, _steel_g, _steel_source, _candidate_window
-    global _first_reading_check
+    global _first_reading_check, _last_alert_level
 
     # STEP 1 — first-reading cross-check (fires once per hub session)
     if not _first_reading_check:
@@ -221,6 +234,7 @@ def process_reading(grams, quality, sigma, hub_ts):
                 _steel_g        = None
                 _steel_source   = None
                 _save_config()
+                hub_logger.log_domain('STATE_CHANGE', new_state='UNINSTALLED', source='CROSS_CHECK_FAIL')
 
     print(f'[DOMAIN] process_reading: grams={grams:.1f} state={_cylinder_state}', flush=True)
 
@@ -248,6 +262,7 @@ def process_reading(grams, quality, sigma, hub_ts):
             print(f'[DOMAIN] Refill detected: gross={grams:.1f}g - re-anchoring', flush=True)
             _cylinder_state   = 'BOOTSTRAP_ANCHOR'
             _candidate_window = []
+            hub_logger.log_domain('STATE_CHANGE', new_state='BOOTSTRAP_ANCHOR', source='REFILL_DETECTED')
 
         elif grams < 500.0:
             print(f'[DOMAIN] Cylinder removed: gross={grams:.1f}g', flush=True)
@@ -256,6 +271,7 @@ def process_reading(grams, quality, sigma, hub_ts):
             _steel_source     = None
             _candidate_window = []
             _save_config()
+            hub_logger.log_domain('STATE_CHANGE', new_state='UNINSTALLED', source='CYLINDER_REMOVED')
 
         else:
             snapshot['gas_g']          = gas_g
@@ -263,9 +279,14 @@ def process_reading(grams, quality, sigma, hub_ts):
             snapshot['alert_level']    = alert_level
             snapshot['days_remaining'] = days_remaining
 
+            if alert_level != _last_alert_level:
+                hub_logger.log_domain('ALERT', level=alert_level, gas_g=round(gas_g, 1))
+                _last_alert_level = alert_level
+
             if gas_g < ALERT_AMBER_G:
                 _cylinder_state = 'LOW_GAS'
                 print(f'[DOMAIN]  LOW_GAS: gas_g={gas_g:.1f}g', flush=True)
+                hub_logger.log_domain('STATE_CHANGE', new_state='LOW_GAS', gas_g=round(gas_g, 1))
 
     elif _cylinder_state == 'LOW_GAS':
         gas_g, gas_pct = _compute_gas(grams)
@@ -275,6 +296,7 @@ def process_reading(grams, quality, sigma, hub_ts):
             print(f'[DOMAIN] Refill detected from LOW_GAS: re-anchoring', flush=True)
             _cylinder_state   = 'BOOTSTRAP_ANCHOR'
             _candidate_window = []
+            hub_logger.log_domain('STATE_CHANGE', new_state='BOOTSTRAP_ANCHOR', source='REFILL_FROM_LOW_GAS')
 
         elif grams < 500.0:
             print(f'[DOMAIN] Cylinder removed from LOW_GAS', flush=True)
@@ -282,6 +304,7 @@ def process_reading(grams, quality, sigma, hub_ts):
             _steel_g        = None
             _steel_source   = None
             _save_config()
+            hub_logger.log_domain('STATE_CHANGE', new_state='UNINSTALLED', source='REMOVED_FROM_LOW_GAS')
 
         else:
             snapshot['gas_g']          = gas_g
@@ -289,8 +312,13 @@ def process_reading(grams, quality, sigma, hub_ts):
             snapshot['alert_level']    = alert_level
             snapshot['days_remaining'] = days_remaining
 
+            if alert_level != _last_alert_level:
+                hub_logger.log_domain('ALERT', level=alert_level, gas_g=round(gas_g, 1))
+                _last_alert_level = alert_level
+
             if gas_g >= ALERT_AMBER_G:
                 _cylinder_state = 'TRACKING'
+                hub_logger.log_domain('STATE_CHANGE', new_state='TRACKING', source='ALERT_CLEAR')
 
     elif _cylinder_state == 'EMPTY':
         pass  # future stub — treat same as TRACKING for now

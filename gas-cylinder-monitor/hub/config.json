@@ -11,7 +11,7 @@
   "steel_g": null,
   "steel_source": null,
   "steel_anchored_at": null,
-  "cal_factor": null,
-  "tare_raw": null,
-  "cal_tare_session": null
+  "cal_factor": 36.2231,
+  "tare_raw": -107041.4,
+  "cal_tare_session": "boot13_verified_2026-06-23"
 }

@@ -25,6 +25,8 @@ import domain
 import log_transfer
 from ble_subscriber import BLESubscriber
 from db import (db_init, db_insert_reading)
+import hub_logger
+from hub_watchdog import HubWatchdog
 
 ui = WebUI()
 
@@ -42,6 +44,7 @@ def _node_status_payload():
 
 
 def on_weight(grams, quality, sigma, hub_ts):
+    _watchdog.update_last_reading(hub_ts)
     result = domain.process_reading(grams, quality, sigma, hub_ts)
     db_insert_reading(
         hub_ts, grams, quality, sigma,
@@ -61,16 +64,37 @@ def on_node_connected(name, mac):
     g_node_mac       = mac
     g_node_connected = True
     print(f'[MAIN] Node connected: {name} ({mac})', flush=True)
+    hub_logger.log_ble('NODE_CONNECTED', name=name, mac=mac)
     ui.send_message('node_status', _node_status_payload())
+
+    cfg        = domain.get_config()
+    saved_cal  = cfg.get('cal_factor')
+    saved_tare = cfg.get('tare_raw')
+
+    if saved_cal and saved_tare:
+        # Hub has saved calibration — tell node to skip fresh tare and use saved cal
+        threading.Timer(1.0, lambda: (ble.write_command('SKIP_TARE\n'),
+                                      hub_logger.log_ble('CMD_SENT', cmd='SKIP_TARE'))).start()
+        threading.Timer(2.0, lambda: (ble.write_command(f"SET_CAL:{saved_cal:.4f}\n"),
+                                      hub_logger.log_ble('CMD_SENT', cmd=f'SET_CAL:{saved_cal:.4f}'))).start()
+        print(f'[MAIN] sent SKIP_TARE + SET_CAL:{saved_cal:.4f}', flush=True)
+    else:
+        # No saved calibration — first install, node must do fresh tare
+        threading.Timer(1.0, lambda: (ble.write_command('TARE\n'),
+                                      hub_logger.log_ble('CMD_SENT', cmd='TARE'))).start()
+        print('[MAIN] sent TARE (no saved cal — first install)', flush=True)
+
     # Send DUMP_LOG after 5s delay — MTU and service discovery complete by then
     # Node ignores DUMP_LOG outside STATE_RUNNING so early arrival is safe
-    threading.Timer(5.0, lambda: ble.write_command('DUMP_LOG\n')).start()
+    threading.Timer(5.0, lambda: (ble.write_command('DUMP_LOG\n'),
+                                  hub_logger.log_ble('CMD_SENT', cmd='DUMP_LOG'))).start()
 
 
 def on_node_disconnected():
     global g_node_connected
     g_node_connected = False
     print('[MAIN] Node disconnected', flush=True)
+    hub_logger.log_ble('NODE_DISCONNECTED')
     ui.send_message('node_status', _node_status_payload())
 
 
@@ -109,7 +133,11 @@ ble = BLESubscriber(
 log_transfer.init(ble.write_command)
 threading.Thread(target=ble.start, daemon=True).start()
 
+_watchdog = HubWatchdog()
+_watchdog.start()
+
 print("[MAIN] Gas cylinder monitor hub started", flush=True)
+hub_logger.log_hub('START')
 db_init()
 domain.load_config()
 App.run()
