@@ -59,6 +59,12 @@ def handle_command(cmd: str) -> str:
     if cmd == 'alarm_stop':
         _alarm_stop.set()
         return 'ok'
+    if cmd.startswith('speak:'):
+        text = cmd[6:].strip()
+        if text:
+            import subprocess
+            subprocess.Popen(['espeak', text], env=PW_ENV)
+        return 'ok'
     if cmd == 'BT_LIST':
         paired  = bt_run(['bluetoothctl', 'devices', 'Paired'])
         trusted = bt_run(['bluetoothctl', 'devices', 'Trusted'])

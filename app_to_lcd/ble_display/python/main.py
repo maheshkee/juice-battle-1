@@ -4,6 +4,7 @@ import ctypes
 import socket
 import time
 import threading
+import queue as _queue_module
 import datetime
 import re
 import json
@@ -143,8 +144,12 @@ whistle_lock        = threading.Lock()
 display_mode = 'overlay'
 
 _phone_authenticated = False
+_voice_command       = False
 
 ALARM_PATH = '/app/assets/alarm.wav'
+
+_voice_queue   = _queue_module.Queue(maxsize=100)
+_whistle_queue  = _queue_module.Queue(maxsize=100)
 
 
 def now_str():
@@ -236,14 +241,57 @@ def _whistle_on_detection():
                 }) or False)
 
 
-def whistle_audio_loop():
+def _mic_thread():
     try:
         import pyaudio
+    except Exception as e:
+        print(f'[MIC] pyaudio import failed: {e}', flush=True)
+        return
+    pa = pyaudio.PyAudio()
+    usb_index = None
+    for i in range(pa.get_device_count()):
+        info = pa.get_device_info_by_index(i)
+        if info['maxInputChannels'] > 0:
+            if 'usb' in info['name'].lower() or 'USB' in info['name']:
+                usb_index = i
+                break
+    mic_stride = int(WHISTLE_MIC_RATE * WHISTLE_STRIDE / WHISTLE_MODEL_RATE)
+    stream = pa.open(
+        format=pyaudio.paInt16,
+        channels=1,
+        rate=WHISTLE_MIC_RATE,
+        input=True,
+        input_device_index=usb_index,
+        frames_per_buffer=mic_stride
+    )
+    print('[MIC] Started -- feeding voice and whistle queues', flush=True)
+    try:
+        while True:
+            raw   = stream.read(mic_stride, exception_on_overflow=False)
+            chunk = np.frombuffer(raw, dtype=np.int16)
+            chunk = _whistle_resample(chunk, WHISTLE_MIC_RATE, WHISTLE_MODEL_RATE)[:WHISTLE_STRIDE]
+            try:
+                _voice_queue.put_nowait(chunk.copy())
+            except _queue_module.Full:
+                pass
+            try:
+                _whistle_queue.put_nowait(chunk.copy())
+            except _queue_module.Full:
+                pass
+    except Exception as e:
+        print(f'[MIC] Error: {e}', flush=True)
+    finally:
+        stream.stop_stream()
+        stream.close()
+        pa.terminate()
+
+
+def _whistle_loop():
+    try:
         from edge_impulse_linux.runner import ImpulseRunner
     except Exception as e:
         print(f'[WHISTLE] Import failed: {e}', flush=True)
         return
-
     print(f'[WHISTLE] Loading model: {WHISTLE_MODEL_PATH}', flush=True)
     try:
         runner     = ImpulseRunner(WHISTLE_MODEL_PATH)
@@ -254,57 +302,30 @@ def whistle_audio_loop():
     except Exception as e:
         print(f'[WHISTLE] Model load failed: {e}', flush=True)
         return
-
-    pa = pyaudio.PyAudio()
-    usb_index = None
-    for i in range(pa.get_device_count()):
-        info = pa.get_device_info_by_index(i)
-        if info['maxInputChannels'] > 0:
-            if 'usb' in info['name'].lower() or 'USB' in info['name']:
-                usb_index = i
-                break
-
-    mic_stride  = int(WHISTLE_MIC_RATE * WHISTLE_STRIDE / WHISTLE_MODEL_RATE)
     rolling_buf = np.zeros(n_features, dtype=np.int16)
-
-    stream = pa.open(
-        format=pyaudio.paInt16,
-        channels=1,
-        rate=WHISTLE_MIC_RATE,
-        input=True,
-        input_device_index=usb_index,
-        frames_per_buffer=mic_stride
-    )
-
-    print('[WHISTLE] Listening...', flush=True)
-
+    print('[WHISTLE] Ready -- waiting for whistle_active', flush=True)
     try:
         while True:
-            raw   = stream.read(mic_stride, exception_on_overflow=False)
-            chunk = np.frombuffer(raw, dtype=np.int16)
-            chunk = _whistle_resample(chunk, WHISTLE_MIC_RATE, WHISTLE_MODEL_RATE)[:WHISTLE_STRIDE]
-
+            try:
+                chunk = _whistle_queue.get(timeout=0.5)
+            except _queue_module.Empty:
+                continue
+            if not whistle_active:
+                continue
             rolling_buf[:-WHISTLE_STRIDE] = rolling_buf[WHISTLE_STRIDE:]
             rolling_buf[-WHISTLE_STRIDE:] = chunk
-
             result = runner.classify(rolling_buf.tolist())
             if not result or 'result' not in result:
                 continue
             if 'classification' not in result['result']:
                 continue
-
             cls     = result['result']['classification']
             wh_conf = cls.get('cooker_whistle', 0)
-
             if wh_conf >= WHISTLE_THRESHOLD:
                 _whistle_on_detection()
-
     except Exception as e:
         print(f'[WHISTLE] Loop error: {e}', flush=True)
     finally:
-        stream.stop_stream()
-        stream.close()
-        pa.terminate()
         runner.stop()
 
 
@@ -526,7 +547,7 @@ def handle_url(url: str, title: str = ''):
         return
     log(f'[URL] {url} (ID: {video_id})')
     current_url = url
-    url_history.insert(0, {'url': url, 'video_id': video_id, 'title': title, 'time': now_str()})
+    url_history.insert(0, {'url': url, 'video_id': video_id, 'title': title[:50], 'time': now_str()})
     if len(url_history) > MAX_HISTORY: url_history.pop()
     push_to_phone('url_update', {'url': url, 'video_id': video_id, 'title': title, 'time': now_str()})
     push_to_phone('url_history', {'history': url_history})
@@ -628,7 +649,7 @@ def _queue_play_current():
         url   = item.get('url', f'https://www.youtube.com/watch?v={vid}')
         log(f'[QUEUE] [{queue_index+1}/{len(queue)}] {title or vid}')
         url_history.insert(0, {'url': url, 'video_id': vid,
-            'title': title, 'time': now_str()})
+            'title': title[:50], 'time': now_str()})
         if len(url_history) > MAX_HISTORY: url_history.pop()
         save_history()
         GLib.idle_add(lambda h=list(url_history): push_to_phone('url_history',
@@ -763,7 +784,7 @@ def handle_phone_command(text: str):
             log('[AUTH] Wrong key')
         return
 
-    if not _phone_authenticated:
+    if not _phone_authenticated and not _voice_command:
         log('[AUTH] Rejected -- not authenticated')
         return
 
@@ -1004,7 +1025,8 @@ def handle_phone_command(text: str):
             launcher_send('alarm_stop')
             log('[WHISTLE] Counting STOPPED -- count reset')
             push_whistle_state()
-            ui.send_message('display_cmd', {'cmd': 'resume'})
+            if current_mode == 'youtube':
+                ui.send_message('display_cmd', {'cmd': 'resume'})
         elif cmd == 'WHISTLE_RESET':
             with whistle_lock:
                 whistle_count       = 0
@@ -1564,6 +1586,10 @@ def _auth_enforcer():
                     if DEVICE_IFACE in ifaces:
                         if bool(ifaces[DEVICE_IFACE].get('Connected', False)):
                             mac = str(ifaces[DEVICE_IFACE].get('Address', ''))
+                            # only disconnect LE devices, not classic BT speakers
+                            addr_type = str(ifaces[DEVICE_IFACE].get('AddressType', 'public'))
+                            if 'random' not in addr_type and mac not in scan_results:
+                                continue
                             log(f'[AUTH] Unauthenticated device found: {mac} -- disconnecting')
                             try:
                                 dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, path),
@@ -1582,5 +1608,26 @@ def _schedule_loop():
 threading.Thread(target=_schedule_loop, daemon=True).start()
 threading.Thread(target=_auth_enforcer, daemon=True).start()
 threading.Thread(target=ble_main, daemon=True).start()
-threading.Thread(target=whistle_audio_loop, daemon=True).start()
+threading.Thread(target=_mic_thread, daemon=True).start()
+threading.Thread(target=_whistle_loop, daemon=True).start()
+
+def _voice_assistant_thread():
+    try:
+        import importlib.util, sys
+        spec = importlib.util.spec_from_file_location('voice_assistant', '/app/python/voice_assistant.py')
+        va   = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(va)
+        def _set_voice_flag(state):
+            global _voice_command
+            _voice_command = state
+        va.voice_assistant_loop(
+            voice_queue      = _voice_queue,
+            launcher_send_fn = launcher_send,
+            handle_cmd_fn    = handle_phone_command,
+            set_voice_flag_fn = _set_voice_flag,
+        )
+    except Exception as e:
+        print(f'[VOICE] Thread failed: {e}', flush=True)
+
+threading.Thread(target=_voice_assistant_thread, daemon=True).start()
 App.run()
