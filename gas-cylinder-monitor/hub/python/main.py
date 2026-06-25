@@ -57,8 +57,16 @@ def on_weight(grams, quality, sigma, hub_ts):
         cylinder_state=result.get('cylinder_state'),
     )
     ui.send_message('weight_update', result)
+    br  = result.get('burn_rate_g_per_day')
+    dr  = result.get('days_remaining')
+    pe  = result.get('predicted_empty')
+    src = result.get('burn_rate_source', '-')
     print(f"[MAIN] weight_update: grams={grams:.1f} quality={quality} "
-          f"state={result['cylinder_state']}", flush=True)
+          f"state={result['cylinder_state']} "
+          f"burn={br if br is not None else '-'} "
+          f"days={dr if dr is not None else '-'} "
+          f"empty={pe if pe is not None else '-'} "
+          f"src={src}", flush=True)
 
 
 def on_node_connected(name, mac):

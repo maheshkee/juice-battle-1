@@ -182,19 +182,6 @@
       letter-spacing: 0.04em;
     }
 
-    /* ── alert banner ────────────────────────────────────── */
-    .alert-banner {
-      position: fixed; top: 0; left: 0; right: 0;
-      background: #7f1d1d; color: #fca5a5;
-      text-align: center; padding: 12px;
-      font-size: 15px; font-weight: 600; letter-spacing: 0.05em;
-      z-index: 100;
-      animation: pulse 2s ease-in-out infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { background: #7f1d1d; }
-      50%       { background: #991b1b; }
-    }
   </style>
 </head>
 <body>
@@ -212,11 +199,6 @@
 
   </div>
 
-  <!-- alert banner -->
-  <div class="alert-banner" id="alert-banner" style="display:none">
-    <span id="alert-text"></span>
-  </div>
-
   <!-- main card -->
   <div class="main">
     <div class="card node-off" id="card">
@@ -228,6 +210,15 @@
 
       <div class="badge waiting" id="badge">WAITING</div>
 
+      <div id="state-pill" style="display:inline-flex; align-items:center; gap:8px;
+           padding:6px 16px; border-radius:20px; margin: 12px 0;
+           background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);">
+        <span id="state-dot" style="width:8px; height:8px; border-radius:50%;
+              background:#888; display:inline-block;"></span>
+        <span id="state-label" style="font-size:13px; color:#888; font-weight:500;
+              letter-spacing:0.05em; text-transform:uppercase;"></span>
+      </div>
+
       <div class="pct-row" id="pct-row" style="display:none">
         <span class="pct-value" id="pct-value">--</span>
         <span class="pct-unit">%</span>
@@ -236,6 +227,21 @@
 
       <div class="pct-bar-bg" id="pct-bar-bg" style="display:none">
         <div class="pct-bar-fill" id="pct-bar-fill"></div>
+      </div>
+
+      <div id="alert-banner" style="display:none; margin-top:16px; padding:12px 20px;
+           border-radius:8px; text-align:center; font-size:14px; font-weight:500;">
+      </div>
+
+      <div id="analytics-section" style="display:none; margin-top: 24px; text-align: center;">
+        <div id="days-remaining-display" style="font-size: 64px; font-weight: 700; color: #ffffff; line-height: 1;">-</div>
+        <div style="font-size: 16px; color: #888; margin-top: 4px; margin-bottom: 20px;">days remaining</div>
+        <div style="font-size: 14px; color: #666; margin-top: 8px;">
+          daily use: <span id="burn-rate-display" style="color: #aaa;">-</span>
+        </div>
+        <div style="font-size: 14px; color: #666; margin-top: 4px;">
+          empty by: <span id="predicted-empty-display" style="color: #aaa;">-</span>
+        </div>
       </div>
 
       <div id="calibrating-label" style="display:none;
@@ -272,8 +278,17 @@
     var macEl     = document.getElementById('node-mac');
     var setupBtnEl  = document.getElementById('setup-btn');
     var g_cylinder_state = 'UNINSTALLED';
-    var bannerEl    = document.getElementById('alert-banner');
-    var alertTextEl = document.getElementById('alert-text');
+
+    var _lastBurnRate       = null;
+    var _lastDaysRemaining  = null;
+    var _lastPredictedEmpty = null;
+
+    function formatDays(dr) {
+      if (dr === null || dr === undefined) return null;
+      if (dr < 0.1) return '< 0.1';
+      if (dr < 2) return dr.toFixed(1);
+      return Math.round(dr).toString();
+    }
 
     var qualityClass = { GOOD: 'good', DEGRADED: 'degraded', FAILED: 'failed', WAITING: 'waiting' };
 
@@ -296,51 +311,140 @@
       var waiting = data.quality === 'WAITING';
       gramsEl.textContent = waiting ? '--' : Math.round(data.grams);
 
+      var qualityLabel = { GOOD: 'SENSOR OK', DEGRADED: 'SENSOR DEGRADED', FAILED: 'SENSOR FAILED' };
       var cls = qualityClass[data.quality] || 'waiting';
       badgeEl.className   = 'badge ' + cls;
-      badgeEl.textContent = data.quality;
+      badgeEl.textContent = qualityLabel[data.quality] || data.quality;
 
       sigmaEl.textContent = waiting ? '' : '±' + parseFloat(data.sigma).toFixed(2) + 'g';
       tsEl.textContent    = waiting ? '' : formatTs(data.ts);
 
-      if (data.alert === 'empty') {
-        bannerEl.style.display = 'block';
-        bannerEl.style.animation = 'pulse 2s ease-in-out infinite';
-        alertTextEl.textContent = 'Platform empty or cylinder removed';
-      } else if (data.alert === 'critical') {
-        bannerEl.style.display = 'block';
-        bannerEl.style.animation = 'pulse 2s ease-in-out infinite';
-        var d = data.days_remaining || '?';
-        alertTextEl.textContent = 'Order now — ~' + d + ' days remaining';
-      } else if (data.alert === 'low_gas') {
-        bannerEl.style.display = 'block';
-        bannerEl.style.animation = 'none';
-        bannerEl.style.background = '#92400e';
-        var d = data.days_remaining || '?';
-        alertTextEl.textContent = 'Gas low — ~' + d + ' days remaining. Book a refill.';
-      } else {
-        bannerEl.style.display = 'none';
-        bannerEl.style.background = '#7f1d1d';
-        bannerEl.style.animation = 'pulse 2s ease-in-out infinite';
-      }
-
       if (data.gas_pct !== null && data.gas_pct !== undefined) {
         pctRowEl.style.display = 'flex';
         pctBarBg.style.display = 'block';
-        pctValEl.textContent   = Math.round(data.gas_pct);
         var p = Math.min(100, Math.max(0, data.gas_pct));
+        pctValEl.textContent   = Math.round(p);
         pctFillEl.style.width  = p + '%';
-        pctFillEl.style.background = p > 50 ? '#22c55e' :
-                                     p > 20 ? '#f59e0b' : '#ef4444';
+        pctFillEl.style.background = data.alert_level === 'RED'   ? '#ef4444' :
+                                     data.alert_level === 'AMBER' ? '#f59e0b' : '#22c55e';
+
+        // Show analytics section
+        document.getElementById('analytics-section').style.display = 'block';
+
+        // Days remaining — hold last known good
+        var dr = data.days_remaining;
+        if (dr !== null && dr !== undefined) _lastDaysRemaining = dr;
+        var daysDisplay = formatDays(dr);
+        document.getElementById('days-remaining-display').textContent =
+            daysDisplay !== null ? daysDisplay : (formatDays(_lastDaysRemaining) !== null ? formatDays(_lastDaysRemaining) : '-');
+        // Burn rate — hold last known good
+        var br = data.burn_rate_g_per_day;
+        if (br !== null && br !== undefined) _lastBurnRate = br;
+        document.getElementById('burn-rate-display').textContent =
+            _lastBurnRate !== null ? Math.round(_lastBurnRate) + 'g/day' : '-';
+        // Predicted empty — hold last known good
+        var pe = data.predicted_empty;
+        if (pe !== null && pe !== undefined) _lastPredictedEmpty = pe;
+        document.getElementById('predicted-empty-display').textContent =
+            _lastPredictedEmpty !== null ? _lastPredictedEmpty : '-';
       } else {
         pctRowEl.style.display = 'none';
         pctBarBg.style.display = 'none';
+
+        document.getElementById('analytics-section').style.display = 'none';
+        document.getElementById('days-remaining-display').textContent = '-';
+        document.getElementById('burn-rate-display').textContent = '-';
+        document.getElementById('predicted-empty-display').textContent = '-';
       }
 
       var calEl = document.getElementById('calibrating-label');
       if (calEl) calEl.style.display = (data.cylinder_state === 'BOOTSTRAP_ANCHOR') ? 'block' : 'none';
       g_cylinder_state = data.cylinder_state || 'UNINSTALLED';
+      if (g_cylinder_state === 'UNINSTALLED') {
+        _lastBurnRate       = null;
+        _lastDaysRemaining  = null;
+        _lastPredictedEmpty = null;
+        document.getElementById('days-remaining-display').style.color = '#ffffff';
+      }
       if (setupBtnEl) setupBtnEl.style.display = (g_cylinder_state === 'UNINSTALLED') ? 'block' : 'none';
+
+      var state      = data.cylinder_state;
+      var alert      = data.alert_level;
+      var stateDot   = document.getElementById('state-dot');
+      var stateLabel = document.getElementById('state-label');
+      var banner     = document.getElementById('alert-banner');
+      var daysEl     = document.getElementById('days-remaining-display');
+
+      // Reset banner
+      banner.style.display = 'none';
+      banner.textContent   = '';
+
+      if (state === 'UNINSTALLED') {
+        stateDot.style.background = '#666';
+        stateLabel.style.color    = '#666';
+        stateLabel.textContent    = 'Platform empty - place cylinder';
+
+      } else if (state === 'BOOTSTRAP_ANCHOR') {
+        stateDot.style.background = '#f59e0b';
+        stateLabel.style.color    = '#f59e0b';
+        stateLabel.textContent    = 'Calibrating - do not disturb';
+
+      } else if (state === 'TRACKING') {
+        if (alert === 'AMBER') {
+          stateDot.style.background = '#f59e0b';
+          stateLabel.style.color    = '#f59e0b';
+          stateLabel.textContent    = 'Low gas';
+          banner.style.display      = 'block';
+          banner.style.background   = 'rgba(245,158,11,0.15)';
+          banner.style.border       = '1px solid rgba(245,158,11,0.4)';
+          banner.style.color        = '#f59e0b';
+          banner.textContent        = 'Gas running low - consider booking a refill';
+          if (daysEl) daysEl.style.color = '#f59e0b';
+        } else if (alert === 'RED') {
+          stateDot.style.background = '#ef4444';
+          stateLabel.style.color    = '#ef4444';
+          stateLabel.textContent    = 'Critical';
+          banner.style.display      = 'block';
+          banner.style.background   = 'rgba(239,68,68,0.15)';
+          banner.style.border       = '1px solid rgba(239,68,68,0.4)';
+          banner.style.color        = '#ef4444';
+          banner.textContent        = 'Gas critical - book now';
+          if (daysEl) daysEl.style.color = '#ef4444';
+        } else {
+          stateDot.style.background = '#22c55e';
+          stateLabel.style.color    = '#22c55e';
+          stateLabel.textContent    = 'Tracking';
+          if (daysEl) daysEl.style.color = '#ffffff';
+        }
+
+      } else if (state === 'LOW_GAS') {
+        if (alert === 'RED') {
+          stateDot.style.background = '#ef4444';
+          stateLabel.style.color    = '#ef4444';
+          stateLabel.textContent    = 'Critical';
+          banner.style.display      = 'block';
+          banner.style.background   = 'rgba(239,68,68,0.15)';
+          banner.style.border       = '1px solid rgba(239,68,68,0.4)';
+          banner.style.color        = '#ef4444';
+          banner.textContent        = 'Gas critical - book now';
+          if (daysEl) daysEl.style.color = '#ef4444';
+        } else {
+          stateDot.style.background = '#f59e0b';
+          stateLabel.style.color    = '#f59e0b';
+          stateLabel.textContent    = 'Low gas';
+          banner.style.display      = 'block';
+          banner.style.background   = 'rgba(245,158,11,0.15)';
+          banner.style.border       = '1px solid rgba(245,158,11,0.4)';
+          banner.style.color        = '#f59e0b';
+          banner.textContent        = 'Gas running low - consider booking a refill';
+          if (daysEl) daysEl.style.color = '#f59e0b';
+        }
+      }
+
+      // If days shows '-' (no value yet), always gray regardless of alert colour
+      if (daysEl && daysEl.textContent === '-') {
+        daysEl.style.color = '#888';
+      }
     }
 
     function onSetupClick() {

@@ -24,6 +24,22 @@ ALERT_AMBER_G       = 2000.0
 ALERT_RED_G         = 1000.0
 DAILY_USE_DEFAULT_G = 350.0
 
+# ── G5 analytics constants ────────────────────────────────────────────────────
+# TEST values - see GasMonitor_Complete_Revert_Reference.docx for production values
+MIN_DATA_HOURS           = 0.25          # PRODUCTION: 24.0
+BURN_RATE_WINDOW_DAYS    = 0.14583       # PRODUCTION: 7.0  (3.5 hrs test = 7 days prod)
+MIN_BURN_RATE_G_PER_DAY  = 10.0          # same in production
+MAX_BURN_RATE_G_PER_DAY  = 100000.0      # PRODUCTION: 2000.0
+
+# ── Alert constants ────────────────────────────────────────────────────────────
+# Gram failsafe - same in test and production
+ALERT_AMBER_G            = 2000.0        # unchanged
+ALERT_RED_G              = 1000.0        # unchanged
+# Day-based - TEST values (scaled 1:48)
+MIN_DAYS_FOR_DAY_ALERT   = 0.04167       # PRODUCTION: 2.0  (60 min test = 2 days prod)
+ALERT_AMBER_DAYS         = 0.10417       # PRODUCTION: 5.0  (2.5 hrs test = 5 days prod)
+ALERT_RED_DAYS           = 0.0625        # PRODUCTION: 3.0  (90 min test = 3 days prod)
+
 # ── Brand steel lookup (grams) ────────────────────────────────────────────────
 BRAND_STEEL_G = {
     'Indane': 15300.0,
@@ -151,12 +167,23 @@ def _compute_gas(gross_g):
     return (gas_g, gas_pct)
 
 
-def _evaluate_alerts(gas_g):
+def _evaluate_alerts(gas_g, days_remaining=None, elapsed_days=None, burn_rate=None):
+    # Condition A: gram failsafe — always active
     if gas_g < ALERT_RED_G:
-        return ('RED',   max(1, round(gas_g / DAILY_USE_DEFAULT_G)))
+        return 'RED'
     if gas_g < ALERT_AMBER_G:
-        return ('AMBER', max(1, round(gas_g / DAILY_USE_DEFAULT_G)))
-    return ('NORMAL', None)
+        return 'AMBER'
+
+    # Condition B: day-based — requires reliable burn rate
+    if (days_remaining is not None and
+            burn_rate is not None and
+            elapsed_days is not None and
+            elapsed_days >= MIN_DAYS_FOR_DAY_ALERT):
+        if days_remaining < ALERT_RED_DAYS:
+            return 'RED'
+        if days_remaining < ALERT_AMBER_DAYS:
+            return 'AMBER'
+    return 'NONE'
 
 
 def _run_anchor_window(grams):
@@ -207,20 +234,23 @@ def _run_anchor_window(grams):
 
 def get_state_snapshot():
     return {
-        'grams':          None,
-        'quality':        None,
-        'sigma':          None,
-        'ts':             None,
-        'gas_pct':        None,
-        'gas_g':          None,
-        'alert_level':    None,
-        'days_remaining': None,
-        'cylinder_state': _cylinder_state,
-        'steel_source':   _steel_source,
-        'brand':          _brand,
-        'approximate':    None,
-        'steel_g':        _steel_g,
-        'install_mode':   _install_mode,
+        'grams':               None,
+        'quality':             None,
+        'sigma':               None,
+        'ts':                  None,
+        'gas_pct':             None,
+        'gas_g':               None,
+        'alert_level':         None,
+        'days_remaining':      None,
+        'burn_rate_g_per_day': None,
+        'predicted_empty':     None,
+        'burn_rate_source':    None,
+        'cylinder_state':      _cylinder_state,
+        'steel_source':        _steel_source,
+        'brand':               _brand,
+        'approximate':         None,
+        'steel_g':             _steel_g,
+        'install_mode':        _install_mode,
     }
 
 
@@ -253,6 +283,136 @@ def set_install_mode(mode, brand=None):
     hub_logger.log_domain('STATE_CHANGE', new_state=_cylinder_state, source=f'INSTALL_{mode}')
     print(f'[DOMAIN] install mode set: mode={mode} brand={brand} '
           f'state={_cylinder_state} steel_g={_steel_g}', flush=True)
+
+
+def compute_analytics(current_gas_g, cylinder_state='TRACKING'):
+    import sqlite3
+    from datetime import datetime, timedelta
+
+    _TS_FMT  = '%d %b %Y  %H:%M:%S'
+    _db_path = os.path.join(os.path.dirname(_CONFIG_PATH), 'data', 'monitor.db')
+
+    def _none_result(source, elapsed=None):
+        return {
+            'burn_rate_g_per_day': None, 'days_remaining': None,
+            'predicted_empty':     None, 'burn_rate_source': source,
+            'elapsed_days':        elapsed,
+        }
+
+    try:
+        now = datetime.now()
+
+        # Load anchor timestamp from config
+        anchor_ts = None
+        try:
+            with open(_CONFIG_PATH) as f:
+                cfg = json.load(f)
+            sat = cfg.get('steel_anchored_at')
+            if sat:
+                anchor_ts = datetime.strptime(sat, _TS_FMT)
+        except Exception:
+            pass
+
+        # Fallback: query earliest TRACKING reading
+        if anchor_ts is None:
+            try:
+                conn = sqlite3.connect(_db_path)
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT ts FROM readings WHERE cylinder_state='TRACKING' "
+                    "AND gas_g IS NOT NULL ORDER BY rowid ASC LIMIT 1"
+                )
+                row = cur.fetchone()
+                conn.close()
+                if row:
+                    anchor_ts = datetime.strptime(row['ts'], _TS_FMT)
+            except Exception:
+                pass
+
+        if anchor_ts is None:
+            return _none_result('WAITING')
+
+        elapsed_days  = (now - anchor_ts).total_seconds() / 86400.0
+        elapsed_hours = elapsed_days * 24.0
+
+        if elapsed_hours < MIN_DATA_HOURS:
+            return _none_result('WAITING', elapsed_days)
+
+        total_consumed_g = NET_GAS_G - current_gas_g
+        if total_consumed_g <= 0:
+            return _none_result('NO_CONSUMPTION', elapsed_days)
+
+        source    = None
+        burn_rate = None
+
+        if elapsed_days < BURN_RATE_WINDOW_DAYS:
+            # Not enough history yet — use cumulative from anchor
+            burn_rate = total_consumed_g / elapsed_days
+            source    = 'CUMULATIVE'
+        else:
+            # Try rolling window
+            cutoff = now - timedelta(days=BURN_RATE_WINDOW_DAYS)
+            try:
+                conn = sqlite3.connect(_db_path)
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT ts, AVG(gas_g) as gas_g FROM readings "
+                    "WHERE cylinder_state='TRACKING' AND gas_g IS NOT NULL "
+                    "GROUP BY ts ORDER BY ts ASC"
+                )
+                rows = cur.fetchall()
+                conn.close()
+            except Exception as e:
+                print(f'[DOMAIN] compute_analytics rolling query failed: {e}', flush=True)
+                rows = []
+
+            parsed = []
+            for row in rows:
+                try:
+                    ts = datetime.strptime(row['ts'], _TS_FMT)
+                    if ts >= cutoff:
+                        parsed.append((ts, row['gas_g']))
+                except Exception:
+                    continue
+
+            if len(parsed) >= 2:
+                first_ts, first_gas = parsed[0]
+                last_ts,  last_gas  = parsed[-1]
+                window_days  = (last_ts - first_ts).total_seconds() / 86400.0
+                window_hours = window_days * 24.0
+                delta = first_gas - last_gas
+                if delta > 0 and window_hours >= MIN_DATA_HOURS:
+                    burn_rate = delta / window_days
+                    source    = 'ROLLING'
+
+            if source is None:
+                burn_rate = total_consumed_g / elapsed_days
+                source    = 'CUMULATIVE_FALLBACK'
+
+        if burn_rate < MIN_BURN_RATE_G_PER_DAY:
+            return _none_result('BELOW_MIN', elapsed_days)
+
+        # Only apply MAX ceiling in normal TRACKING state
+        # In LOW_GAS, any burn rate above MIN is valid - user MUST see a result
+        if cylinder_state != 'LOW_GAS' and burn_rate > MAX_BURN_RATE_G_PER_DAY:
+            return _none_result('ABOVE_MAX', elapsed_days)
+
+        days_remaining  = round(current_gas_g / burn_rate, 1)
+        predicted_empty = (now + timedelta(days=days_remaining)).strftime('%d %b %Y')
+
+        return {
+            'burn_rate_g_per_day': round(burn_rate, 1),
+            'days_remaining':      days_remaining,
+            'predicted_empty':     predicted_empty,
+            'burn_rate_source':    source,
+            'elapsed_days':        elapsed_days,
+        }
+
+    except Exception as e:
+        print(f'[DOMAIN] compute_analytics error: {e}', flush=True)
+        return _none_result('ERROR')
 
 
 def process_reading(grams, quality, sigma, hub_ts):
@@ -294,7 +454,6 @@ def process_reading(grams, quality, sigma, hub_ts):
 
     elif _cylinder_state == 'TRACKING':
         gas_g, gas_pct = _compute_gas(grams)
-        alert_level, days_remaining = _evaluate_alerts(gas_g)
 
         if grams > REFILL_GROSS_MIN_G:
             print(f'[DOMAIN] Refill detected: gross={grams:.1f}g - re-anchoring', flush=True)
@@ -318,10 +477,23 @@ def process_reading(grams, quality, sigma, hub_ts):
 
         else:
             _removal_start_ts = None
-            snapshot['gas_g']          = gas_g
-            snapshot['gas_pct']        = gas_pct
-            snapshot['alert_level']    = alert_level
-            snapshot['days_remaining'] = days_remaining
+
+            _a           = compute_analytics(gas_g, cylinder_state='TRACKING')
+            elapsed_days = _a.get('elapsed_days')
+            alert_level  = _evaluate_alerts(
+                gas_g,
+                days_remaining=_a.get('days_remaining'),
+                elapsed_days=elapsed_days,
+                burn_rate=_a.get('burn_rate_g_per_day'),
+            )
+
+            snapshot['gas_g']               = gas_g
+            snapshot['gas_pct']             = gas_pct
+            snapshot['alert_level']         = alert_level
+            snapshot['days_remaining']      = _a['days_remaining']
+            snapshot['burn_rate_g_per_day'] = _a['burn_rate_g_per_day']
+            snapshot['predicted_empty']     = _a['predicted_empty']
+            snapshot['burn_rate_source']    = _a.get('burn_rate_source')
 
             if alert_level != _last_alert_level:
                 hub_logger.log_domain('ALERT', level=alert_level, gas_g=round(gas_g, 1))
@@ -332,9 +504,19 @@ def process_reading(grams, quality, sigma, hub_ts):
                 print(f'[DOMAIN]  LOW_GAS: gas_g={gas_g:.1f}g', flush=True)
                 hub_logger.log_domain('STATE_CHANGE', new_state='LOW_GAS', gas_g=round(gas_g, 1))
 
+            # If we just transitioned to LOW_GAS but analytics returned None (ABOVE_MAX ceiling),
+            # re-call with LOW_GAS to bypass the ceiling
+            if _cylinder_state == 'LOW_GAS' and (
+                    _a is None or _a.get('burn_rate_g_per_day') is None):
+                _a = compute_analytics(gas_g, cylinder_state='LOW_GAS')
+                if _a is not None:
+                    snapshot['burn_rate_g_per_day'] = _a.get('burn_rate_g_per_day')
+                    snapshot['days_remaining']      = _a.get('days_remaining')
+                    snapshot['predicted_empty']     = _a.get('predicted_empty')
+                    snapshot['burn_rate_source']    = _a.get('burn_rate_source')
+
     elif _cylinder_state == 'LOW_GAS':
         gas_g, gas_pct = _compute_gas(grams)
-        alert_level, days_remaining = _evaluate_alerts(gas_g)
 
         if grams > REFILL_GROSS_MIN_G:
             print(f'[DOMAIN] Refill detected from LOW_GAS: re-anchoring', flush=True)
@@ -357,10 +539,23 @@ def process_reading(grams, quality, sigma, hub_ts):
 
         else:
             _removal_start_ts = None
-            snapshot['gas_g']          = gas_g
-            snapshot['gas_pct']        = gas_pct
-            snapshot['alert_level']    = alert_level
-            snapshot['days_remaining'] = days_remaining
+
+            _a           = compute_analytics(gas_g, cylinder_state='LOW_GAS')
+            elapsed_days = _a.get('elapsed_days')
+            alert_level  = _evaluate_alerts(
+                gas_g,
+                days_remaining=_a.get('days_remaining'),
+                elapsed_days=elapsed_days,
+                burn_rate=_a.get('burn_rate_g_per_day'),
+            )
+
+            snapshot['gas_g']               = gas_g
+            snapshot['gas_pct']             = gas_pct
+            snapshot['alert_level']         = alert_level
+            snapshot['days_remaining']      = _a['days_remaining']
+            snapshot['burn_rate_g_per_day'] = _a['burn_rate_g_per_day']
+            snapshot['predicted_empty']     = _a['predicted_empty']
+            snapshot['burn_rate_source']    = _a.get('burn_rate_source')
 
             if alert_level != _last_alert_level:
                 hub_logger.log_domain('ALERT', level=alert_level, gas_g=round(gas_g, 1))
