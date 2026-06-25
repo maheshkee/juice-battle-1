@@ -47,15 +47,16 @@ class _HubScreenState extends State<HubScreen> {
         setState(() {});
         if (s == ConnState.connected) {
           board.addLog('[APP] Connected to board');
+          board.resetHistoryFlag();
           startKeepAlive();
           Future.delayed(const Duration(milliseconds: 500), () {
 
-            if (board.scheduleDirty) {
+            if (board.scheduleEntries.isNotEmpty) {
               ble.sendSchedule(board.scheduleEntries);
               board.markScheduleClean();
             }
             final pl = context.read<PlaylistService>();
-            if (pl.dirty) {
+            if (pl.playlists.isNotEmpty) {
               ble.sendPlaylists(pl.toJsonList());
               pl.markClean();
             }

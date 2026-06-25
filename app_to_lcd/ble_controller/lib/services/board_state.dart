@@ -144,6 +144,10 @@ class BoardState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void resetHistoryFlag() {
+    _historyClearedLocally = false;
+  }
+
   void addLog(String msg) {
     logs.insert(0, msg);
     if (logs.length > 200) logs.removeLast();
@@ -186,6 +190,7 @@ class BoardState extends ChangeNotifier {
         currentUrl = d['url'];
         break;
       case 'url_history':
+        _historyClearedLocally = false;
         if (!_historyClearedLocally) {
           urlHistory = (d['history'] as List? ?? [])
               .map((e) => HistoryItem.fromJson(e)).toList();
