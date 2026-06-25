@@ -18,6 +18,9 @@ for lib in [
 
 sys.path.insert(0, "/usr/lib/python3/dist-packages")
 
+_SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
+_CONFIG_PATH = os.path.join(_SCRIPT_DIR, '..', 'config.json')
+
 from arduino.app_utils import App
 from arduino.app_bricks.web_ui import WebUI
 import threading
@@ -67,24 +70,8 @@ def on_node_connected(name, mac):
     hub_logger.log_ble('NODE_CONNECTED', name=name, mac=mac)
     ui.send_message('node_status', _node_status_payload())
 
-    cfg        = domain.get_config()
-    saved_cal  = cfg.get('cal_factor')
-    saved_tare = cfg.get('tare_raw')
-
-    if saved_cal and saved_tare:
-        # Hub has saved calibration — tell node to skip fresh tare and use saved cal
-        threading.Timer(1.0, lambda: (ble.write_command('SKIP_TARE\n'),
-                                      hub_logger.log_ble('CMD_SENT', cmd='SKIP_TARE'))).start()
-        threading.Timer(2.0, lambda: (ble.write_command(f"SET_CAL:{saved_cal:.4f}\n"),
-                                      hub_logger.log_ble('CMD_SENT', cmd=f'SET_CAL:{saved_cal:.4f}'))).start()
-        print(f'[MAIN] sent SKIP_TARE + SET_CAL:{saved_cal:.4f}', flush=True)
-    else:
-        # No saved calibration — first install, node must do fresh tare
-        threading.Timer(1.0, lambda: (ble.write_command('TARE\n'),
-                                      hub_logger.log_ble('CMD_SENT', cmd='TARE'))).start()
-        print('[MAIN] sent TARE (no saved cal — first install)', flush=True)
-
-    # Send DUMP_LOG after 5s delay — MTU and service discovery complete by then
+    # TARE vs SKIP_TARE decision is handled in ble_subscriber._send_tare_commands()
+    # Send DUMP_LOG after 5s — MTU and service discovery complete by then
     # Node ignores DUMP_LOG outside STATE_RUNNING so early arrival is safe
     threading.Timer(5.0, lambda: (ble.write_command('DUMP_LOG\n'),
                                   hub_logger.log_ble('CMD_SENT', cmd='DUMP_LOG'))).start()
@@ -121,12 +108,40 @@ def on_setup(sid, data):
     print(f'[MAIN] setup complete: mode={mode} brand={brand}', flush=True)
 
 
+def _on_log_transfer_complete():
+    if not ble.last_boot_used_tare:
+        return
+    try:
+        log_dir = log_transfer.LOG_DIR
+        files   = sorted(
+            [f for f in os.listdir(log_dir) if f.endswith('.log')],
+            reverse=True,
+        )
+        if not files:
+            print('[MAIN] tare update: no journal files found', flush=True)
+            return
+        journal_path = os.path.join(log_dir, files[0])
+        tare_raw = domain.parse_tare_from_journal(journal_path)
+        if tare_raw is not None:
+            domain.update_tare_in_config(tare_raw, _CONFIG_PATH)
+        else:
+            print('[MAIN] tare update: TARE line not found in journal', flush=True)
+    except Exception as e:
+        print(f'[MAIN] tare update failed: {e}', flush=True)
+
+
+def on_log_line_wrapper(line):
+    log_transfer.on_log_line(line)
+    if line.strip() == 'LOG_END':
+        _on_log_transfer_complete()
+
+
 ui.on_connect(on_ui_connect)
 ui.on_message('setup', on_setup)
 
 ble = BLESubscriber(
     on_weight=on_weight,
-    on_log_line=log_transfer.on_log_line,
+    on_log_line=on_log_line_wrapper,
     on_connected=on_node_connected,
     on_disconnected=on_node_disconnected,
 )

@@ -2084,3 +2084,90 @@ Hub decision rule:
 This is implemented in main.py on_node_connected(). Pre-populating config.json with
 known-good cal_factor=36.2231 ensures SKIP_TARE fires on all subsequent reboots
 without requiring the user to go through a calibration ceremony every time.
+
+---
+
+## [2026-06-25] Separate thresholds for anchor collection vs refill detection
+
+**Symptom discovered:** After anchor fired and state entered TRACKING, the very next
+reading immediately triggered 'Refill detected' and kicked back to BOOTSTRAP_ANCHOR.
+This created an infinite re-anchor loop - anchor fires, immediately re-anchors, fires again.
+
+**Root cause:** ANCHOR_GROSS_MIN_G (4800g) was used for two distinct purposes:
+1. Gate for anchor candidate collection (grams must be above this to count)
+2. Gate for refill detection in TRACKING (grams above this = new full cylinder placed)
+
+In production these are naturally separated: a tracking cylinder reads 15-29kg,
+a full new cylinder is 29kg. But in a 5kg water bowl test, both readings are ~5000g,
+so 5000g > 4800g (ANCHOR_GROSS_MIN_G) triggers refill detection on every single reading.
+
+**Fix:** Added REFILL_GROSS_MIN_G as a separate constant, always set higher than any
+expected tracking reading. Production: REFILL_GROSS_MIN_G = 29000g. Test: 5500g.
+ANCHOR_GROSS_MIN_G remains the anchor collection floor only.
+
+**Rule:** These two constants serve different purposes and must NEVER be the same value
+or used interchangeably. ANCHOR collects; REFILL detects. Always document both separately
+in the production revert checklist.
+
+---
+
+## [2026-06-25] Grace window design for cylinder removal detection
+
+**Problem:** Any vibration, brief lift, or testing action causes immediate UNINSTALLED
+transition, wiping steel_g and requiring full re-anchor. This is wrong for production
+(brief cylinder lift) and wrong for development (every test iteration requires manual reset).
+
+**Option A (implemented):** Timer-gated transition. When gross < 500g in TRACKING:
+- Record timestamp of first low reading
+- Keep state=TRACKING for REMOVAL_GRACE_S seconds
+- If weight returns within window  reset timer, stay TRACKING, no re-anchor
+- If weight stays low beyond window  genuine removal, transition to UNINSTALLED
+
+**Why 120s:** Covers any realistic brief lift (5-30s), bump (1-2s), or dev test iteration
+(30-60s). A genuine cylinder removal would be detected within 2 minutes max.
+Production use case: someone lifts the cylinder briefly to check underneath - 120s is ample.
+
+**Why NOT Option B (pause button):** Requires manual user action every time. Option A
+is invisible to the user and handles the common case automatically. The pause button
+was deferred as a V2 feature for edge cases.
+
+**Key insight:** The grace window timer lives in RAM only (_removal_start_ts). On hub
+restart it resets. This is correct - a hub restart while cylinder is absent should
+eventually transition to UNINSTALLED (after one full BLE reconnect + 120s).
+
+---
+
+## [2026-06-25] tare_raw drift across boots is physics, not a bug
+
+**Observed:** tare_raw changed from -88281.3 (boot=23) to -89234.5 (boot=25), a delta
+of -953.2 raw = ~26g, within the same physical platform session.
+
+**Root cause:** Load cell viscoelastic creep. Each time the platform plate is loaded,
+unloaded, and reloaded, the polymer binder in the load cell strain gauges settles into
+a slightly different position. The new mechanical equilibrium produces a different
+zero-load raw reading. This is expected hardware physics, not measurement error.
+
+**Rule:** tare_raw is only valid for the session in which it was captured. Config.json
+always holds the most recently captured tare. Never compare tare_raw values across boots
+to conclude the system is broken - they will differ by 20-50g normally.
+
+**Also confirmed:** The handoff document's tare_raw value may be stale if power cycles
+occurred after the handoff was written. Always verify config.json on the board, not the
+handoff document, for the current tare_raw.
+
+---
+
+## [2026-06-25] sigma varies boot-to-boot based on physical conditions at boot time
+
+**Observed:** sigma=3.60g (boot=25, clean empty platform) vs sigma=6.91g (boot=28,
+platform disturbed during noise characterisation phase).
+
+**Root cause:** Sigma is measured during the 20-second noise characterisation phase at
+boot. Whatever physical vibration, load, or disturbance exists during those 20 seconds
+is captured as the noise floor. A noisier environment = higher sigma permanently for
+that boot session.
+
+**Rule:** Always check sigma in the boot log. If sigma is unexpectedly high (>5g for
+this 3-cell platform), the boot happened under disturbed conditions. The measurement
+is still valid but gas% accuracy is slightly reduced. For critical calibration sessions,
+ensure platform is completely undisturbed for the full 20s noise phase.

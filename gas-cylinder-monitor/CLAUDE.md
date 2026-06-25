@@ -134,173 +134,40 @@ The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ---
 
-## Current State — 2026-06-24
+## Current State - 2026-06-25
 
-Status:         Hub + Node WORKING end-to-end. G4 + N-TARE-CHECK + HUB-WATCHDOG + SKIP_TARE complete. boot=21 clean. System stable 17h.
-Production sketch: node/gas_monitor_v1/gas_monitor_v1.ino (boot=21, CAL timeout fix, N1 journal SPIFFS, N-TARE-CHECK, BLE_NOTIFY_INTERVAL_MS=30000)
-Modules:        hx711, tare (+ SPIFFS persistence), noise, cal, weight, ble (+ command char), health, journal (+ SPIFFS, g_journal_file_bytes, g_transfer_pending, journal_tare_check, journal_retare) — all .h/.cpp
-Boot sequence:  SETTLE → TARE_WAIT → TARE → NOISE → CAL → RUNNING
-
-Transport:      BLE-only (WiFi removed entirely)
-Platform:       3-cell YZC-161A parallel → HX711 → ESP32-C3 SuperMini
-Wiring locked:
-  ESP32-C3 GPIO4=DT, GPIO3=SCK, 3V3=VDD, GND=GND
-  All 3 red→E+, all 3 black→E−, all 3 green→A+, all 3 white→A−
-  Direct soldered/twisted — NOT breadboard
-
+```
+Status:         3E-005 COMPLETE AND PASSED (2026-06-25)
+Boot:           boot=28 (post 3E-005 demo)
+tare_raw:       -89234.5 (boot=25, new platform, locked)
+cal_factor:     36.2231 (locked, linear 200g-1800g confirmed)
+sigma:          6.91g (boot=28 - noisy due to platform disturbed during noise phase)
+                3.60g (boot=25 - clean reference value)
+Hub state:      cylinder_state=UNINSTALLED, steel_g=None (reset after demo)
+Hub modules:    main.py (~92 lines), ble_subscriber.py, log_transfer.py, domain.py, db.py
+Hub port:       7000 (Docker, arduino@AQ3)
+Docker path:    hub/config.json (baked at deploy - NOT hub/data/config.json)
+Node:           ESP32-C3 SuperMini, boot=28, BLE GATT, 30s notify interval
+Wiring locked (do not change without re-verifying):
+  ESP32-C3 GPIO4 = DOUT (SDO), GPIO3 = SCK
+  HX711 VCC = 3.3V ONLY (never 5V)
+  3-cell parallel: all redE+, all blackE-, all greenA+, all whiteA-
 Arduino IDE locked:
   esp32 by Espressif v3.0.7, Board: ESP32C3 Dev Module
   Port: COM11, USB CDC On Boot: ENABLED
   Libraries: NimBLE-Arduino by h2zero, ArduinoJson by Benoit Blanchon
-
-Verified hardware values:
-  cal_factor:   ~36 raw/g (3-cell parallel, derived every boot — never hardcoded)
-  sigma:        3.48–5.33g (boot-to-boot variation — wider range observed SESSION2)
-  zero accuracy: ±3g
-  weight accuracy: ±7g across 200g–1700g
-  threshold_g:  4 × sigma (~14–21g depending on boot sigma)
-  linear range: 200g–1700g
-  min detectable removal: 20g (1 trial SESSION2), hard floor 10g
-  false positive rate:    0/hr on static load (SESSION3, 38.4 min window)
-  slow drift:             190g peak-to-trough over 38 min — do NOT interpret
-                          as gas consumption in hub logic without drift correction
-
-Boot timing (verified 2026-06-18):
-  SETTLE:    ~2.1s
-  TARE_WAIT: 0–60s (hub sends TARE or SKIP_TARE; 60s fail-safe timeout)
-  TARE:      ~21s (200 samples × 100ms)
-  NOISE:     ~20s (200 samples × 100ms)
-  CAL:       ~0.1s (SET_CAL from hub) or variable (interactive fallback)
-  Total boot: ~103.9s (full TARE path) | ~27.5s (SKIP_TARE path — production after first install)
-
-Code constants locked (2026-06-18):
-  BUF_SIZE:               40 ticks (4-second delay-line comparison window — was 20)
-  NOISE_SIGMA_PASS_G:     8.0g (healthy max 5.33g + 1.5× margin)
-  NOISE_SIGMA_WARN_G:     15.0g (midpoint between healthy and open-cell ~25g)
-  HEAVY_LOAD_THRESHOLD_G: 2000.0g (hub-offline tare: use saved tare if load > 2000g — restored from 1000g DEV value 2026-06-23)
-  NimBLE onWrite:     two-parameter: (NimBLECharacteristic* c, NimBLEConnInfo& connInfo)
-  NimBLE onDisconnect: must call NimBLEDevice::startAdvertising() - node invisible otherwise
-  App Lab on_message: callbacks must be (sid, data) - not just (data)
-
-BLE characteristics locked (all sessions):
-  Service UUID:   aa206b91-235b-42aa-b370-453a3feedf35
-  Weight char:    b9b25bb1-f2a9-4545-b48f-295ab2789f41 (notify)
-  Command char:   c8a2f1e3-4d6b-4a7c-8e9f-1b2d3e4f5a6b (write-without-response) — BUILT
-  Log char:       d7b3e2f4-5e7c-4b8d-9f1a-2c3e4f5a6b7c (notify) — BUILT, 1E ✅ COMPLETE
-  Commands:       TARE | SKIP_TARE | SET_CAL:\<value\> | RETARE | DUMP_LOG | CLEAR_LOG
-
-Hub constants locked (2026-06-18 session 2):
-  DAILY_USE_DEFAULT_G      = 350.0   (V1 prior - see L-064 in LEARNINGS)
-  ALERT_AMBER_G            = 2000.0  (~5-6 days at 350g/day)
-  ALERT_RED_G              = 1000.0  (~2-3 days at 350g/day)
-  MIN_HISTORY_DAYS         = 7       (statistical minimum - never dynamic)
-  ANCHOR_SPREAD_THRESHOLD_G = 30.0   (from observed ~15g platform noise on static 1700g load)
-  NOTE: ALERT thresholds were derived from DAILY_USE_DEFAULT_G. Never change one without re-validating the others.
-
-Journal format (1D — verified 2026-06-17):
-  #SEQ t=T boot=B [TAG] event=NAME key=val key=val
-  Tags: [BOOT] [RUN] [HB] [FAULT]
-  Events: START, PHASE_COMPLETE, BOOT_COMPLETE, QUALITY_CHANGE,
-          WEIGHT_EVENT, HEARTBEAT, PHASE_FAIL
-  Boot counter persisted in config.json
-
-weight_update() API (updated SESSION2):
-  Signature: weight_update(long raw, float tare_raw, float cal_factor, float sigma_g) — 4 args
-  Delay-line detector: 20-tick delay line, s_event_pending lockout flag
-  Returns: WeightResult with event (NONE/PLACED/REMOVED) and delta fields
-
-journal_run() API (updated SESSION2):
-  Signature: journal_run(float grams, float sigma, const HealthResult&, WeightEvent, float delta) — 5 args
-
-Known TODOs (deferred, tracked):
-  TODO 1B-stuck:       tare_variance_raw=0.0f — stuck check always fails
-                       Fix: update TareResult struct to expose variance
-  TODO 1B-persistence: prev_cal_factor/prev_sigma_g not read from config.json
-                       Fix: read/write at boot and after CAL_SUCCESS
-  TODO-N1-RAW-SERIAL:  Four raw Serial.printf calls in gas_monitor_v1.ino
-  bypass journal and do not write to SPIFFS:
-    - tare_check=CLEAN line in STATE_TARE (now replaced by journal_tare_check)
-    - tare_check=SUSPECT line in STATE_TARE (now replaced by journal_tare_check)
-    - tare_check=NO_REF line in STATE_TARE (now replaced by journal_tare_check)
-    - event=RETARE line in STATE_RETARE (now replaced by journal_retare)
-  STATUS: RESOLVED this session. All four routed through journal functions.
-
-Hub status: DEPLOYED and WORKING at arduino@AQ3:7000
-            Gas domain (G4):  ✅ COMPLETE — state machine (UNINSTALLED/BOOTSTRAP_ANCHOR/TRACKING/LOW_GAS),
-                              gas%, setup endpoint, modular reorg (main.py 113 lines)
-            DEV/PROD toggle:  ✅ REMOVED — G4 production architecture replaces DEV mode scaffold
-            Two-level alerts: AMBER (gas_g < 2000g) + RED (gas_g < 1000g) with days_remaining
-            node_status topbar: green dot, MAC, name
-            IST timestamp: fixed - subprocess date call
-            Log directory: ✅ COMPLETE — logs/node/ created, files saved per transfer
-            hub_logger.py:    ✅ COMPLETE — persistent hub log (logs/hub/hub.log), session counter, 5 log functions (BLE/WEIGHT/DOMAIN/WATCHDOG/HUB)
-            HUB-WATCHDOG:     ✅ COMPLETE — hub_watchdog.py (3-level BT escalation) + watchdog_host.sh + gas-cylinder-watchdog.service (host systemd)
-            TARE on connect:  ✅ COMPLETE — hub sends TARE/SKIP_TARE+SET_CAL in on_node_connected
-
-Hub python/ structure (7 modules, single responsibility each):
-            main.py           — orchestrator: wires callbacks, passes data between modules; sends TARE/SKIP_TARE+SET_CAL on connect
-            ble_subscriber.py — BLE receive (weight/log notify), command write
-            log_transfer.py   — LOG_START/LOG_END pipeline, temp file → logs/node/
-            domain.py         — cylinder state machine, steel derivation, gas%, alerts
-            db.py             — SQLite storage, schema migrations
-            hub_logger.py     — persistent hub log (logs/hub/hub.log), session counter, 5 log functions (BLE/WEIGHT/DOMAIN/WATCHDOG/HUB)
-            hub_watchdog.py   — 3-level BT watchdog, 60s health checks, trigger file escalation
-
-Hub config:   hub/config.json — G4 schema fields now populated (NOTE: NOT hub/data/config.json — Docker mounts hub/ not hub/data/):
-              brand, install_mode, cylinder_state, steel_g, steel_source, steel_anchored_at,
-              cal_factor, tare_raw, cal_tare_session
-
-Current position: G4 ✅ COMPLETE — hub domain logic, state machine, gas%, setup endpoint, modular reorg.
-                  1E ✅ COMPLETE — DUMP_LOG/stream/LOG_END/CLEAR_LOG pipeline built (hub python).
-                  N1 ✅ COMPLETE — journal persists to SPIFFS. boot=9 clean.
-                  N-TARE-CHECK ✅ COMPLETE — hub-offline tare extension. HEAVY_LOAD_THRESHOLD_G=2000g. boot=16 clean.
-                  HUB-WATCHDOG ✅ COMPLETE — 3-level BT watchdog, hub_logger, TARE on connect. hub.log verified session=16.
-                  SKIP_TARE ✅ VERIFIED — hub sends SKIP_TARE+SET_CAL:36.2231 on connect. Boot time 27.5s (was 104s). boot=21.
-                  config.json path fixed — hub/config.json is correct (Docker mounts hub/). hub/data/config.json is never read.
-Next action:      3E-005 anchor validation experiment (water bowl simulation).
-
-Backlog:
-  1E: BLE journal transport — ✅ COMPLETE (hub side).
-      Hub subscribes to log char, handles LOG_START/LOG_END sentinel, saves to logs/node/.
-      CLEAR_LOG sent only after file confirmed on disk. Node streaming FSM built in prior session.
-
-  HUB-001: Auto-retare on cylinder removal.
-      BLE command char now BUILT on node (2026-06-18). RETARE command handler built (stub).
-      Hub-side logic (detect removal, send RETARE, verify) still required before hub Layer 2.
-
-  HUB-002: Disturbance detection from heartbeat trend anomaly.
-      Requires Group 5 burn rate estimate first. Design pending.
-
-  HUB-WATCHDOG: BT adapter watchdog (PRE-PRODUCTION REQUIRED)
-      Status: NOT BUILT
-      Gate: Must exist before device goes into production kitchen.
-            Do not skip. Do not defer past hub Group 5.
-      Problem: WCN3990 Qualcomm BT chip can crash at firmware level
-               (hardware error 0x00, Reading QCA version information failed -110).
-               No software recovery possible — requires full system reboot.
-               Proven 2026-06-18: hci0 wedged, modprobe/bluetoothctl all failed,
-               only reboot recovered it.
-      Three escalation levels:
-        Level 1 (0–2 min failure):  bluetoothctl power on, restart bluetooth, retry scan
-        Level 2 (2–5 min failure):  modprobe -r btusb && modprobe btusb, restart bluetooth, retry
-        Level 3 (>10 min failure):  write /tmp/reboot_requested trigger file, host watchdog reboots
-      Reboot mechanism (DO NOT use sudo reboot inside Docker):
-        - Docker container writes /tmp/reboot_requested
-        - Host systemd service watches for that file
-        - Host reboots when file appears
-        - Keeps container unprivileged
-      Constants (locked):
-        BT_FAILURE_SOFT_THRESHOLD    = 120s   (Level 1)
-        BT_FAILURE_ADAPTER_THRESHOLD = 300s   (Level 2)
-        BT_FAILURE_REBOOT_THRESHOLD  = 600s   (Level 3)
-      Files to change when building:
-        - hub/python/ble_subscriber.py: failure_start_ts tracking + escalation
-        - hub/deploy.sh: systemd reboot-watchdog service install
-        - New: /etc/systemd/system/reboot-watchdog.service on AQ3 host
-
-NOTE: 190g drift over 38 min observed on static load.
-  Do NOT interpret heartbeat wander as gas consumption in hub logic.
-  Raw heartbeat trend ≠ burn rate until drift is characterised and corrected (3E-009).
+Domain constants - TEST values (MUST REVERT before production):
+  NET_GAS_G              = 4535.0      PRODUCTION = 14200.0
+  ANCHOR_GROSS_MIN_G     = 4800.0      PRODUCTION = 26000.0
+  STEEL_PLAUSIBLE_MIN_G  = 200.0       PRODUCTION = 13000.0
+  STEEL_PLAUSIBLE_MAX_G  = 2000.0      PRODUCTION = 18000.0
+  REFILL_GROSS_MIN_G     = 5500.0      PRODUCTION = 29000.0
+New this session:
+  REMOVAL_GRACE_S        = 120.0       (same for test and production - no revert needed)
+Current position: 3E-005 PASSED. Ready for production revert + 3E-008 (mini cylinder).
+Next action:      Revert 5 constants to production values. Flash node with
+                  HEAVY_LOAD_THRESHOLD_G restored to 2000g. Then Phase 2 begins.
+```
 
 ---
 

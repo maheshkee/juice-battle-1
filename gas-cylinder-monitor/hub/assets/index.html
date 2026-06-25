@@ -144,6 +144,21 @@
       transition: width 0.6s ease, background 0.4s;
       width: 0%;
     }
+    .setup-btn {
+      margin-top: 8px;
+      padding: 10px 32px;
+      background: #1d4ed8;
+      color: #ffffff;
+      border: none;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .setup-btn:hover { background: #2563eb; }
+    .setup-btn:active { background: #1e40af; }
 
     /* ── meta (sigma + timestamp) ────────────────────────── */
     .meta {
@@ -228,6 +243,10 @@
         Calibrating&hellip;
       </div>
 
+      <button class="setup-btn" id="setup-btn" style="display:none" onclick="onSetupClick()">
+        Install cylinder
+      </button>
+
       <div class="meta">
         <div class="sigma" id="sigma"></div>
         <div class="ts"    id="ts"></div>
@@ -251,6 +270,8 @@
     var nameEl    = document.getElementById('node-name');
     var sepEl     = document.getElementById('node-sep');
     var macEl     = document.getElementById('node-mac');
+    var setupBtnEl  = document.getElementById('setup-btn');
+    var g_cylinder_state = 'UNINSTALLED';
     var bannerEl    = document.getElementById('alert-banner');
     var alertTextEl = document.getElementById('alert-text');
 
@@ -303,11 +324,11 @@
         bannerEl.style.animation = 'pulse 2s ease-in-out infinite';
       }
 
-      if (data.pct !== null && data.pct !== undefined) {
+      if (data.gas_pct !== null && data.gas_pct !== undefined) {
         pctRowEl.style.display = 'flex';
         pctBarBg.style.display = 'block';
-        pctValEl.textContent   = Math.round(data.pct);
-        var p = Math.min(100, Math.max(0, data.pct));
+        pctValEl.textContent   = Math.round(data.gas_pct);
+        var p = Math.min(100, Math.max(0, data.gas_pct));
         pctFillEl.style.width  = p + '%';
         pctFillEl.style.background = p > 50 ? '#22c55e' :
                                      p > 20 ? '#f59e0b' : '#ef4444';
@@ -318,6 +339,14 @@
 
       var calEl = document.getElementById('calibrating-label');
       if (calEl) calEl.style.display = (data.cylinder_state === 'BOOTSTRAP_ANCHOR') ? 'block' : 'none';
+      g_cylinder_state = data.cylinder_state || 'UNINSTALLED';
+      if (setupBtnEl) setupBtnEl.style.display = (g_cylinder_state === 'UNINSTALLED') ? 'block' : 'none';
+    }
+
+    function onSetupClick() {
+      socket.emit('setup', { mode: 'FRESH', brand: null });
+      if (setupBtnEl) setupBtnEl.style.display = 'none';
+      console.log('[UI] setup emitted: FRESH');
     }
 
     var socket = io();

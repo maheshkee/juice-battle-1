@@ -1082,3 +1082,65 @@ line-by-line to hub on DUMP_LOG command.
 
 SKIP_TARE+SET_CAL VERIFIED. config.json path fixed. System stable 17h. Boot time 74% faster.
 Ready for 3E-005 water bowl anchor validation.
+
+---
+
+## Session 003 - 2026-06-25 - 3E-005 water bowl anchor validation + WebUI additions
+
+### Goal
+Validate full domain state machine end-to-end: UNINSTALLED  BOOTSTRAP_ANCHOR  TRACKING.
+Add Install cylinder button and gas% to WebUI. Validate grace window behaviour.
+
+### What happened
+- Diagnosed tare_raw discrepancy (config.json showed -89234.5 not -88281.3 from handoff).
+  Root cause: platform swap test continued through boots 24 and 25 after handoff was written.
+  -89234.5 is the correct and most recent tare. No bug.
+- Changed 4 domain.py constants for water bowl test (NET_GAS_G, ANCHOR_GROSS_MIN_G,
+  STEEL_PLAUSIBLE_MIN_G, STEEL_PLAUSIBLE_MAX_G).
+- Fixed gas% field name mismatch in WebUI: data.pct  data.gas_pct.
+- Added 'Install cylinder' button to WebUI (visible only when UNINSTALLED).
+- Added gas% display and progress bar to WebUI (visible only when TRACKING/LOW_GAS).
+- Discovered and fixed BUG: refill detection used ANCHOR_GROSS_MIN_G causing infinite
+  re-anchor loop at 5000g. Fixed by adding separate REFILL_GROSS_MIN_G = 5500.0 (prod: 29000.0).
+- Implemented Option A removal grace window: REMOVAL_GRACE_S = 120.0s before UNINSTALLED.
+- Ran 3E-005 experiment: anchor fired correctly, steel_g derived, gas% showed 100%.
+- Ran demo for boss: full flow from power cycle to 100% gas% confirmed live.
+- Validated grace window: 30s removal  stayed TRACKING. 120s+ removal  UNINSTALLED.
+- Noted minor race condition: first reading after anchor transition briefly shows
+  stale BOOTSTRAP_ANCHOR state in weight_update. Self-corrects next read. Deferred.
+
+### Real hardware outputs
+| Measurement | Value |
+|---|---|
+| Boot | 28 (post demo) |
+| tare_raw | -89234.5 (boot=25, new platform) |
+| cal_factor | 36.2231 (locked) |
+| sigma (boot=25 clean) | 3.60g |
+| sigma (boot=28 demo) | 6.91g (platform disturbed during noise phase) |
+| Anchor mean_gross | 5018.6g (boot=28 demo run) |
+| steel_g derived | 483.6g (bowl 406 + plate 59 + variance = 483.6g) |
+| gas% at anchor | 100% |
+| ANCHOR_GROSS_MIN_G test | 4800.0g |
+| REFILL_GROSS_MIN_G test | 5500.0g |
+| REMOVAL_GRACE_S | 120.0s |
+| 5-reading anchor spread | 9g (boot=25 first run - excellent) |
+
+### Gate
+3E-005 PASSED. All pass criteria met:
+- Anchor fired correctly UNINSTALLED  BOOTSTRAP_ANCHOR  TRACKING V
+- steel_g derived from first principles V
+- gas% shows 100% on WebUI V
+- Install button appears/disappears correctly V
+- Grace window holds within 120s V
+- Grace expires and triggers UNINSTALLED after 120s+ V
+- Boss demo completed successfully V
+
+### Files changed this session
+- hub/python/domain.py - 4 test constants + REFILL_GROSS_MIN_G + REMOVAL_GRACE_S + grace logic
+- hub/assets/index.html - Install button, gas% display, data.pctdata.gas_pct fix
+
+### What is next
+- Revert 5 domain constants to production values (see revert checklist in handoff)
+- Restore node HEAVY_LOAD_THRESHOLD_G to 2000g (requires reflash)
+- 3E-008: mini cylinder thermal drift characterisation
+- Minor race condition investigation (stale state on first post-anchor read)

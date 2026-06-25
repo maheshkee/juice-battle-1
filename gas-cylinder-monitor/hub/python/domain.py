@@ -1,19 +1,22 @@
+import time
 import os
 import json
 import subprocess
 import hub_logger
 
 # ── Physical constants ────────────────────────────────────────────────────────
-NET_GAS_G = 14200.0  # BIS IS 3196 — fixed for 14.2 kg domestic cylinder, never change
+NET_GAS_G = 4535.0  # BIS IS 3196 — fixed for 14.2 kg domestic cylinder, never change
 
 # ── Anchor detection ─────────────────────────────────────────────────────────
 ANCHOR_STABILITY_WINDOW_G  = 50.0  # TODO: tune after 3E-009
 ANCHOR_MIN_STABLE_READINGS = 5     # TODO: validate after 3E-005
-ANCHOR_GROSS_MIN_G         = 26000.0  # gross floor for a fresh full cylinder
+ANCHOR_GROSS_MIN_G         = 4800.0  # gross floor for a fresh full cylinder
+REFILL_GROSS_MIN_G         = 5500.0   # TEST. PRODUCTION = 29000.0
+REMOVAL_GRACE_S            = 120.0    # seconds before confirming cylinder removed
 
 # ── Steel plausibility bounds ─────────────────────────────────────────────────
-STEEL_PLAUSIBLE_MIN_G  = 13000.0
-STEEL_PLAUSIBLE_MAX_G  = 18000.0
+STEEL_PLAUSIBLE_MIN_G  = 200.0
+STEEL_PLAUSIBLE_MAX_G  = 2000.0
 STEEL_UNKNOWN_PRIOR_G  = 16500.0  # conservative prior — lean toward less gas shown
 
 # ── Alert thresholds — LOCKED 2026-06-12 ─────────────────────────────────────
@@ -33,6 +36,7 @@ _CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'c
 
 # ── Module-level state ────────────────────────────────────────────────────────
 _cylinder_state      = 'UNINSTALLED'
+_removal_start_ts    = None           # set when gross drops below 500g in TRACKING/LOW_GAS
 _brand               = None
 _steel_source        = None   # 'ANCHOR' | 'LOOKUP' | 'PRIOR' | None
 _steel_g             = None   # derived steel weight in grams
@@ -48,6 +52,40 @@ def get_config():
             return json.load(f)
     except Exception:
         return {}
+
+
+def parse_tare_from_journal(journal_path):
+    """Return the tare mean (float) from the most recent TARE PHASE_COMPLETE line, or None."""
+    try:
+        tare_raw = None
+        with open(journal_path) as f:
+            for line in f:
+                if ('[BOOT] event=PHASE_COMPLETE phase=TARE result=OK' in line
+                        and 'mean=' in line):
+                    for part in line.split():
+                        if part.startswith('mean='):
+                            tare_raw = float(part.split('=', 1)[1])
+                            break
+        return tare_raw
+    except Exception as e:
+        print(f'[DOMAIN] parse_tare_from_journal failed: {e}', flush=True)
+        return None
+
+
+def update_tare_in_config(tare_raw, config_path):
+    """Read config_path, update tare_raw field, write back. Preserves all other keys."""
+    try:
+        try:
+            with open(config_path) as f:
+                cfg = json.load(f)
+        except Exception:
+            cfg = {}
+        cfg['tare_raw'] = tare_raw
+        with open(config_path, 'w') as f:
+            json.dump(cfg, f, indent=2)
+        print(f'[DOMAIN] tare_raw updated: {tare_raw}', flush=True)
+    except Exception as e:
+        print(f'[DOMAIN] update_tare_in_config failed: {e}', flush=True)
 
 
 def load_config():
@@ -219,7 +257,7 @@ def set_install_mode(mode, brand=None):
 
 def process_reading(grams, quality, sigma, hub_ts):
     global _cylinder_state, _steel_g, _steel_source, _candidate_window
-    global _first_reading_check, _last_alert_level
+    global _first_reading_check, _last_alert_level, _removal_start_ts
 
     # STEP 1 — first-reading cross-check (fires once per hub session)
     if not _first_reading_check:
@@ -258,22 +296,28 @@ def process_reading(grams, quality, sigma, hub_ts):
         gas_g, gas_pct = _compute_gas(grams)
         alert_level, days_remaining = _evaluate_alerts(gas_g)
 
-        if grams > ANCHOR_GROSS_MIN_G:
+        if grams > REFILL_GROSS_MIN_G:
             print(f'[DOMAIN] Refill detected: gross={grams:.1f}g - re-anchoring', flush=True)
             _cylinder_state   = 'BOOTSTRAP_ANCHOR'
             _candidate_window = []
             hub_logger.log_domain('STATE_CHANGE', new_state='BOOTSTRAP_ANCHOR', source='REFILL_DETECTED')
 
         elif grams < 500.0:
-            print(f'[DOMAIN] Cylinder removed: gross={grams:.1f}g', flush=True)
-            _cylinder_state   = 'UNINSTALLED'
-            _steel_g          = None
-            _steel_source     = None
-            _candidate_window = []
-            _save_config()
-            hub_logger.log_domain('STATE_CHANGE', new_state='UNINSTALLED', source='CYLINDER_REMOVED')
+            if _removal_start_ts is None:
+                _removal_start_ts = time.time()
+                print(f'[DOMAIN] Cylinder low/removed: grace window started ({REMOVAL_GRACE_S}s)', flush=True)
+            elif time.time() - _removal_start_ts > REMOVAL_GRACE_S:
+                print(f'[DOMAIN] Grace expired: transitioning to UNINSTALLED', flush=True)
+                _cylinder_state   = 'UNINSTALLED'
+                _steel_g          = None
+                _steel_source     = None
+                _candidate_window = []
+                _removal_start_ts = None
+                _save_config()
+                hub_logger.log_domain('STATE_CHANGE', new_state='UNINSTALLED', source='CYLINDER_REMOVED')
 
         else:
+            _removal_start_ts = None
             snapshot['gas_g']          = gas_g
             snapshot['gas_pct']        = gas_pct
             snapshot['alert_level']    = alert_level
@@ -292,21 +336,27 @@ def process_reading(grams, quality, sigma, hub_ts):
         gas_g, gas_pct = _compute_gas(grams)
         alert_level, days_remaining = _evaluate_alerts(gas_g)
 
-        if grams > ANCHOR_GROSS_MIN_G:
+        if grams > REFILL_GROSS_MIN_G:
             print(f'[DOMAIN] Refill detected from LOW_GAS: re-anchoring', flush=True)
             _cylinder_state   = 'BOOTSTRAP_ANCHOR'
             _candidate_window = []
             hub_logger.log_domain('STATE_CHANGE', new_state='BOOTSTRAP_ANCHOR', source='REFILL_FROM_LOW_GAS')
 
         elif grams < 500.0:
-            print(f'[DOMAIN] Cylinder removed from LOW_GAS', flush=True)
-            _cylinder_state = 'UNINSTALLED'
-            _steel_g        = None
-            _steel_source   = None
-            _save_config()
-            hub_logger.log_domain('STATE_CHANGE', new_state='UNINSTALLED', source='REMOVED_FROM_LOW_GAS')
+            if _removal_start_ts is None:
+                _removal_start_ts = time.time()
+                print(f'[DOMAIN] Cylinder low/removed from LOW_GAS: grace window started ({REMOVAL_GRACE_S}s)', flush=True)
+            elif time.time() - _removal_start_ts > REMOVAL_GRACE_S:
+                print(f'[DOMAIN] Grace expired from LOW_GAS: transitioning to UNINSTALLED', flush=True)
+                _cylinder_state = 'UNINSTALLED'
+                _steel_g        = None
+                _steel_source   = None
+                _removal_start_ts = None
+                _save_config()
+                hub_logger.log_domain('STATE_CHANGE', new_state='UNINSTALLED', source='REMOVED_FROM_LOW_GAS')
 
         else:
+            _removal_start_ts = None
             snapshot['gas_g']          = gas_g
             snapshot['gas_pct']        = gas_pct
             snapshot['alert_level']    = alert_level

@@ -44,19 +44,20 @@ DEVICE_IFACE = 'org.bluez.Device1'
 
 class BLESubscriber:
     def __init__(self, on_weight, on_log_line=None, on_connected=None, on_disconnected=None):
-        self.on_weight       = on_weight
-        self.on_log_line     = on_log_line
-        self.on_connected    = on_connected
-        self.on_disconnected = on_disconnected
-        self.cmd_char        = None  # path to command characteristic for write_command()
-        self._connecting     = False  # guard against duplicate connect attempts
-        self.bus             = None
-        self.adapter         = None
-        self.target_device   = None
-        self.weight_char     = None
-        self.scanning        = False
-        self._loop           = None
-        self._config         = {}
+        self.on_weight           = on_weight
+        self.on_log_line         = on_log_line
+        self.on_connected        = on_connected
+        self.on_disconnected     = on_disconnected
+        self.cmd_char            = None  # path to command characteristic for write_command()
+        self._connecting         = False  # guard against duplicate connect attempts
+        self.bus                 = None
+        self.adapter             = None
+        self.target_device       = None
+        self.weight_char         = None
+        self.scanning            = False
+        self._loop               = None
+        self._config             = {}
+        self.last_boot_used_tare = False  # True if TARE was sent this connect
 
     def start(self):
         t = threading.Thread(target=self._run, daemon=True)
@@ -227,6 +228,7 @@ class BLESubscriber:
                 mac = str(self.target_device).split('/')[-1] \
                           .replace('dev_', '').replace('_', ':')
                 self.on_connected(DEVICE_NAME, mac)
+            self._send_tare_commands()
         except Exception as e:
             print(f'[BLE_SUB] Subscribe failed: {e}', flush=True)
 
@@ -286,6 +288,37 @@ class BLESubscriber:
                 if self.on_disconnected:
                     self.on_disconnected()
                 GLib.timeout_add(5000, lambda: self._start_scan() or False)
+
+    def _send_tare_commands(self):
+        try:
+            with open(CONFIG_PATH) as f:
+                cfg = json.load(f)
+        except Exception as e:
+            print(f'[BLE_SUB] _send_tare_commands: config read failed: {e}', flush=True)
+            return
+
+        cylinder_state = cfg.get('cylinder_state', 'UNINSTALLED')
+        cal_factor     = cfg.get('cal_factor')
+
+        if cylinder_state == 'UNINSTALLED':
+            threading.Timer(1.0, lambda: self.write_command('TARE')).start()
+            self.last_boot_used_tare = True
+            if cal_factor is not None:
+                threading.Timer(2.0,
+                    lambda cf=cal_factor: self.write_command(f'SET_CAL:{cf:.4f}')).start()
+            print(f'[BLE_SUB] sent TARE + SET_CAL:{cal_factor} '
+                  f'(cylinder_state=UNINSTALLED)', flush=True)
+        else:
+            if cal_factor is None:
+                print('[BLE_SUB] cal_factor missing in config — cannot send SKIP_TARE+SET_CAL',
+                      flush=True)
+                return
+            threading.Timer(1.0, lambda: self.write_command('SKIP_TARE')).start()
+            threading.Timer(2.0,
+                lambda cf=cal_factor: self.write_command(f'SET_CAL:{cf:.4f}')).start()
+            self.last_boot_used_tare = False
+            print(f'[BLE_SUB] sent SKIP_TARE + SET_CAL:{cal_factor:.4f} '
+                  f'(cylinder_state={cylinder_state})', flush=True)
 
     def write_command(self, cmd):
         # Writes ASCII command string to node command characteristic.
