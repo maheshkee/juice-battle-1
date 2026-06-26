@@ -309,7 +309,8 @@
 
     function applyUpdate(data) {
       var waiting = data.quality === 'WAITING';
-      gramsEl.textContent = waiting ? '--' : Math.round(data.grams);
+      var gramsDisplay = Math.max(0, Math.round(data.grams));
+      gramsEl.textContent = waiting ? '--' : gramsDisplay;
 
       var qualityLabel = { GOOD: 'SENSOR OK', DEGRADED: 'SENSOR DEGRADED', FAILED: 'SENSOR FAILED' };
       var cls = qualityClass[data.quality] || 'waiting';
@@ -380,6 +381,7 @@
       banner.textContent   = '';
 
       if (state === 'UNINSTALLED') {
+        gramsEl.textContent       = '0';
         stateDot.style.background = '#666';
         stateLabel.style.color    = '#666';
         stateLabel.textContent    = 'Platform empty - place cylinder';
@@ -408,7 +410,7 @@
           banner.style.background   = 'rgba(239,68,68,0.15)';
           banner.style.border       = '1px solid rgba(239,68,68,0.4)';
           banner.style.color        = '#ef4444';
-          banner.textContent        = 'Gas critical - book now';
+          banner.textContent        = 'Gas critical - cylinder may stop at any moment. Book now.';
           if (daysEl) daysEl.style.color = '#ef4444';
         } else {
           stateDot.style.background = '#22c55e';
@@ -426,7 +428,7 @@
           banner.style.background   = 'rgba(239,68,68,0.15)';
           banner.style.border       = '1px solid rgba(239,68,68,0.4)';
           banner.style.color        = '#ef4444';
-          banner.textContent        = 'Gas critical - book now';
+          banner.textContent        = 'Gas critical - cylinder may stop at any moment. Book now.';
           if (daysEl) daysEl.style.color = '#ef4444';
         } else {
           stateDot.style.background = '#f59e0b';

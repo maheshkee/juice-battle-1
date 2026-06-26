@@ -1,4 +1,7 @@
 import os
+os.environ['TZ'] = 'Asia/Kolkata'
+import time
+time.tzset()
 import sys
 import ctypes
 

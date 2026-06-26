@@ -1144,3 +1144,69 @@ Add Install cylinder button and gas% to WebUI. Validate grace window behaviour.
 - Restore node HEAVY_LOAD_THRESHOLD_G to 2000g (requires reflash)
 - 3E-008: mini cylinder thermal drift characterisation
 - Minor race condition investigation (stale state on first post-anchor read)
+
+---
+
+## Session 004 — 2026-06-25/26 — G5 analytics + G7 WebUI + HUB-WATCHDOG
+
+### Goal
+Complete HUB-WATCHDOG deployment, implement G5 burn rate analytics with adaptive
+lookback strategy, implement dual-condition alert architecture, build G7 WebUI
+with full state display, validate end-to-end with water bowl simulator.
+
+### What happened
+- HUB-WATCHDOG: hub_watchdog.py + watchdog_host.sh already written, systemd service
+  missing. Installed gas-cylinder-watchdog.service, sudoers confirmed, host daemon
+  running. Both Python side (inside Docker) and host side fully operational.
+- G5 analytics: compute_analytics() redesigned with adaptive burn rate:
+  cumulative from anchor_ts when elapsed < BURN_RATE_WINDOW_DAYS, rolling window
+  thereafter, cumulative fallback if rolling window fails.
+- G5 alert architecture: dual-condition. Condition A (gram failsafe, always active:
+  ALERT_AMBER_G=2000g, ALERT_RED_G=1000g). Condition B (day-based, active after
+  MIN_DAYS_FOR_DAY_ALERT: ALERT_AMBER_DAYS=5.0, ALERT_RED_DAYS=3.0).
+- LOW_GAS state bypasses MAX_BURN_RATE_G_PER_DAY ceiling — user always sees
+  burn rate and days_remaining during alert state.
+- One-reading transition fix: when TRACKING→LOW_GAS occurs in same reading,
+  compute_analytics re-called with cylinder_state='LOW_GAS' to bypass ceiling.
+- G7 WebUI: state pill (PLATFORM EMPTY/CALIBRATING/TRACKING/LOW GAS/CRITICAL),
+  alert banner (amber/red), SENSOR OK/DEGRADED/FAILED badge, progress bar colour
+  follows alert level, formatDays() with < 0.1 for very small values,
+  UNINSTALLED always shows 0g, grams clamped to 0 minimum.
+- Cooking intelligence vision documented: session detection (G8), dish tagging (G9),
+  cooking calendar (G10). FUNCTIONAL_ZERO_G design decision documented.
+- IST timezone set on host. Docker container TZ fix pending (main.py).
+- 4 new docx reference documents created and committed to docs/.
+- Water bowl end-to-end demo: UNINSTALLED → Install → BOOTSTRAP_ANCHOR →
+  TRACKING → LOW GAS (amber) → CRITICAL (red) → UNINSTALLED. All states
+  and transitions confirmed working.
+- SQLite confirmed: 149+ TRACKING readings from 3E-005, new clean readings from
+  Session 004 test cycles.
+- sigma improved: ±3.19g with bowl on platform during noise phase (vs 1817.25g
+  when bowl placed after noise phase — timing matters for quality reading).
+
+### Real hardware outputs
+| Parameter | Value | Notes |
+|---|---|---|
+| boot number at session end | 34 | session=34 in hub logs |
+| steel_g (new anchor boot=32) | 494.7g | bowl 5000g, 3-cell platform |
+| sigma (bowl on platform, correct timing) | 3.19g | excellent |
+| sigma (bowl added after noise phase) | 1817.25g | wrong timing artefact |
+| AMBER fires at gas_g | < 2000g | Condition A gram failsafe |
+| RED fires at gas_g | < 1000g | Condition A gram failsafe |
+| burn_rate during stable tracking | ~1300 g/day cumulative | no consumption = NO_CONSUMPTION src |
+| tare_raw (boot=32) | -88791.0 | clean tare on empty platform |
+| WCN3990 BLE watchdog | operational | host daemon polling 30s |
+
+### Gate
+G5 PASSED — adaptive burn rate computing, dual-condition alerts firing correctly.
+G7 PASSED — all WebUI states rendering correctly with correct colours and labels.
+HUB-WATCHDOG PASSED — both Python and host sides operational.
+3E-009 IN PROGRESS — node running unattended on wall charger Fri→Mon.
+
+### What is next
+- Monday: power on hub, read 3E-009 stability data, analyse drift
+- 3E-008: thermal drift characterisation (controlled heat cycle)
+- 3E-010: load cell failure injection
+- Docker container IST timezone fix (main.py os.environ TZ)
+- Production revert of all 7+1 constants when G7 confirmed stable
+- Real 14.2kg cylinder production test

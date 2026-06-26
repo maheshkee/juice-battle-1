@@ -1,6 +1,6 @@
 # CLAUDE.md — gas-cylinder-monitor
 # Board: Arduino UNO Q AQ3 | IP: 192.168.1.161 | user: arduino
-# Last updated: 2026-06-24
+# Last updated: 2026-06-26
 # Read this FULLY before doing anything in this directory.
 
 ---
@@ -134,20 +134,23 @@ The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ---
 
-## Current State - 2026-06-25
+## Current State - 2026-06-26
 
 ```
-Status:         3E-005 COMPLETE AND PASSED (2026-06-25)
-Boot:           boot=28 (post 3E-005 demo)
+Status:         G5 analytics + G7 WebUI complete and demo-validated (2026-06-26)
+                HUB-WATCHDOG systemd service deployed and verified
+Boot:           boot=28 (post 3E-005 demo — node running unattended on wall charger)
 tare_raw:       -89234.5 (boot=25, new platform, locked)
 cal_factor:     36.2231 (locked, linear 200g-1800g confirmed)
 sigma:          6.91g (boot=28 - noisy due to platform disturbed during noise phase)
                 3.60g (boot=25 - clean reference value)
 Hub state:      cylinder_state=UNINSTALLED, steel_g=None (reset after demo)
-Hub modules:    main.py (~92 lines), ble_subscriber.py, log_transfer.py, domain.py, db.py
+Hub modules:    main.py, ble_subscriber.py, log_transfer.py, domain.py, db.py,
+                hub_logger.py, hub_watchdog.py
 Hub port:       7000 (Docker, arduino@AQ3)
 Docker path:    hub/config.json (baked at deploy - NOT hub/data/config.json)
 Node:           ESP32-C3 SuperMini, boot=28, BLE GATT, 30s notify interval
+                Running unattended on wall charger (3E-009 long-run stability experiment)
 Wiring locked (do not change without re-verifying):
   ESP32-C3 GPIO4 = DOUT (SDO), GPIO3 = SCK
   HX711 VCC = 3.3V ONLY (never 5V)
@@ -162,11 +165,37 @@ Domain constants - TEST values (MUST REVERT before production):
   STEEL_PLAUSIBLE_MIN_G  = 200.0       PRODUCTION = 13000.0
   STEEL_PLAUSIBLE_MAX_G  = 2000.0      PRODUCTION = 18000.0
   REFILL_GROSS_MIN_G     = 5500.0      PRODUCTION = 29000.0
-New this session:
-  REMOVAL_GRACE_S        = 120.0       (same for test and production - no revert needed)
-Current position: 3E-005 PASSED. Ready for production revert + 3E-008 (mini cylinder).
-Next action:      Revert 5 constants to production values. Flash node with
-                  HEAVY_LOAD_THRESHOLD_G restored to 2000g. Then Phase 2 begins.
+Time/analytics constants - TEST values (MUST REVERT before production):
+  MIN_DATA_HOURS         = 0.25        PRODUCTION = 24.0
+  BURN_RATE_WINDOW_DAYS  = 0.14583     PRODUCTION = 7.0
+  MIN_DAYS_FOR_DAY_ALERT = 0.04167     PRODUCTION = 2.0
+  ALERT_AMBER_DAYS       = 0.10417     PRODUCTION = 5.0
+  ALERT_RED_DAYS         = 0.0625      PRODUCTION = 3.0
+  MAX_BURN_RATE_G_PER_DAY= 100000.0    PRODUCTION = 2000.0
+Permanent constants (same test and production - no revert needed):
+  REMOVAL_GRACE_S        = 120.0
+Node constants - TEST value (MUST REVERT before production):
+  HEAVY_LOAD_THRESHOLD_G = 1000g (DEV) PRODUCTION = 2000g (requires reflash)
+Completed this session:
+  - HUB-WATCHDOG systemd service installed and verified
+  - G5 compute_analytics: adaptive burn rate (cumulative from anchor →
+    rolling window after BURN_RATE_WINDOW_DAYS)
+  - Dual-condition alert logic: Condition A gram failsafe always active,
+    Condition B day-based after MIN_DAYS_FOR_DAY_ALERT
+  - G7 WebUI: state pill, alert banner, SENSOR OK badge, formatDays,
+    < 0.1 display, UNINSTALLED shows 0g
+  - IST timezone fixed on host
+  - Docker container TZ fix applied in main.py (os.environ['TZ'] + time.tzset())
+    — pending deploy
+Current position: G5 analytics + G7 WebUI complete and demo-validated.
+                  HUB-WATCHDOG fully deployed. 3E-009 long-run stability
+                  experiment pending — node running unattended on wall charger
+                  over weekend. 5 domain constants + 6 time/analytics constants
+                  + HEAVY_LOAD_THRESHOLD_G still at TEST values — revert only
+                  at final production stage.
+Next action:      Deploy TZ fix (redeploy hub). Analyse 3E-009 data Monday.
+                  3E-008 thermal drift after Monday. 3E-010 failure injection.
+                  Then production revert + real cylinder test.
 ```
 
 ---

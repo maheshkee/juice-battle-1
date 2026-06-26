@@ -2171,3 +2171,39 @@ that boot session.
 this 3-cell platform), the boot happened under disturbed conditions. The measurement
 is still valid but gas% accuracy is slightly reduced. For critical calibration sessions,
 ensure platform is completely undisturbed for the full 20s noise phase.
+
+---
+
+## SESSION 004 LEARNINGS — 2026-06-25
+
+### [2026-06-25] HUB-WATCHDOG: Docker cannot use hciconfig — use reading_fresh as sole health signal
+
+The hub_watchdog.py runs inside Docker. hciconfig and bluetoothctl are host-side tools — unavailable inside the container. The correct health signal is reading_fresh: if the last BLE reading was received within READING_STALE_S=900s, BLE stack is healthy. If stale, escalate. This is the only reliable health check available from inside Docker.
+
+### [2026-06-25] Cumulative burn rate is more stable than rolling window for early tracking
+
+Rolling window burn rate (30 min test window) fluctuates wildly with irregular consumption — jumped from 44 g/day to 39000 g/day in same session. Cumulative from anchor is rock-solid: total_consumed / elapsed_days. It only moves in one direction and improves with time. Correct architecture: cumulative until BURN_RATE_WINDOW_DAYS elapsed, then switch to rolling window. Rolling window is the upgrade, cumulative is the reliable baseline.
+
+### [2026-06-25] MAX_BURN_RATE ceiling must be bypassed in LOW_GAS state
+
+When gas is consumed aggressively, cumulative burn rate can exceed MAX_BURN_RATE_G_PER_DAY (100000 g/day in test). If the ceiling is applied in LOW_GAS state, analytics returns None and shows — to the user at exactly the moment they most need information. Design rule: gram failsafe (ALERT_AMBER_G, ALERT_RED_G) always fires. Day-based ceiling only applies in TRACKING state. LOW_GAS bypasses MAX ceiling entirely — any burn rate above MIN_BURN_RATE_G_PER_DAY is valid and shown.
+
+### [2026-06-25] TRACKING→LOW_GAS transition in same reading: one-reading analytics gap
+
+When process_reading is called with cylinder_state=TRACKING and gas_g < ALERT_AMBER_G, analytics is computed with TRACKING ceiling, returns None, then state transitions to LOW_GAS. First reading shows — for analytics. Fix: after transition, re-call compute_analytics with cylinder_state='LOW_GAS' in same reading cycle. One extra call, guarantees correct analytics on transition reading.
+
+### [2026-06-25] sigma quality depends on whether load was on platform during NOISE phase
+
+Boot=32 with bowl on platform during noise phase: sigma=3.19g (excellent). Earlier boots where bowl placed AFTER noise phase completed: sigma=1817.25g (meaningless — noise characterised on empty platform, then large weight added). For production: cylinder should be on platform before boot for meaningful sigma. Conversely: if sigma is very high (>>100g), suspect weight was added after noise phase.
+
+### [2026-06-25] FUNCTIONAL_ZERO_G: weight sensors cannot detect exact empty moment
+
+LPG regulators stop working when cylinder pressure drops below minimum operating threshold, not when weight reaches zero. At that moment, 200-500g of LPG (estimate, unverified for Indian domestic cylinders) remains physically inside — inaccessible to the regulator. A load cell reads this residual weight. True 0g display at burner-death moment is physically impossible with weight sensing alone. FUNCTIONAL_ZERO_G must be experimentally determined per brand (experiment 3E-ZERO, post-V1). Never assume a value — derive from real cylinder run-to-empty measurements.
+
+### [2026-06-25] Docker containers do not inherit host timezone
+
+Setting timezone on the host (timedatectl set-timezone Asia/Kolkata) has no effect inside Docker containers. Python datetime.now() inside Docker reads container-local UTC. Fix: set os.environ['TZ'] = 'Asia/Kolkata' and call time.tzset() at the very top of main.py before any imports that use datetime. This forces the Python process timezone regardless of container system settings.
+
+### [2026-06-25] setup.sh idempotency: sentinel file prevents new steps from running
+
+setup.sh uses a sentinel file (~/.gas-cylinder-monitor-setup-done) so it appears to run once. But new steps added after first run never execute on existing boards. Correct workflow: add new step with idempotency guard (check before doing) → delete sentinel → re-run setup.sh. The sentinel is a "has setup been attempted" gate, not a "never run again" lock. All steps must be idempotent so re-running is always safe.

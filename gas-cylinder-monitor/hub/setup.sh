@@ -204,11 +204,21 @@ done
 log "requirements.txt written:"
 cat "$REQS_FILE"
 
-# -- 9. Mark setup complete ---------------------------------------------------
+# -- 9. Set timezone to IST and sync NTP --------------------------------------
+log "Step 9 -- Setting timezone to Asia/Kolkata (IST)..."
+sudo timedatectl set-timezone Asia/Kolkata
+sudo timedatectl set-ntp true
+sudo systemctl restart systemd-timesyncd
+sleep 2
+CURRENT_TZ=$(timedatectl show --property=Timezone --value 2>/dev/null)
+CURRENT_TIME=$(date '+%H:%M:%S %Z')
+log "Timezone: $CURRENT_TZ | Current time: $CURRENT_TIME"
+
+# -- 10. Mark setup complete --------------------------------------------------
 touch "$HOME/.${APP_NAME}-setup-done"
 
-# -- 10. Set default App Lab app -----------------------------------------------
-log "Step 10 -- Setting gas-cylinder-monitor as default app..."
+# -- 11. Set default App Lab app -----------------------------------------------
+log "Step 11 -- Setting gas-cylinder-monitor as default app..."
 arduino-app-cli properties set default user:gas-cylinder-monitor/hub 2>/dev/null && \
     log "Default app set to gas-cylinder-monitor." || \
     warn "Could not set default app -- set manually in App Lab if needed."
@@ -224,6 +234,7 @@ echo -n "  Typelibs:        "; [ -f "$TYPELIBS_DIR/GLib-2.0.typelib" ] && echo "
 echo -n "  D-Bus bridge:    "; systemctl is-active --quiet "$SERVICE_NAME" && echo "OK (running)" || echo "NOT RUNNING"
 echo -n "  Watchdog svc:    "; systemctl is-active --quiet "gas-cylinder-watchdog" && echo "OK (running)" || echo "NOT RUNNING"
 echo -n "  socket.io:       "; [ -f "$SOCKETIO_DST" ] && echo "OK" || echo "MISSING (see warn above)"
+echo -n "  Timezone:        "; timedatectl show --property=Timezone --value 2>/dev/null || echo "unknown"
 echo "========================================================"
 echo ""
 echo "Setup complete. Run: bash deploy.sh"
