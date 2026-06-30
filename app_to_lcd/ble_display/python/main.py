@@ -9,6 +9,7 @@ import datetime
 import re
 import json
 import numpy as np
+from scipy import signal as _scipy_signal
 
 sys.path.insert(0, '/app/wheels')
 
@@ -264,14 +265,21 @@ def _mic_thread():
         input_device_index=usb_index,
         frames_per_buffer=mic_stride
     )
+    # high pass filter at 300Hz -- removes low freq background noise for voice
+    _hpf_sos = _scipy_signal.butter(4, 300, btype='high', fs=WHISTLE_MODEL_RATE, output='sos')
+    _hpf_zi  = _scipy_signal.sosfilt_zi(_hpf_sos) * 0.0
     print('[MIC] Started -- feeding voice and whistle queues', flush=True)
     try:
         while True:
             raw   = stream.read(mic_stride, exception_on_overflow=False)
             chunk = np.frombuffer(raw, dtype=np.int16)
             chunk = _whistle_resample(chunk, WHISTLE_MIC_RATE, WHISTLE_MODEL_RATE)[:WHISTLE_STRIDE]
+            # apply high pass filter for voice queue only
+            chunk_f32          = chunk.astype(np.float32) / 32768.0
+            filtered, _hpf_zi  = _scipy_signal.sosfilt(_hpf_sos, chunk_f32, zi=_hpf_zi)
+            voice_chunk        = (filtered * 32768.0).astype(np.int16)
             try:
-                _voice_queue.put_nowait(chunk.copy())
+                _voice_queue.put_nowait(voice_chunk)
             except _queue_module.Full:
                 pass
             try:
@@ -1614,7 +1622,7 @@ threading.Thread(target=_whistle_loop, daemon=True).start()
 def _voice_assistant_thread():
     try:
         import importlib.util, sys
-        spec = importlib.util.spec_from_file_location('voice_assistant', '/app/python/voice_assistant.py')
+        spec = importlib.util.spec_from_file_location('voice_assistant', '/app/python/voice_moonshine.py')
         va   = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(va)
         def _set_voice_flag(state):
