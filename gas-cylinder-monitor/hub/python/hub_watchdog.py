@@ -11,7 +11,7 @@ _RESTART_TRIGGER = os.path.join(_DATA_DIR, 'restart.trigger')
 _REBOOT_TRIGGER  = os.path.join(_DATA_DIR, 'reboot.trigger')
 
 CHECK_INTERVAL_S      = 60
-READING_STALE_S       = 900
+READING_STALE_S       = 1800
 CONSECUTIVE_FAIL_GATE = 2
 POST_ACTION_WAIT_S    = 120
 

@@ -225,6 +225,23 @@
         <span class="pct-label">remaining</span>
       </div>
 
+      <div id="usable-display" style="display:none; margin-top:14px;">
+        <div style="display:flex; justify-content:center; gap:32px;">
+          <div style="text-align:center;">
+            <div id="usable-total-g" style="font-size:28px; font-weight:600;
+                 color:#ef4444;">--</div>
+            <div style="font-size:12px; color:#888; margin-top:2px;">
+                 total on platform</div>
+          </div>
+          <div style="text-align:center;">
+            <div id="usable-usable-g" style="font-size:28px; font-weight:600;
+                 color:#ef4444;">--</div>
+            <div style="font-size:12px; color:#888; margin-top:2px;">
+                 usable by burner</div>
+          </div>
+        </div>
+      </div>
+
       <div class="pct-bar-bg" id="pct-bar-bg" style="display:none">
         <div class="pct-bar-fill" id="pct-bar-fill"></div>
       </div>
@@ -385,6 +402,8 @@
         stateDot.style.background = '#666';
         stateLabel.style.color    = '#666';
         stateLabel.textContent    = 'Platform empty - place cylinder';
+        var usableEl = document.getElementById('usable-display');
+        if (usableEl) usableEl.style.display = 'none';
 
       } else if (state === 'BOOTSTRAP_ANCHOR') {
         stateDot.style.background = '#f59e0b';
@@ -402,6 +421,8 @@
           banner.style.color        = '#f59e0b';
           banner.textContent        = 'Gas running low - consider booking a refill';
           if (daysEl) daysEl.style.color = '#f59e0b';
+          var usableEl = document.getElementById('usable-display');
+          if (usableEl) usableEl.style.display = 'none';
         } else if (alert === 'RED') {
           stateDot.style.background = '#ef4444';
           stateLabel.style.color    = '#ef4444';
@@ -412,11 +433,25 @@
           banner.style.color        = '#ef4444';
           banner.textContent        = 'Gas critical - cylinder may stop at any moment. Book now.';
           if (daysEl) daysEl.style.color = '#ef4444';
+          var usableEl = document.getElementById('usable-display');
+          var totalGEl = document.getElementById('usable-total-g');
+          var usableGEl = document.getElementById('usable-usable-g');
+          if (usableEl) {
+            usableEl.style.display = 'block';
+            totalGEl.textContent  = (data.gas_g   !== null &&
+                                      data.gas_g   !== undefined)
+                                      ? Math.round(data.gas_g)   + 'g' : '--';
+            usableGEl.textContent = (data.usable_g !== null &&
+                                      data.usable_g !== undefined)
+                                      ? Math.round(data.usable_g) + 'g' : '--';
+          }
         } else {
           stateDot.style.background = '#22c55e';
           stateLabel.style.color    = '#22c55e';
           stateLabel.textContent    = 'Tracking';
           if (daysEl) daysEl.style.color = '#ffffff';
+          var usableEl = document.getElementById('usable-display');
+          if (usableEl) usableEl.style.display = 'none';
         }
 
       } else if (state === 'LOW_GAS') {
@@ -430,6 +465,18 @@
           banner.style.color        = '#ef4444';
           banner.textContent        = 'Gas critical - cylinder may stop at any moment. Book now.';
           if (daysEl) daysEl.style.color = '#ef4444';
+          var usableEl = document.getElementById('usable-display');
+          var totalGEl = document.getElementById('usable-total-g');
+          var usableGEl = document.getElementById('usable-usable-g');
+          if (usableEl) {
+            usableEl.style.display = 'block';
+            totalGEl.textContent  = (data.gas_g   !== null &&
+                                      data.gas_g   !== undefined)
+                                      ? Math.round(data.gas_g)   + 'g' : '--';
+            usableGEl.textContent = (data.usable_g !== null &&
+                                      data.usable_g !== undefined)
+                                      ? Math.round(data.usable_g) + 'g' : '--';
+          }
         } else {
           stateDot.style.background = '#f59e0b';
           stateLabel.style.color    = '#f59e0b';
@@ -440,6 +487,8 @@
           banner.style.color        = '#f59e0b';
           banner.textContent        = 'Gas running low - consider booking a refill';
           if (daysEl) daysEl.style.color = '#f59e0b';
+          var usableEl = document.getElementById('usable-display');
+          if (usableEl) usableEl.style.display = 'none';
         }
       }
 

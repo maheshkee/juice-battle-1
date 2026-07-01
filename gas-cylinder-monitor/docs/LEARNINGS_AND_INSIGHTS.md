@@ -2207,3 +2207,136 @@ Setting timezone on the host (timedatectl set-timezone Asia/Kolkata) has no effe
 ### [2026-06-25] setup.sh idempotency: sentinel file prevents new steps from running
 
 setup.sh uses a sentinel file (~/.gas-cylinder-monitor-setup-done) so it appears to run once. But new steps added after first run never execute on existing boards. Correct workflow: add new step with idempotency guard (check before doing) → delete sentinel → re-run setup.sh. The sentinel is a "has setup been attempted" gate, not a "never run again" lock. All steps must be idempotent so re-running is always safe.
+
+---
+
+## SESSION 60 LEARNINGS — 2026-07-01
+
+---
+
+## L-093 — READING_STALE_S must be calibrated against worst-case WCN3990 recovery time, not average
+Date: 2026-07-01
+
+### What happened
+3E-009 attempt 1 ended prematurely due to cascading hub reboots. Root cause: WCN3990 modem
+firmware crashes are a platform-level fact (~1 crash per 15 min average under load). Each crash
+requires a full modem recovery before BLE becomes available again. Recovery time varies:
+13–17 minutes observed across boots. READING_STALE_S was set to 900s (15 min) — coincidentally
+matching the average, not the worst case.
+
+When modem recovery took 16–17 min, the watchdog threshold was exceeded → Linux reboot triggered.
+The reboot interrupted the ongoing recovery, making the next cycle's recovery longer → cascading.
+
+Proof: Boot -1 (Sun 28 Jun 12:02 → Mon 29 Jun 11:02) had 90 modem crashes and ZERO watchdog
+reboots because modem recovery happened to be fast each time. The fix is not luck — it's buffer.
+
+### Rule
+Always derive READING_STALE_S from: worst_case_recovery_time × 2. Never from average recovery.
+For WCN3990 platform: worst case observed = ~17 min → set to 30 min (1800s).
+
+Never set any watchdog threshold at the same value as any measured characteristic — always add
+meaningful headroom proportional to the variance, not just the mean.
+
+---
+
+## L-094 — Hub restart must check config.json before sending CMD_TARE
+Date: 2026-07-01
+
+### What happened (RCA3 — 3E-009 data destruction)
+After a hub crash (boot -4, 17:55 Jun 27), the hub restarted with cylinder_state=UNINSTALLED
+in memory (state was lost because in-memory state was not re-read from config.json robustly).
+The hub connected to node boot 38 and sent CMD_TARE. The 20kg stone was still on the platform.
+Node set tare_raw=633,819 raw (stone absorbed). All subsequent readings: ~70g. 3E-009 data
+collection ended permanently at T+24h instead of T+65h.
+
+### Root cause
+Hub used cylinder_state in memory as the only decision signal for TARE vs SKIP_TARE.
+config.json — the authoritative persistent store — was not consulted.
+
+### Fix implemented
+_send_tare_commands() in ble_subscriber.py now reads steel_g and tare_raw from config.json
+before any tare decision. Protective check fires first:
+- steel_g non-null AND tare_raw non-null → valid session exists → SKIP_TARE always (log: PROTECTIVE_SKIP)
+- steel_g null → no valid session → fall through to cylinder_state logic → TARE
+
+cylinder_state in memory can no longer override a persisted valid session.
+
+### Rule
+config.json is the authoritative source of truth for persistent hub state. Any decision that
+affects node hardware state (tare, calibration) must be gated on config.json, not on in-memory
+variables that do not survive a crash. In-memory state is a cache; config.json is the record.
+
+---
+
+## L-095 — WiFi power saving on QRB2210 exacerbates WCN3990 modem crash frequency
+Date: 2026-07-01
+
+### What happened
+With WiFi power management enabled (default on Linux), the WCN3990 modem enters deep sleep
+between WiFi packets. This increases both crash frequency and recovery time. BLE runs on the
+same WCN3990 chip. More modem crashes = more BLE blackout windows = more watchdog threshold
+crossings.
+
+### Fix
+Disable WiFi power saving permanently at boot via systemd oneshot service
+(wifi-power-save-off.service). Interface name must be derived dynamically at runtime:
+  `iw dev | awk '/Interface/{print $2; exit}'`
+Never hardcode the interface name (wlan0 or similar) — it can change across kernel updates
+or hardware changes.
+
+### Rule
+On any platform sharing BLE and WiFi on a single chip (WCN3990, common in ARM SBCs),
+WiFi power management must be disabled permanently. The BLE stability gain outweighs any
+WiFi power saving benefit for an always-on monitoring device.
+
+---
+
+## L-096 — Kernel logs are the authoritative crash diagnosis source — not application code review
+Date: 2026-07-01
+
+### What happened
+A prior analysis of hub instability correctly identified BLE Connection Manager weaknesses
+but attributed them as the root cause without checking kernel logs. The actual cause was
+WCN3990 hardware-level modem firmware crashes (confirmed via `journalctl -k`):
+```
+kernel: remoteproc remoteproc0: handling crash #90 in modem
+kernel: ath10k_snoc c800000.wifi: firmware crashed!
+```
+Building the BLE Connection Manager fix first would have been correct code hygiene but
+would not have prevented a single hub reboot. The watchdog fix is what stops the reboots.
+
+### Rule
+When diagnosing system crashes:
+1. FIRST: `journalctl -k --since "4 hours ago" | grep -E "(crash|error|wifi|modem|ath10k)"`
+2. THEN: application logs, BLE logs, Python logs
+3. LAST: code review and architectural analysis
+
+Code review tells you what could theoretically go wrong. Kernel logs tell you what did.
+Never skip step 1 when investigating a system-level crash.
+
+---
+
+## L-097 — Thermal excursion amplitude (430g peak-to-trough) makes 3E-008 mandatory before production
+Date: 2026-07-01
+
+### What happened (3E-009 partial data — attempt 1)
+During the 24.3h of valid 3E-009 data, a thermal excursion was observed between T+15.9h and
+T+18.1h (morning sun hitting platform through kitchen window):
+- Baseline plateau: ~4429–4435g (variance <4g over any 10-min window)
+- Thermal peak: 4860.9g (+430g above baseline)
+- Recovery to baseline: ~4.5h
+
+430g excursion on a 14.2kg production cylinder = 3.0% instantaneous gas% error.
+During the excursion, burn rate and days_remaining calculations would be completely wrong.
+
+### Implications for production
+- Gas% display would spike to ~103% during morning sun hours
+- Burn rate during thermal ramp would appear negative (gas increasing)
+- Alert logic could false-trigger or suppress correctly
+
+### Rule
+3E-008 (thermal drift characterisation — controlled heat/cool cycle) is mandatory before
+production. Must quantify: amplitude vs temperature delta, time constant of excursion,
+whether sunrise angle or direct contact is the dominant factor.
+Mitigation design (post-3E-008): MIN_DATA_HOURS=24h gate absorbs creep; thermal needs
+its own compensation or installation constraint (no direct sunlight on platform).

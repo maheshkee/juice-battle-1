@@ -1,6 +1,6 @@
 # CLAUDE.md — gas-cylinder-monitor
 # Board: Arduino UNO Q AQ3 | IP: 192.168.1.161 | user: arduino
-# Last updated: 2026-06-26
+# Last updated: 2026-07-01
 # Read this FULLY before doing anything in this directory.
 
 ---
@@ -134,23 +134,31 @@ The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ---
 
-## Current State - 2026-06-26
+## Current State - 2026-07-01 (Session 60)
 
 ```
-Status:         G5 analytics + G7 WebUI complete and demo-validated (2026-06-26)
-                HUB-WATCHDOG systemd service deployed and verified
-Boot:           boot=28 (post 3E-005 demo — node running unattended on wall charger)
-tare_raw:       -89234.5 (boot=25, new platform, locked)
+Status:         Fixes 1-3 deployed and verified (2026-07-01)
+                Fix 4 (node firmware) and config.json atomic writes deferred to Session 61
+                3E-009 attempt 2 not yet launched — deferred to Session 61
+Boot:           boot=38+, WRONG tare (20kg stone absorbed during CMD_TARE at t=43s boot 38)
+                Node must be retared: remove stone → hub sends CMD_TARE → stone back
+tare_raw:       -107041.4 (hub config, correct — platform tare before stone placed)
 cal_factor:     36.2231 (locked, linear 200g-1800g confirmed)
-sigma:          6.91g (boot=28 - noisy due to platform disturbed during noise phase)
-                3.60g (boot=25 - clean reference value)
-Hub state:      cylinder_state=UNINSTALLED, steel_g=None (reset after demo)
+sigma:          5.99g (from 3E-009 attempt 1 — hardware healthy throughout)
+Hub state:      cylinder_state=UNINSTALLED, steel_g=null
 Hub modules:    main.py, ble_subscriber.py, log_transfer.py, domain.py, db.py,
                 hub_logger.py, hub_watchdog.py
 Hub port:       7000 (Docker, arduino@AQ3)
-Docker path:    hub/config.json (baked at deploy - NOT hub/data/config.json)
-Node:           ESP32-C3 SuperMini, boot=28, BLE GATT, 30s notify interval
-                Running unattended on wall charger (3E-009 long-run stability experiment)
+Config path:    hub/data/config.json (authoritative persistent state on host)
+READING_STALE_S: 1800 (Fix 1 deployed — was 900, raised for WCN3990 recovery headroom)
+WiFi power save: OFF (Fix 2 — wifi-power-save-off.service, systemd oneshot, enabled)
+CMD_TARE guard: DEPLOYED (Fix 3 — steel_g+tare_raw null check in ble_subscriber.py)
+TZ fix:         DEPLOYED (main.py lines 1-4 — was already present from prior session)
+Node:           ESP32-C3 SuperMini, boot=38+, BLE GATT, 30s notify interval
+                Wrong tare — 20kg stone absorbed. Stone must be removed before retare.
+DB:             2841 TRACKING rows from 3E-009 attempt 1 (valid, first 24.5h only)
+                quality=GOOD, sigma=5.99 throughout — hardware healthy
+                Zero rows after boot 38 (wrong tare → all readings ~70g, no TRACKING)
 Wiring locked (do not change without re-verifying):
   ESP32-C3 GPIO4 = DOUT (SDO), GPIO3 = SCK
   HX711 VCC = 3.3V ONLY (never 5V)
@@ -176,26 +184,18 @@ Permanent constants (same test and production - no revert needed):
   REMOVAL_GRACE_S        = 120.0
 Node constants - TEST value (MUST REVERT before production):
   HEAVY_LOAD_THRESHOLD_G = 1000g (DEV) PRODUCTION = 2000g (requires reflash)
-Completed this session:
-  - HUB-WATCHDOG systemd service installed and verified
-  - G5 compute_analytics: adaptive burn rate (cumulative from anchor →
-    rolling window after BURN_RATE_WINDOW_DAYS)
-  - Dual-condition alert logic: Condition A gram failsafe always active,
-    Condition B day-based after MIN_DAYS_FOR_DAY_ALERT
-  - G7 WebUI: state pill, alert banner, SENSOR OK badge, formatDays,
-    < 0.1 display, UNINSTALLED shows 0g
-  - IST timezone fixed on host
-  - Docker container TZ fix applied in main.py (os.environ['TZ'] + time.tzset())
-    — pending deploy
-Current position: G5 analytics + G7 WebUI complete and demo-validated.
-                  HUB-WATCHDOG fully deployed. 3E-009 long-run stability
-                  experiment pending — node running unattended on wall charger
-                  over weekend. 5 domain constants + 6 time/analytics constants
-                  + HEAVY_LOAD_THRESHOLD_G still at TEST values — revert only
-                  at final production stage.
-Next action:      Deploy TZ fix (redeploy hub). Analyse 3E-009 data Monday.
-                  3E-008 thermal drift after Monday. 3E-010 failure injection.
-                  Then production revert + real cylinder test.
+Completed this session (60):
+  - Fix 1: READING_STALE_S 900→1800 in hub_watchdog.py
+  - Fix 2: WiFi power save disabled permanently via systemd (wifi-power-save-off.service)
+  - Fix 3: CMD_TARE protective check in ble_subscriber.py (steel_g+tare_raw guard)
+  - TZ fix confirmed already present in main.py (lines 1-4)
+  - 3E-009 RCA confirmed: 3 root causes (WCN3990 crash timing, node reboot downstream, wrong CMD_TARE)
+Current position: Fixes 1-3 deployed. WiFi power save OFF. 3E-009 attempt 2 ready to launch.
+                  Node has wrong tare — must remove stone, fresh tare before launching.
+                  12 constants still at TEST values — revert only at final production stage.
+Next action:      Session 61: export 3E-009 attempt 1 CSV, remove stone, fresh node tare,
+                  launch 3E-009 attempt 2 (65h unattended). Then Fix 4 node firmware
+                  (Arduino IDE COM11), config.json atomic writes, WCN3990 investigation.
 ```
 
 ---

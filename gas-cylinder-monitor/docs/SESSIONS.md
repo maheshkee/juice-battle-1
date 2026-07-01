@@ -1210,3 +1210,68 @@ HUB-WATCHDOG PASSED — both Python and host sides operational.
 - Docker container IST timezone fix (main.py os.environ TZ)
 - Production revert of all 7+1 constants when G7 confirmed stable
 - Real 14.2kg cylinder production test
+
+---
+
+## Session 60 — 2026-07-01 — Fixes 1-3 deployed + 3E-009 attempt 2 launch
+
+### Goal
+Deploy three hub hardening fixes from 3E-009 RCA: READING_STALE_S, WiFi power save, and CMD_TARE protection. Re-launch 3E-009.
+
+### What was done
+
+#### Fix 1 — READING_STALE_S 900 → 1800 (hub_watchdog.py)
+Single-line change. WCN3990 modem recovery takes 13–17 min; 900s (15 min) was too
+tight against variance. 1800s (30 min) gives reliable headroom above worst-case recovery.
+
+#### Fix 2 — WiFi power save disabled permanently
+Verified iw and iwconfig at /sbin/. Created systemd oneshot service
+wifi-power-save-off.service at /etc/systemd/system/. Interface name derived
+dynamically at runtime via `iw dev | awk '/Interface/{print $2; exit}'` — never
+hardcoded. Service enabled and started. WiFi power saving confirmed off.
+
+#### Fix 3 — CMD_TARE protection in ble_subscriber.py
+`_send_tare_commands()` now reads steel_g and tare_raw from config.json before any
+TARE decision. If both are non-null (valid measurement session exists), SKIP_TARE is
+sent regardless of cylinder_state in memory. TARE is only sent when steel_g is null.
+Log prefix PROTECTIVE_SKIP: emitted when the guard fires.
+This prevents the RCA3 failure mode: hub crash → state lost → CMD_TARE → stone absorbed.
+
+#### TZ fix confirmed already applied
+main.py already had TZ fix at lines 1–4 (from a prior session). No change needed.
+
+#### Fix 4 — ESP32 reset reason logging
+Deferred. Requires Arduino IDE on Windows (COM11). Node firmware reflash needed.
+To add: `esp_reset_reason()` in BOOT journal event. Document the change and defer
+until next node reflash opportunity.
+
+### Code changes this session
+| File | Change |
+|---|---|
+| hub/python/hub_watchdog.py | READING_STALE_S: 900 → 1800 |
+| hub/python/ble_subscriber.py | Protective TARE check: steel_g+tare_raw guard added |
+
+### Current system state at session end
+```
+tare_raw:       -107041.4 (hub config, correct)
+cal_factor:     36.2231
+steel_g:        null (3E-009 attempt 1 data ended at T+24h, state lost on crash)
+cylinder_state: UNINSTALLED
+Node:           boot=38, WRONG tare (stone absorbed during CMD_TARE at t=43s boot 38)
+                Node must be retared: remove stone → hub sends CMD_TARE → clean tare → stone back
+READING_STALE_S: 1800 (deployed)
+WiFi power save: OFF (systemd service active)
+```
+
+### 3E-009 attempt 2 next steps
+1. Remove 20kg stone from platform
+2. Verify node is powered — hub will connect and send CMD_TARE (steel_g=null → TARE path correct)
+3. Confirm clean tare in node journal: `event=PHASE_COMPLETE phase=TARE result=OK mean=<small value>`
+4. Place stone fresh on platform
+5. Record: start time (IST), node boot number, hub session number
+6. Hub Install cylinder → BOOTSTRAP_ANCHOR → TRACKING
+7. Record: anchor mean_gross, steel_g derived
+8. Let run unattended 65h minimum — 3 clean runs needed for 3E-009 formal pass
+
+### Gate
+Fixes 1-3 DEPLOYED. WiFi power save OFF. 3E-009 attempt 2 ready to launch.

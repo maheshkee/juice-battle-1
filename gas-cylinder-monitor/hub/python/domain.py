@@ -11,12 +11,12 @@ NET_GAS_G = 4535.0  # BIS IS 3196 — fixed for 14.2 kg domestic cylinder, never
 ANCHOR_STABILITY_WINDOW_G  = 50.0  # TODO: tune after 3E-009
 ANCHOR_MIN_STABLE_READINGS = 5     # TODO: validate after 3E-005
 ANCHOR_GROSS_MIN_G         = 4800.0  # gross floor for a fresh full cylinder
-REFILL_GROSS_MIN_G         = 5500.0   # TEST. PRODUCTION = 29000.0
+REFILL_GROSS_MIN_G         = 22000.0  # TEST. PRODUCTION = 29000.0
 REMOVAL_GRACE_S            = 120.0    # seconds before confirming cylinder removed
 
 # ── Steel plausibility bounds ─────────────────────────────────────────────────
-STEEL_PLAUSIBLE_MIN_G  = 200.0
-STEEL_PLAUSIBLE_MAX_G  = 2000.0
+STEEL_PLAUSIBLE_MIN_G  = 13000.0
+STEEL_PLAUSIBLE_MAX_G  = 18000.0
 STEEL_UNKNOWN_PRIOR_G  = 16500.0  # conservative prior — lean toward less gas shown
 
 # ── Alert thresholds — LOCKED 2026-06-12 ─────────────────────────────────────
@@ -35,6 +35,10 @@ MAX_BURN_RATE_G_PER_DAY  = 100000.0      # PRODUCTION: 2000.0
 # Gram failsafe - same in test and production
 ALERT_AMBER_G            = 2000.0        # unchanged
 ALERT_RED_G              = 1000.0        # unchanged
+# FUNCTIONAL_ZERO_G — weight below which gas is inaccessible
+# DEV value: bowl tap-height residual measured 2026-06-26
+# PRODUCTION: replace after experiment 3E-ZERO
+FUNCTIONAL_ZERO_G        = 1300.0
 # Day-based - TEST values (scaled 1:48)
 MIN_DAYS_FOR_DAY_ALERT   = 0.04167       # PRODUCTION: 2.0  (60 min test = 2 days prod)
 ALERT_AMBER_DAYS         = 0.10417       # PRODUCTION: 5.0  (2.5 hrs test = 5 days prod)
@@ -572,5 +576,8 @@ def process_reading(grams, quality, sigma, hub_ts):
     snapshot['cylinder_state'] = _cylinder_state
     snapshot['steel_g']        = _steel_g
     snapshot['steel_source']   = _steel_source
+
+    g = snapshot.get('gas_g')
+    snapshot['usable_g'] = round(max(0.0, g - FUNCTIONAL_ZERO_G), 1) if g is not None else None
 
     return snapshot

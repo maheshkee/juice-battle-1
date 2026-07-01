@@ -35,6 +35,8 @@ def db_init():
             conn.execute(col_sql)
         except Exception:
             pass  # column already exists
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_readings_ts ON readings(ts)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_readings_state ON readings(cylinder_state)')
     conn.commit()
     conn.close()
 

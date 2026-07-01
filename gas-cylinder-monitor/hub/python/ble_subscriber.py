@@ -299,7 +299,29 @@ class BLESubscriber:
 
         cylinder_state = cfg.get('cylinder_state', 'UNINSTALLED')
         cal_factor     = cfg.get('cal_factor')
+        steel_g        = cfg.get('steel_g')
+        tare_raw       = cfg.get('tare_raw')
 
+        # Protective check: steel_g + tare_raw both non-null means a valid measurement
+        # session exists on disk. Always skip tare to preserve it — cylinder_state in
+        # memory cannot override this, because cylinder_state may not reflect persisted
+        # reality after a hub restart.
+        if steel_g is not None and tare_raw is not None:
+            if cal_factor is None:
+                print('[BLE_SUB] PROTECTIVE_SKIP: steel_g+tare_raw present but cal_factor'
+                      ' missing in config — cannot send SKIP_TARE+SET_CAL', flush=True)
+                return
+            threading.Timer(1.0, lambda: self.write_command('SKIP_TARE')).start()
+            threading.Timer(2.0,
+                lambda cf=cal_factor: self.write_command(f'SET_CAL:{cf:.4f}')).start()
+            self.last_boot_used_tare = False
+            print(f'[BLE_SUB] PROTECTIVE_SKIP: sent SKIP_TARE + SET_CAL:{cal_factor:.4f} '
+                  f'(steel_g={steel_g:.1f}g + tare_raw present in config — valid session,'
+                  f' TARE suppressed regardless of cylinder_state={cylinder_state})', flush=True)
+            return
+
+        # steel_g is null — no valid measurement session exists, safe to apply
+        # the cylinder_state-based decision below.
         if cylinder_state == 'UNINSTALLED':
             threading.Timer(1.0, lambda: self.write_command('TARE')).start()
             self.last_boot_used_tare = True
@@ -307,7 +329,7 @@ class BLESubscriber:
                 threading.Timer(2.0,
                     lambda cf=cal_factor: self.write_command(f'SET_CAL:{cf:.4f}')).start()
             print(f'[BLE_SUB] sent TARE + SET_CAL:{cal_factor} '
-                  f'(cylinder_state=UNINSTALLED)', flush=True)
+                  f'(steel_g null in config — no valid session, cylinder_state=UNINSTALLED)', flush=True)
         else:
             if cal_factor is None:
                 print('[BLE_SUB] cal_factor missing in config — cannot send SKIP_TARE+SET_CAL',
@@ -318,7 +340,7 @@ class BLESubscriber:
                 lambda cf=cal_factor: self.write_command(f'SET_CAL:{cf:.4f}')).start()
             self.last_boot_used_tare = False
             print(f'[BLE_SUB] sent SKIP_TARE + SET_CAL:{cal_factor:.4f} '
-                  f'(cylinder_state={cylinder_state})', flush=True)
+                  f'(steel_g null, cylinder_state={cylinder_state})', flush=True)
 
     def write_command(self, cmd):
         # Writes ASCII command string to node command characteristic.
