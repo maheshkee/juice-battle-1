@@ -1615,7 +1615,7 @@ threading.Thread(target=_whistle_loop, daemon=True).start()
 def _voice_assistant_thread():
     try:
         import importlib.util, sys
-        spec = importlib.util.spec_from_file_location('voice_assistant', '/app/python/voice_moonshine.py')
+        spec = importlib.util.spec_from_file_location('voice_assistant', '/app/python/voice_intent.py')
         va   = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(va)
         def _set_voice_flag(state):
