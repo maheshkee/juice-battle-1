@@ -17,5 +17,3 @@
 # --- no PyPI packages needed ---
 # arduino.app_utils / arduino.app_bricks  -> App Lab runtime
 # dbus, gi.repository                     -> installed via wheels above
-# subprocess, threading, re, datetime     -> Python built-insscipy
-/app/wheels/scipy-1.16.3-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl
