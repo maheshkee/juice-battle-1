@@ -1,6 +1,6 @@
 # CLAUDE.md — gas-cylinder-monitor
 # Board: Arduino UNO Q AQ3 | IP: 192.168.1.161 | user: arduino
-# Last updated: 2026-07-01
+# Last updated: 2026-07-02
 # Read this FULLY before doing anything in this directory.
 
 ---
@@ -134,17 +134,17 @@ The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ---
 
-## Current State - 2026-07-01 (Session 60)
+## Current State - 2026-07-02 (Session 61)
 
 ```
-Status:         Fixes 1-3 deployed and verified (2026-07-01)
-                Fix 4 (node firmware) and config.json atomic writes deferred to Session 61
-                3E-009 attempt 2 not yet launched — deferred to Session 61
-Boot:           boot=38+, WRONG tare (20kg stone absorbed during CMD_TARE at t=43s boot 38)
-                Node must be retared: remove stone → hub sends CMD_TARE → stone back
-tare_raw:       -107041.4 (hub config, correct — platform tare before stone placed)
+Status:         Fixes 1-4 all deployed and verified (2026-07-02)
+                3E-009 stability campaign in progress (multi-attempt strategy)
+                UNINSTALLED redesign designed but blocked on one product-decision question
+Boot:           boot=45 (fresh tare on clean platform, stone removed before tare)
+tare_raw:       -107041.4 (hub config — platform tare before stone placed, unchanged)
 cal_factor:     36.2231 (locked, linear 200g-1800g confirmed)
 sigma:          5.99g (from 3E-009 attempt 1 — hardware healthy throughout)
+heap_max_block: 114676 bytes (baseline, boot 45, stable across 14+ heartbeats — see RESEARCH.md)
 Hub state:      cylinder_state=UNINSTALLED, steel_g=null
 Hub modules:    main.py, ble_subscriber.py, log_transfer.py, domain.py, db.py,
                 hub_logger.py, hub_watchdog.py
@@ -153,12 +153,13 @@ Config path:    hub/data/config.json (authoritative persistent state on host)
 READING_STALE_S: 1800 (Fix 1 deployed — was 900, raised for WCN3990 recovery headroom)
 WiFi power save: OFF (Fix 2 — wifi-power-save-off.service, systemd oneshot, enabled)
 CMD_TARE guard: DEPLOYED (Fix 3 — steel_g+tare_raw null check in ble_subscriber.py)
-TZ fix:         DEPLOYED (main.py lines 1-4 — was already present from prior session)
-Node:           ESP32-C3 SuperMini, boot=38+, BLE GATT, 30s notify interval
-                Wrong tare — 20kg stone absorbed. Stone must be removed before retare.
-DB:             2841 TRACKING rows from 3E-009 attempt 1 (valid, first 24.5h only)
+Fix 4:          DEPLOYED — esp_reset_reason() + heap_caps_get_largest_free_block() in
+                journal.cpp, verified live boot 45: reset=OTHER (USB/esptool, expected),
+                heap_max_block=114676 in every HB line
+N-TARE-CHECK:   ALREADY IMPLEMENTED prior to session 61 (source-verified, no new code needed)
+HEAVY_LOAD_THRESHOLD_G: 2000.0f confirmed in firmware (source-verified 2026-07-02)
+DB:             7867 rows total (CSV export confirmed intact from 3E-009 attempt 1)
                 quality=GOOD, sigma=5.99 throughout — hardware healthy
-                Zero rows after boot 38 (wrong tare → all readings ~70g, no TRACKING)
 Wiring locked (do not change without re-verifying):
   ESP32-C3 GPIO4 = DOUT (SDO), GPIO3 = SCK
   HX711 VCC = 3.3V ONLY (never 5V)
@@ -182,20 +183,27 @@ Time/analytics constants - TEST values (MUST REVERT before production):
   MAX_BURN_RATE_G_PER_DAY= 100000.0    PRODUCTION = 2000.0
 Permanent constants (same test and production - no revert needed):
   REMOVAL_GRACE_S        = 120.0
-Node constants - TEST value (MUST REVERT before production):
-  HEAVY_LOAD_THRESHOLD_G = 1000g (DEV) PRODUCTION = 2000g (requires reflash)
-Completed this session (60):
-  - Fix 1: READING_STALE_S 900→1800 in hub_watchdog.py
-  - Fix 2: WiFi power save disabled permanently via systemd (wifi-power-save-off.service)
-  - Fix 3: CMD_TARE protective check in ble_subscriber.py (steel_g+tare_raw guard)
-  - TZ fix confirmed already present in main.py (lines 1-4)
-  - 3E-009 RCA confirmed: 3 root causes (WCN3990 crash timing, node reboot downstream, wrong CMD_TARE)
-Current position: Fixes 1-3 deployed. WiFi power save OFF. 3E-009 attempt 2 ready to launch.
-                  Node has wrong tare — must remove stone, fresh tare before launching.
-                  12 constants still at TEST values — revert only at final production stage.
-Next action:      Session 61: export 3E-009 attempt 1 CSV, remove stone, fresh node tare,
-                  launch 3E-009 attempt 2 (65h unattended). Then Fix 4 node firmware
-                  (Arduino IDE COM11), config.json atomic writes, WCN3990 investigation.
+Node constants - PRODUCTION value (already correct in firmware):
+  HEAVY_LOAD_THRESHOLD_G = 2000.0f (source-verified 2026-07-02 — no revert needed)
+G5 Analytics:   NOT BUILT — verified by direct source inspection of hub/python/
+G7 WebUI:       NOT BUILT — index.html has no dashboard (old git commit was pre-pivot)
+UNINSTALLED redesign: DESIGNED (CYLINDER_ABSENT + weight-matching + button flow) but NOT
+                implemented — blocked pending product decision on cylinder-removal-duration UX
+Completed this session (61):
+  - CSV export confirmed: 7867 rows, all states, 3E-009 attempt 1 data intact
+  - Fix 2 confirmed survived reboot (WiFi power save still OFF)
+  - Fix 4: journal.cpp updated with esp_reset_reason() + heap_caps_get_largest_free_block()
+    Compiled: 46% flash, 7% RAM. Flashed boot 45. Verified: reset=OTHER, heap_max_block=114676
+  - N-TARE-CHECK: confirmed already implemented (no new code needed)
+  - HEAVY_LOAD_THRESHOLD_G=2000.0f confirmed in firmware (no new code needed)
+  - G5/G7 tracking discrepancy resolved: not built, old commit was pre-ESP32-pivot
+  - UNINSTALLED redesign (CYLINDER_ABSENT + weight-matching + button) fully designed
+  - SESSION_CLOSE_PROTOCOL.md rewritten to v2
+Current position: All 4 fixes deployed. 3E-009 attempt #2 deliberately deferred — building
+                  stability confidence via 2-3 more attempts before a 65h unattended run.
+                  config.json atomic writes still pending.
+Next action:      Answer cylinder-removal-duration question to unblock UNINSTALLED redesign,
+                  then implement config.json atomic writes, then run 3E-009 attempt #2.
 ```
 
 ---

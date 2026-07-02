@@ -743,3 +743,22 @@ Rationale: 10 minutes covers Level 1 + Level 2 attempts with margin.
 In production 6hr duty cycle, 10 min silent failure is acceptable.
 Family cooking dinner won't notice a 30s reboot.
 Must not be longer than one duty cycle (360 min).
+
+---
+
+## Heap Memory Baseline — ESP32-C3, gas_monitor_v1, 2026-07-02
+
+**heap_max_block on fresh flash (boot 45):** 114676 bytes (MALLOC_CAP_8BIT)
+Observed across: 14+ heartbeats post-flash, no load changes, no BLE reconnect events.
+Variance: 0 bytes — value was identical across all observed HB lines.
+This is the reference baseline for detecting future heap fragmentation trends.
+A declining trend across boots or across a long run would indicate a fragmentation or leak.
+
+---
+
+## HEAVY_LOAD_THRESHOLD_G — Source-Verified Value, 2026-07-02
+
+**Value:** 2000.0f (grams)
+**Location:** node/gas_monitor_v1/ (weight module)
+**Verification method:** direct source read, session 61
+**Status:** PRODUCTION value already in firmware — no revert needed. Previously tracked as pending at 1000g (DEV); that was incorrect.

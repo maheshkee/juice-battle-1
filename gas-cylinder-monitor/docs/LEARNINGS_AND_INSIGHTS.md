@@ -2340,3 +2340,47 @@ production. Must quantify: amplitude vs temperature delta, time constant of excu
 whether sunrise angle or direct contact is the dominant factor.
 Mitigation design (post-3E-008): MIN_DATA_HOURS=24h gate absorbs creep; thermal needs
 its own compensation or installation constraint (no direct sunlight on platform).
+
+---
+
+## L-098 — Verify backlog items against actual firmware source before assuming work is still pending
+
+Session 61 found that N-TARE-CHECK and HEAVY_LOAD_THRESHOLD_G=2000.0f were both already correctly implemented in the firmware but were still tracked in docs as pending/deferred. The docs had drifted from the code.
+
+Rule: before spending any session time on a backlog item, read the relevant source file directly and confirm the feature is actually absent. Do not trust docs, CLAUDE.md, or session notes — they lag the code. A 2-minute source read prevents an unnecessary implementation cycle.
+
+---
+
+## L-099 — esp_reset_reason() returns OTHER after a USB/esptool flash reset — expected, not a fault
+
+After flashing via Arduino IDE (which triggers reset via esptool DTR/RTS), esp_reset_reason() reports ESP_RST_UNKNOWN or maps to "OTHER" in the journal. This is because esptool uses a pin-toggle reset path that does not set the standard reset reason registers used by the ESP-IDF reset reason API.
+
+Expected values by cause:
+- Power cycle / cold boot: POWERON
+- Watchdog trigger: WDT or TASK_WDT
+- Software reset: SW
+- USB/esptool flash: OTHER (not a fault)
+
+Do not flag "reset=OTHER" as a problem if it occurs immediately after a flash. It is only meaningful if it appears after a normal power cycle or during an unattended run.
+
+---
+
+## L-100 — arduino-app-cli user: app ID is the folder path containing app.yaml, not the project root
+
+The `user:` prefix in arduino-app-cli refers to the path from `~/ArduinoApps/` to the folder that contains `app.yaml`, not the top-level project directory.
+
+For this project, `app.yaml` lives in `gas-cylinder-monitor/hub/`, so the correct app ID is:
+  `user:gas-cylinder-monitor/hub`
+
+Correct live log command:
+  `arduino-app-cli app logs user:gas-cylinder-monitor/hub --follow`
+
+Using `user:gas-cylinder-monitor` silently fails or targets the wrong app. Always confirm app ID by running `arduino-app-cli app list` if in doubt.
+
+---
+
+## L-101 — Project-knowledge-mounted documentation can silently diverge from the live board's copies
+
+Mounted docs (CLAUDE.md, session notes, reference files) reflect the state of the repo at the time they were last edited — not the live board state. Between sessions, the board may have been rebooted, reflashed, or had config changes that were never committed. No warning is emitted when a mounted doc is stale.
+
+Rule: for anything time-sensitive (current boot count, active config values, live hub state, firmware constants), always verify against `git log`, direct file reads, or live SSH before acting on mounted doc content. Treat mounted docs as historical context, not live ground truth.

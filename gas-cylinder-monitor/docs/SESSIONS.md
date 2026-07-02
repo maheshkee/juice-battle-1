@@ -1275,3 +1275,24 @@ WiFi power save: OFF (systemd service active)
 
 ### Gate
 Fixes 1-3 DEPLOYED. WiFi power save OFF. 3E-009 attempt 2 ready to launch.
+
+---
+
+## Session 61 — 2026-07-02
+
+### Goal
+Verify Session 60 fixes survived, protect 3E-009 attempt 1 data, implement and verify Fix 4, resolve G5/G7 tracking discrepancy, design UNINSTALLED redesign, rewrite session close protocol.
+
+### Real outputs
+- CSV export confirmed intact: 7867 rows, all states present.
+- Fix 2 confirmed survived reboot — WiFi power save still OFF.
+- Fix 4 (esp_reset_reason + heap_caps_get_largest_free_block) implemented in journal.cpp, compiled clean (46% flash, 7% RAM), flashed via Arduino IDE, verified live on boot 45.
+  - reset=OTHER — expected for USB/esptool-triggered reset, not a fault.
+  - heap_max_block=114676 bytes, flat across 14+ heartbeats — clean baseline, no fragmentation.
+- N-TARE-CHECK and HEAVY_LOAD_THRESHOLD_G=2000.0f confirmed already implemented in firmware prior to session — no new code needed, verified by direct source read.
+- G5/G7 tracking discrepancy resolved: neither is built; old git commit message was pre-ESP32-pivot and does not reflect current hub/python/ state.
+- UNINSTALLED redesign (CYLINDER_ABSENT intermediate state + weight-matching + explicit button flow) fully designed but not implemented — blocked on one product-decision question.
+- SESSION_CLOSE_PROTOCOL.md rewritten to v2.
+
+### Gate
+3E-009 attempt #2 deliberately deferred — a decision, not a failure. Stability confidence to be built via 2-3 more attempts first.
