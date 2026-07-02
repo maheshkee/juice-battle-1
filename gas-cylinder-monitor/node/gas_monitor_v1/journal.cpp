@@ -4,6 +4,8 @@
 #include <math.h>
 #include "journal.h"
 #include "health.h"
+#include "esp_system.h"
+#include "esp_heap_caps.h"
 
 static uint16_t  s_seq;
 static uint32_t  s_boot_count;
@@ -49,9 +51,21 @@ void journal_init(uint32_t boot_count) {
 }
 
 void journal_boot_start() {
+    esp_reset_reason_t reason = esp_reset_reason();
+    const char* reason_str;
+    switch (reason) {
+        case ESP_RST_POWERON:  reason_str = "POWERON";  break;
+        case ESP_RST_SW:       reason_str = "SW";       break;
+        case ESP_RST_PANIC:    reason_str = "PANIC";    break;
+        case ESP_RST_INT_WDT:  reason_str = "INT_WDT";  break;
+        case ESP_RST_TASK_WDT: reason_str = "TASK_WDT"; break;
+        case ESP_RST_WDT:      reason_str = "WDT";      break;
+        case ESP_RST_BROWNOUT: reason_str = "BROWNOUT"; break;
+        default:               reason_str = "OTHER";    break;
+    }
     char _buf[192];
-    snprintf(_buf, sizeof(_buf), "#%04u t=%.1f boot=%lu [BOOT] event=START fw=1.0\n",
-             ++s_seq, millis() / 1000.0f, s_boot_count);
+    snprintf(_buf, sizeof(_buf), "#%04u t=%.1f boot=%lu [BOOT] event=START fw=1.0 reset=%s\n",
+             ++s_seq, millis() / 1000.0f, s_boot_count, reason_str);
     Serial.print(_buf);
     journal_append(_buf);
 }
@@ -126,10 +140,11 @@ void journal_run(float grams, float sigma, const HealthResult& health,
 void journal_heartbeat_tick(float grams, float sigma,
                              const HealthResult& health) {
     if (millis() - s_last_hb_ms >= 30000) {
+        size_t largest_free = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
         char _buf[192];
-        snprintf(_buf, sizeof(_buf), "#%04u t=%.1f boot=%lu [HB] event=HEARTBEAT grams=%.1f quality=%s sigma=%.2f uptime=%.1f\n",
+        snprintf(_buf, sizeof(_buf), "#%04u t=%.1f boot=%lu [HB] event=HEARTBEAT grams=%.1f quality=%s sigma=%.2f uptime=%.1f heap_max_block=%u\n",
                  ++s_seq, millis() / 1000.0f, s_boot_count,
-                 grams, health.quality, sigma, millis() / 1000.0f);
+                 grams, health.quality, sigma, millis() / 1000.0f, (unsigned)largest_free);
         Serial.print(_buf);
         journal_append(_buf);
         s_last_hb_ms = millis();
