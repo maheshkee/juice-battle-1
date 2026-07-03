@@ -12,17 +12,6 @@
 
 ## CHANGELOG (most recent first — never delete old lines)
 
-- **Session 62 addendum 2:** CYLINDER_ABSENT design UNBLOCKED — resolved via
-  weight-match-not-duration, plus new explicit "Uninstall" button requirement.
-  Connectivity-gap handling upgraded from a flat fallback to a tiered recovery
-  hierarchy. `config.json` mystery reopened — proven live and reproducible (not a
-  bad terminal read), leading hypothesis shifted to a host-vs-container file mismatch,
-  pending direct verification.
-- **Session 62 addendum:** Cooking Intelligence (Part 9) expanded with the full
-  event-based/whistle-tracking design — a major, explicitly high-priority product goal,
-  permanently documented per the product owner's request. Also: corrected an earlier
-  same-session claim about the health.cpp "stuck" check's failure direction — source
-  re-verification in progress rather than trusting a months-old note either way.
 - **Session 61 addendum:** before trimming `PROJECT_CONTEXT.md` down to its new scoped
   role, salvaged three items that existed nowhere else in this master reference: HUB-001
   and HUB-002 (deferred hub features, Part 9) and two unconfirmed firmware TODOs from
@@ -59,7 +48,7 @@
 | HEAVY_LOAD_THRESHOLD_G restore | ✓ DONE — confirmed already at 2000g (Session 61) |
 | config.json atomic writes | NEXT SESSION |
 | 3E-009 attempt #2 | DEFERRED — stability confidence campaign (2–3 attempts) first |
-| UNINSTALLED / CYLINDER_ABSENT redesign | DESIGNED, UNBLOCKED — ready to implement (weight-match resolves duration question) |
+| UNINSTALLED / CYLINDER_ABSENT redesign | DESIGNED, NOT IMPLEMENTED — blocked on product decision |
 | Test constants reverted | NO — 12 still at test values |
 | G5 Analytics / G7 WebUI | CONFIRMED NOT BUILT (source-verified, Session 61) |
 
@@ -364,7 +353,7 @@ individually; what remains unproven is their combined effect over a genuinely lo
 | Fix 4 (reset reason + heap_caps) | ✓ DONE (Session 61) | Observability + hypothesis confirmation | — |
 | N-TARE-CHECK | ✓ DONE — already implemented, confirmed (Session 61) | Hub-offline self-protect | — |
 | HEAVY_LOAD_THRESHOLD_G | ✓ DONE — confirmed at 2000g (Session 61) | Restore from test value | — |
-| UNINSTALLED / CYLINDER_ABSENT redesign | **DESIGNED, UNBLOCKED (Session 62)** | See Part 13 — weight-match resolves duration, plus new explicit "Uninstall" button (WebUI + app) | Hub-side (`domain.py`) — ready to implement, not firmware |
+| UNINSTALLED / CYLINDER_ABSENT redesign | **DESIGNED, blocked on product decision** | See Part 13 for design; needs: typical cylinder-removal-duration answer | Hub-side (`domain.py`) once unblocked — not firmware |
 
 ### Hub software — pending
 | Item | Status | What |
@@ -444,137 +433,12 @@ individually; what remains unproven is their combined effect over a genuinely lo
 | RETARE WebUI button (Option B) | User-explicit button, visible only when `cylinder_state=UNINSTALLED`, confirmation dialog before firing RETARE | Chosen as the safe alternative to HUB-001 | **Designed, not built** — this is the actual V1/V2 path forward, not HUB-001 |
 | HUB-002 — Disturbance detection | Platform physically moved with the cylinder still on it — no WEIGHT_EVENT fires since total weight is unchanged. Detected via a heartbeat delta exceeding 5× expected consumption with no matching weight-event | Needs a trusted burn rate to compute "expected consumption" | Gated on G5 Analytics (confirmed not built) |
 
-### Cooking Intelligence (G8/G9/G10) — expanded design, Session 62
-
-**Core architectural insight (locked):** this feature requires **zero changes** to node
-firmware, HX711, load cell, or BLE transport. It is entirely a hub + companion-app
-feature that bookmarks timestamps onto the continuous weight-vs-time data already
-being collected, then computes deltas between bookmarks. The system never needs to
-"detect" a whistle from the sensor — an external channel (voice assistant or companion
-app) tells the hub *when* an event happened, and the hub looks up what the weight
-curve was doing at that moment.
-
-**Precision bound:** resolution is limited to the locked 30-second BLE notify interval
-— an event timestamp is matched to the nearest ~30s data point. For typical multi-minute
-gaps between cooking events, this is a small fraction of the interval and should not
-materially affect accuracy. Worth re-measuring once real sessions are logged, not
-assumed correct in advance.
-
-**G8 — Event-based session tracking (replaces any fixed-duration window)**
-- A "cooking session" is bounded by two events: an explicit start marker and an
-  explicit end marker, of arbitrary duration — not a fixed analytics window.
-- Trigger sources: voice command via a connected assistant integration, or a
-  button/action in the companion app.
-- Output: total gas consumed (g and %) across the session = weight_at_start −
-  weight_at_end, adjusted for known noise floor.
-- Queryable after the fact — immediately, that evening, or days later — since it's
-  just a stored record referencing two already-logged timestamps.
-
-**G9 — Dish tagging**
-- User names the dish via voice or companion app, before or after the session
-  (e.g., "gongura mutton").
-- Session record stores: dish name, start ts, end ts, gas consumed, wall-clock duration.
-- Enables per-dish history: "how much gas does gongura mutton usually take?"
-
-**G10 — Sub-event granularity within a session (the whistle-count case)**
-This is an explicitly **major, high-priority goal**, not a minor nice-to-have —
-stated directly by the product owner as "very very important and one of our goals."
-- A session can contain an arbitrary number of ordered sub-event bookmarks, not just
-  start/end.
-- Concrete worked example: user says "start cooker, 5 whistles." System logs session
-  start. Each subsequent whistle is its own timestamped bookmark within the session.
-- For N bookmarks (start, whistle_1, whistle_2, ..., whistle_N), the system computes,
-  for every consecutive pair: elapsed time (t_i) and gas consumed (x_i) between them —
-  t1/x1 between start and whistle 1, t2/x2 between whistle 1 and whistle 2, and so on.
-- At session end (5th whistle in the example), report the full per-segment breakdown
-  *and* the aggregate total time and total gas across the whole session.
-
-**What this needs, concretely, once V1 ships:**
-1. A voice/companion-app event-input channel — new, does not exist yet, entirely
-   separate from the sensor pipeline
-2. A `sessions` table in the hub's SQLite schema: session_id, dish_name (nullable),
-   created_at
-3. A `bookmarks` table: session_id, label (start / whistle_N / end), ts,
-   weight_at_bookmark_g
-4. A simple aggregation query: for each consecutive bookmark pair, Δt = ts_next −
-   ts_prev, Δgas = weight_prev − weight_next
-5. Companion app UI to browse sessions and dishes historically
-
-**Timing precision — solved without touching BLE (Session 62):** the temptation is to
-speed up BLE notifications for finer whistle-timing resolution — this must never
-happen. `BLE_NOTIFY_INTERVAL_MS=30000` is locked specifically because faster rates
-crash the WCN3990 (the exact failure class this whole project has fought all session).
-The correct fix needs no firmware change at all: a whistle's timestamp comes from the
-phone/voice assistant, not from the weight sensor, so it already has whatever
-precision that platform provides. Only the *gas-consumed* number needs the weight
-curve — and since burn rate during active cooking is smooth, linear interpolation
-between the two 30-second readings bracketing the event timestamp gives an accurate
-estimate with zero hardware risk:
-```
-weight_at_event ≈ W_before + (W_after − W_before) × (t_event − t_before) / (t_after − t_before)
-```
-Residual error is bounded by how non-linear burn rate is within a single 30s window —
-expected small, but should be validated against real cooking-session data once
-collected, not assumed correct in advance.
-
-**Known limitation — connectivity gaps during a session, tiered recovery design (Session 62):**
-if a BLE/WCN3990 outage occurs during a whistle-tracking session, the hub may have
-zero weight data for part or all of that session — a real, serious gap, not a
-theoretical one. Rather than one flat fallback, a cascading hierarchy — try the best
-available answer first, degrade gracefully, never fabricate:
-1. **Normal case:** real BLE readings, bracket-interpolate as designed above.
-2. **Gap, but node-side backfill available:** retrieve the node's own SPIFFS journal
-   via the existing `DUMP_LOG` mechanism once reconnected — this is real recorded data,
-   just delayed, not an estimate. Strictly preferred over step 3 whenever available.
-   (Capacity vs. outage duration still needs checking — see below.)
-3. **Gap, no backfill, but the session's start and end readings are both real:** the
-   *whole-session total* (start weight − end weight) is still fully trustworthy even
-   if a gap sits in the middle — only the *internal* per-whistle breakdown touching the
-   gap is compromised. Show the confirmed total, and mark only the specific affected
-   segment(s) as unavailable — don't discard the whole session over a partial gap.
-4. **Gap covering a session boundary itself** (e.g. the final whistle's own reading is
-   missing): no total can be honestly computed. This is the only case that falls back
-   to "gas data unavailable — connectivity gap during this session." Last resort, not
-   first response.
-This ties to the same conservative-bias principle already locked for gas estimates
-generally: prefer a smaller, honestly-scoped confirmed number over a larger fabricated
-one, and always label anything short of a direct measurement as such in the UI.
-
-**Interpolation safeguard:** never bracket-interpolate across a window where a
-`WEIGHT_EVENT` (PLACED/REMOVED) fired, or where either bracketing reading's `quality`
-was not `GOOD`. Interpolation assumes a smooth, undisturbed process — if the data
-itself suggests something abrupt happened, that assumption no longer holds, and the
-gap should be treated as unavailable (or backfilled/totaled per the hierarchy above)
-rather than smoothed over.
-
-**Known limitation in the safeguard itself (Session 62):** the jump/quality check above
-only catches *discrete* disturbances. It does NOT catch a **rate change** — e.g. a user
-turning the flame down right after a whistle, which is common real cooking behavior and
-clusters disproportionately near exactly the moments this feature cares about most.
-Burn rate isn't perfectly constant across a 30s window in general, and is least likely
-to be constant specifically in whistle-adjacent windows. Two refinements, not a full
-retreat from interpolation:
-1. **Widen uncertainty near whistle bookmarks explicitly.** Any interpolated segment
-   touching a whistle-adjacent window should carry a stated error band in the UI/data
-   model (e.g. "~14g, ±4g estimated"), not a bare confident number — false precision is
-   its own honesty failure, distinct from a bare wrong number.
-2. **Unvalidated idea, needs its own safety test before trusting:** an on-demand extra
-   reading, requested by the hub over the existing command channel the instant a
-   whistle bookmark arrives from the phone — a sparse, rare, event-triggered single
-   read, not a sustained rate change. This is a *different traffic pattern* than the
-   sustained 1-second polling already proven dangerous, but different is not the same
-   as proven safe — would need a dedicated small experiment (an hour of occasional
-   on-demand reads, watching WCN3990 crash rate) before ever relying on it.
-
-**SPIFFS backfill capacity — needs checking, not yet done:** at the current ~113
-bytes/journal-line and 30s heartbeat interval, a 40-minute outage would produce ~9KB of
-node-side journal data. Needs comparing against the actual SPIFFS partition size and
-`JOURNAL_TRANSFER_THRESHOLD_BYTES` auto-push/clear threshold to confirm the buffer
-wouldn't rotate away before a delayed reconnect can retrieve it.
-
-**Explicitly NOT required:** any node firmware change, any HX711/load-cell change,
-any BLE protocol change, any change to the watchdog. Entirely additive on the hub +
-companion-app side, built on data the system already collects.
+### Cooking Intelligence (G8/G9/G10)
+| Feature | What | How |
+|---------|------|-----|
+| G8 — Session detection | Detect cooking start/end from weight rate-of-change signature | Analytics on burn rate delta |
+| G9 — Dish tagging | User tags what they cooked after session | WebUI/app prompt post-session |
+| G10 — Cooking calendar | Historical view of cooking sessions, frequency, gas per dish | SQLite analytics layer |
 
 ### Platform expansion
 | Feature | What |
@@ -762,44 +626,27 @@ python3 ~/ArduinoApps/gas-cylinder-monitor/hub/docs/analyse_crashes.py
 - `FUNCTIONAL_ZERO_G` must be experimentally determined — 1300g is a placeholder, not a real value
 - `steel_g + tare_raw` together = a valid measurement session. Either alone is insufficient for CMD_TARE protection.
 
-### UNINSTALLED / CYLINDER_ABSENT redesign — design UNBLOCKED, ready to implement (Session 62)
+### UNINSTALLED / CYLINDER_ABSENT redesign — design locked, implementation blocked (Session 61)
 **The flaw**: current logic uses a 120-second timeout alone to decide UNINSTALLED. Time
 alone is the wrong signal — it can't distinguish "cylinder briefly lifted and replaced"
 from "cylinder removed for refill and a different one returned." A same-cylinder return
 after 120s currently wipes tracking context (burn rate history, days remaining) when it
-shouldn't. **Directly confirmed as a live bug, not a hypothetical** — `config.json` was
-found showing `UNINSTALLED` in real time while the database showed continuous `TRACKING`
-seconds earlier, on 2026-07-03. This is `REMOVAL_GRACE_S=120.0` firing exactly as
-designed — the design itself is the bug.
+shouldn't.
 
-**The unblocking answer (Session 62):** the product decision that blocked this since
-2026-06-29 is resolved — not by picking "quick" vs "long," but by removing duration
-from the decision entirely. **Weight match determines continuity, not elapsed time.**
-If the platform returns to within noise range of the weight it had when lifted, resume
-`TRACKING` regardless of whether that took 30 seconds or 3 hours. Only a very long
-failsafe timeout (hours, not 120s) forces `UNINSTALLED` on its own — everything else is
-either a weight match (resume) or an explicit user action (see button below).
-
-**The design:**
+**The proposed design** (combining both ideas raised — weight-matching and explicit button):
 ```
 TRACKING
     ↓ weight drops (cylinder lifted) — record lift_weight_g
 CYLINDER_ABSENT          ← new intermediate state, replaces immediate timeout logic
-    ↓ weight returns, matches lift_weight_g within noise floor — ANY elapsed time
+    ↓ weight returns, matches lift_weight_g within noise floor
 TRACKING resumed         ← same cylinder, no context lost, no button needed
     ↓ weight returns, does NOT match lift_weight_g
 INSTALL FLOW             ← different cylinder detected — fresh anchor sequence
-    ↓ explicit "Uninstall" button pressed (WebUI + phone app, anytime)
+    ↓ explicit uninstall button pressed (anytime, user-initiated)
 UNINSTALLED              ← the only fully intentional path
-    ↓ very long timeout safety net (hours) — cylinder never returned
-UNINSTALLED              ← failsafe only
+    ↓ very long timeout safety net (hours, not 120s)
+UNINSTALLED              ← failsafe only, for a cylinder that never returns
 ```
-
-**New requirement (Session 62):** an explicit **"Uninstall cylinder" button**, mirroring
-the existing "Install cylinder" button already live in the WebUI — same symmetry, same
-pattern, user-initiated in both directions. Needs adding to both WebUI and the future
-phone app.
-
 This replaces the 120s timer with weight as the primary signal, and makes UNINSTALLED an
 intentional user action rather than an accidental consequence of timing. Note: this is a
 refinement of the existing 120s "grace window" mechanism already in production (confirmed
@@ -807,7 +654,14 @@ working since 2026-06-25, 3E-005 testing) — that mechanism holds TRACKING thro
 lift-and-replace, but doesn't do weight-matching on longer absences, which is exactly the
 gap this design closes.
 
-**Where it lands**: `hub/python/domain.py`. Hub-side only — no firmware
+**What's blocking implementation**: one product decision — is the common removal scenario
+a quick lift (clean, move, shake — seconds to a minute) or an extended absence (refill,
+lend, swap — hours)? This determines tuning for the `CYLINDER_ABSENT` state's own internal
+timing and whether the weight-match tolerance needs adjustment for thermal drift over
+longer absences. Raised twice now (2026-06-29 and 2026-07-02) without an answer — needs
+resolving at the start of Session 62 before any code gets written.
+
+**Where it lands when unblocked**: `hub/python/domain.py`. Hub-side only — no firmware
 changes needed, since the node already just reports raw weight regardless of hub state.
 
 ### Crash diagnosis

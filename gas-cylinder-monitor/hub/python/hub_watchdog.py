@@ -54,7 +54,7 @@ class HubWatchdog:
         hub_logger.log_watchdog('HEALTH_CHECK', hci0_up=hci0_up, reading_fresh=fresh)
         # hci0_up is always False inside Docker — hciconfig not available in container.
         # reading_fresh is the correct health signal from inside Docker.
-        # Threshold is 900s (15min) to survive normal 3-4min BLE dropouts.
+        # Threshold is 1800s (30min) to survive normal 3-4min BLE dropouts.
         return fresh
 
     def _do_level1(self):

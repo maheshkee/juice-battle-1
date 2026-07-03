@@ -101,8 +101,12 @@ def update_tare_in_config(tare_raw, config_path):
         except Exception:
             cfg = {}
         cfg['tare_raw'] = tare_raw
-        with open(config_path, 'w') as f:
+        tmp = config_path + '.tmp'
+        with open(tmp, 'w') as f:
             json.dump(cfg, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.rename(tmp, config_path)
         print(f'[DOMAIN] tare_raw updated: {tare_raw}', flush=True)
     except Exception as e:
         print(f'[DOMAIN] update_tare_in_config failed: {e}', flush=True)
@@ -157,8 +161,12 @@ def _save_config():
         cfg['tare_raw']          = cfg.get('tare_raw', None)
         cfg['cal_tare_session']  = cfg.get('cal_tare_session', None)
 
-        with open(_CONFIG_PATH, 'w') as f:
+        tmp = _CONFIG_PATH + '.tmp'
+        with open(tmp, 'w') as f:
             json.dump(cfg, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.rename(tmp, _CONFIG_PATH)
         print(f'[DOMAIN] config saved: state={_cylinder_state} steel_g={_steel_g}', flush=True)
     except Exception as e:
         print(f'[DOMAIN] config save failed: {e}', flush=True)
