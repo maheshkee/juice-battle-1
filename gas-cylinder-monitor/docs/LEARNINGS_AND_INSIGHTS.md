@@ -2384,3 +2384,67 @@ Using `user:gas-cylinder-monitor` silently fails or targets the wrong app. Alway
 Mounted docs (CLAUDE.md, session notes, reference files) reflect the state of the repo at the time they were last edited — not the live board state. Between sessions, the board may have been rebooted, reflashed, or had config changes that were never committed. No warning is emitted when a mounted doc is stale.
 
 Rule: for anything time-sensitive (current boot count, active config values, live hub state, firmware constants), always verify against `git log`, direct file reads, or live SSH before acting on mounted doc content. Treat mounted docs as historical context, not live ground truth.
+
+---
+
+## L-102 — WCN3990 WiFi instability is a documented hardware/driver issue, not project-code fault
+
+"Frame reassembly failed" and firmware crashes on the WCN3990 chip are a well-documented, industry-wide known issue — a 2018 upstream Linux kernel patch series targets this exact chip family, an unrelated laptop product has the same GitHub-filed issue, and independent Arduino UNO Q owners report the same WiFi instability on the official forum.
+
+Rule: before assuming project code is at fault for a connectivity failure, search for known hardware/driver issues against the specific chip or board. The WCN3990 on the UNO Q AQ3 has this exact pattern.
+
+---
+
+## L-103 — WiFi power-save fix must live in NetworkManager profile + dispatcher, not a boot-time oneshot
+
+A systemd oneshot script (`wifi-power-save-off.service`) races interface bring-up and does not survive when NetworkManager applies a fresh connection profile's own defaults — defeating the fix silently.
+
+The durable fix requires two components: (1) `nmcli connection modify <profile> wifi-sec.powersave 2` to bake powersave=disabled into the NM connection profile itself, and (2) an NM dispatcher script (`/etc/NetworkManager/dispatcher.d/`) that re-applies the setting on every `up` event for that interface. This survives hard power-cycles and new WiFi network associations.
+
+---
+
+## L-104 — health.cpp stuck-check is structurally non-functional since inception
+
+The stuck check in health.cpp compares tare variance to a threshold, but tare.cpp's PHASE2 never computes variance — it only tracks sum and count. As a result, `g_tare_variance_raw` stays `0.0f` permanently, and the skip-on-zero sentinel makes the check auto-pass every boot.
+
+This is a genuine blind spot for a frozen sensor value, not a false-alarm generator. The fix is fully specified (extend `TareResult` struct with a variance field, pass it through the orchestrator) but must not be flashed until real variance data from a passing attempt is available to validate the threshold.
+
+---
+
+## L-105 — A config.json path confirmed unmodified via stat despite app functioning correctly
+
+A config.json path was checked repeatedly across a full session and confirmed via `stat` to be unmodified since June 23, despite the live app functioning correctly the whole time (correct TRACKING state, correct burn-rate math). This proved a diagnostic visibility gap, not a functional bug — the app was reading its real config from a different path that was never directly inspected.
+
+Rule: when a file appears untouched but the app works correctly, the most likely explanation is that the app's actual config path differs from the one being inspected. Resolve by reading the config path from the running process or its environment, not from assumptions.
+
+---
+
+## L-106 — BLE reading interpolation near user-triggered events requires explicit uncertainty bounds
+
+Interpolating between two real BLE readings to estimate an intermediate value is mathematically legitimate only when the underlying process is smooth. Gas burn rate is NOT reliably smooth around user-triggered events like cooker whistles, since flame adjustments cluster exactly at those moments.
+
+Interpolated segments that span a likely user-triggered event must carry explicit wider uncertainty bounds rather than false precision. Event-adjacent interpolation without this flag will produce misleadingly tight estimates.
+
+---
+
+## L-107 — Watchdog escalation timing can be verified by pure arithmetic before treating it as a mystery
+
+The watchdog's 3-level escalation timing was proven correct to within 9 seconds using nothing but its own documented code constants and simple arithmetic — no log archaeology or hardware testing required.
+
+Rule: before treating a timing pattern as unexpected behaviour or a bug, work through the system's own documented constants arithmetically. If the observed interval matches the computed interval, the system is working as designed. Reach for log analysis only after arithmetic fails to explain the observation.
+
+---
+
+## L-108 — arduino-app-cli app logs vs hub_logger route to different channels; grep the wrong one and get silence
+
+`arduino-app-cli app logs --all` reads raw stdout, where plain `print()` calls live. `hub_logger.*` calls route only to `hub.log`. If an event is emitted via one channel and you grep the other, you get no output — not an error, just silence.
+
+Rule: know which logging path an event uses before grepping. Plain `print()` → stdout/app-logs; `hub_logger.*` → hub.log. Grepping the wrong channel silently returns nothing and is indistinguishable from the event not having occurred.
+
+---
+
+## L-109 — grep silently degrades on binary/non-UTF8 files; force -a to avoid misleading partial matches
+
+grep silently switches to a useless partial-match mode on any file containing a non-UTF8 byte, emitting "binary file matches" and sometimes surfacing misleading unrelated content rather than failing loudly. Application log files can contain non-UTF8 bytes in exception traces or BLE payloads.
+
+Rule: always use `grep -a` (text mode) when grepping application logs. Without `-a`, a missed match may mean the pattern is absent or may mean grep silently gave up — indistinguishable without the flag.

@@ -1296,3 +1296,21 @@ Verify Session 60 fixes survived, protect 3E-009 attempt 1 data, implement and v
 
 ### Gate
 3E-009 attempt #2 deliberately deferred — a decision, not a failure. Stability confidence to be built via 2-3 more attempts first.
+
+---
+
+## Session 62 — 2026-07-02 evening through 2026-07-03
+
+### Goal
+Verify Session 60/61 fixes survived, protect and analyze 3E-009 attempt 1 data, launch and monitor attempt 2, diagnose a real 41-minute BLE staleness event, design and lock the CYLINDER_ABSENT redesign and full Cooking Intelligence (whistle-event tracking) feature, correct multiple earlier findings against real source/log evidence, launch attempt 3 for a 3-night unattended run.
+
+### Real outputs
+- Fix 2 proven durable across a genuine hard power-cycle (not just a soft reboot) via NM connection profile (`nmcli powersave 2`) + NM dispatcher script; setup.sh patched to auto-apply this on any future board/network with zero hardcoding.
+- Attempt 2 ran ~14h38m with one watchdog-triggered reboot at 5h16m — escalation timing matched pure arithmetic prediction to 9 seconds; root cause of the underlying BLE silence in the predicted window never conclusively identified (kernel log empty in that window).
+- health.cpp stuck-check confirmed structurally non-functional since inception: tare.cpp PHASE2 never computes variance, so `g_tare_variance_raw` stays `0.0f` forever, auto-passing every boot. Fix fully specified but deliberately not flashed — pending real variance data from attempt 3.
+- G5 Analytics status corrected: burn rate and days-remaining confirmed live in production logs, contradicting the earlier "not built" finding from Session 61.
+- CYLINDER_ABSENT redesign and Cooking Intelligence (whistle-event tracking) feature designed and locked.
+- Multiple earlier findings corrected against real source and log evidence.
+
+### Gate
+Attempt 3 launched 2026-07-03 16:07:59 IST after a full physical power-cycle reset (node boot=47, reset=POWERON) — 3-night unattended run, result pending at session close, to be evaluated at start of Session 63.

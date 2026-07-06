@@ -1,13 +1,24 @@
 # PROJECT_CONTEXT.md — Gas Cylinder Monitor
-# Updated: 2026-07-02 (Session 61)
+# Updated: 2026-07-03 (Session 62)
 # One-screen glance only. Not a copy of other documents.
 
 ---
 
-Session: 61 (2026-07-02)
+Session: 62 (2026-07-02 evening – 2026-07-03)
 
-State: Fixes 1-4 all deployed and verified. 3E-009 stability campaign in progress (multi-attempt). UNINSTALLED redesign blocked on product decision.
+State: Session 62 complete. 3E-009 attempt 3 running since 2026-07-03 16:07:59 IST
+       (node boot=47, reset=POWERON). 3-night unattended run — result to be evaluated
+       at Session 63 start.
 
-Authoritative reference: docs/HANDOFF_2026_07_01_SESSION60_MASTER_REFERENCE.md (Parts 3, 5, 7 most current)
+Key corrections from Session 62:
+- Fix 2 (WiFi power-save) proven durable across hard power-cycle via NM profile +
+  dispatcher script; setup.sh patched for zero-hardcode auto-apply.
+- G5 Analytics: burn_rate + days_remaining CONFIRMED LIVE in production logs
+  (earlier "not built" finding was wrong).
+- health.cpp stuck-check: confirmed non-functional since inception (fix specified,
+  not flashed — pending variance data from attempt 3).
 
-Next action: Answer the cylinder-removal-duration question to unblock UNINSTALLED redesign, then implement config.json atomic writes, then run 3E-009 attempt #2.
+Authoritative reference: docs/SESSIONS.md Session 62 block
+
+Next action: Evaluate attempt 3 results at Session 63 start, then implement
+             config.json atomic writes + UNINSTALLED redesign.

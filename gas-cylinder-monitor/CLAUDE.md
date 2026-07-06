@@ -134,32 +134,32 @@ The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ---
 
-## Current State - 2026-07-02 (Session 61)
+## Current State - 2026-07-03 (Session 62)
 
 ```
-Status:         Fixes 1-4 all deployed and verified (2026-07-02)
-                3E-009 stability campaign in progress (multi-attempt strategy)
-                UNINSTALLED redesign designed but blocked on one product-decision question
-Boot:           boot=45 (fresh tare on clean platform, stone removed before tare)
-tare_raw:       -107041.4 (hub config — platform tare before stone placed, unchanged)
+Status:         Session 62 complete. 3E-009 attempt 3 running since 2026-07-03 16:07:59 IST
+                (node boot=47, reset=POWERON — full physical power-cycle reset)
+                3-night unattended run; result to be evaluated at Session 63 start.
+Boot:           boot=47 (fresh power-cycle, clean tare)
+tare_raw:       -107041.4 (hub config, unchanged)
 cal_factor:     36.2231 (locked, linear 200g-1800g confirmed)
-sigma:          5.99g (from 3E-009 attempt 1 — hardware healthy throughout)
-heap_max_block: 114676 bytes (baseline, boot 45, stable across 14+ heartbeats — see RESEARCH.md)
-Hub state:      cylinder_state=UNINSTALLED, steel_g=null
+sigma:          5.99g (hardware healthy throughout)
+heap_max_block: 114676 bytes (baseline, stable)
 Hub modules:    main.py, ble_subscriber.py, log_transfer.py, domain.py, db.py,
                 hub_logger.py, hub_watchdog.py
 Hub port:       7000 (Docker, arduino@AQ3)
-Config path:    hub/data/config.json (authoritative persistent state on host)
-READING_STALE_S: 1800 (Fix 1 deployed — was 900, raised for WCN3990 recovery headroom)
-WiFi power save: OFF (Fix 2 — wifi-power-save-off.service, systemd oneshot, enabled)
+READING_STALE_S: 1800 (Fix 1 — deployed, unchanged)
+WiFi power save: OFF — DURABLE via NM profile (nmcli powersave 2) + NM dispatcher script;
+                setup.sh patched to auto-apply on any future board/network
 CMD_TARE guard: DEPLOYED (Fix 3 — steel_g+tare_raw null check in ble_subscriber.py)
-Fix 4:          DEPLOYED — esp_reset_reason() + heap_caps_get_largest_free_block() in
-                journal.cpp, verified live boot 45: reset=OTHER (USB/esptool, expected),
-                heap_max_block=114676 in every HB line
-N-TARE-CHECK:   ALREADY IMPLEMENTED prior to session 61 (source-verified, no new code needed)
-HEAVY_LOAD_THRESHOLD_G: 2000.0f confirmed in firmware (source-verified 2026-07-02)
-DB:             7867 rows total (CSV export confirmed intact from 3E-009 attempt 1)
-                quality=GOOD, sigma=5.99 throughout — hardware healthy
+Fix 4:          DEPLOYED — esp_reset_reason() + heap_caps_get_largest_free_block() in journal.cpp
+health.cpp stuck-check: CONFIRMED non-functional (tare_variance_raw always 0.0f, auto-passes);
+                fix fully specified, NOT flashed — pending variance data from attempt 3
+G5 Analytics:   CONFIRMED LIVE in production — burn_rate + days_remaining in active logs
+                (earlier "not built" finding from Session 61 was incorrect; corrected Session 62)
+G7 WebUI:       NOT BUILT — dashboard still absent
+UNINSTALLED redesign: DESIGNED (CYLINDER_ABSENT + weight-matching + button flow)
+                NOT implemented — product decision on cylinder-removal-duration UX still pending
 Wiring locked (do not change without re-verifying):
   ESP32-C3 GPIO4 = DOUT (SDO), GPIO3 = SCK
   HX711 VCC = 3.3V ONLY (never 5V)
@@ -185,25 +185,9 @@ Permanent constants (same test and production - no revert needed):
   REMOVAL_GRACE_S        = 120.0
 Node constants - PRODUCTION value (already correct in firmware):
   HEAVY_LOAD_THRESHOLD_G = 2000.0f (source-verified 2026-07-02 — no revert needed)
-G5 Analytics:   NOT BUILT — verified by direct source inspection of hub/python/
-G7 WebUI:       NOT BUILT — index.html has no dashboard (old git commit was pre-pivot)
-UNINSTALLED redesign: DESIGNED (CYLINDER_ABSENT + weight-matching + button flow) but NOT
-                implemented — blocked pending product decision on cylinder-removal-duration UX
-Completed this session (61):
-  - CSV export confirmed: 7867 rows, all states, 3E-009 attempt 1 data intact
-  - Fix 2 confirmed survived reboot (WiFi power save still OFF)
-  - Fix 4: journal.cpp updated with esp_reset_reason() + heap_caps_get_largest_free_block()
-    Compiled: 46% flash, 7% RAM. Flashed boot 45. Verified: reset=OTHER, heap_max_block=114676
-  - N-TARE-CHECK: confirmed already implemented (no new code needed)
-  - HEAVY_LOAD_THRESHOLD_G=2000.0f confirmed in firmware (no new code needed)
-  - G5/G7 tracking discrepancy resolved: not built, old commit was pre-ESP32-pivot
-  - UNINSTALLED redesign (CYLINDER_ABSENT + weight-matching + button) fully designed
-  - SESSION_CLOSE_PROTOCOL.md rewritten to v2
-Current position: All 4 fixes deployed. 3E-009 attempt #2 deliberately deferred — building
-                  stability confidence via 2-3 more attempts before a 65h unattended run.
-                  config.json atomic writes still pending.
-Next action:      Answer cylinder-removal-duration question to unblock UNINSTALLED redesign,
-                  then implement config.json atomic writes, then run 3E-009 attempt #2.
+Authoritative detail: docs/SESSIONS.md Session 62 block
+Next action:    Evaluate attempt 3 results at Session 63 start, then implement
+                config.json atomic writes + UNINSTALLED redesign.
 ```
 
 ---
