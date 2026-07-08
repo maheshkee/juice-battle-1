@@ -57,7 +57,9 @@ class BLESubscriber:
         self.scanning            = False
         self._loop               = None
         self._config             = {}
-        self.last_boot_used_tare = False  # True if TARE was sent this connect
+        self.last_boot_used_tare   = False  # True if TARE was sent this connect
+        self._tare_pending_dump    = False  # True when TARE sent; cleared after secondary DUMP_LOG
+        self._secondary_dump_timer = None   # threading.Timer; cancelled on disconnect
 
     def start(self):
         t = threading.Thread(target=self._run, daemon=True)
@@ -288,7 +290,12 @@ class BLESubscriber:
                 print('[BLE_SUB] Disconnected -- resuming scan in 5s', flush=True)
                 self.target_device = None
                 self.weight_char   = None
+                self.cmd_char      = None
                 self._connecting   = False
+                if self._secondary_dump_timer is not None:
+                    self._secondary_dump_timer.cancel()
+                    self._secondary_dump_timer = None
+                self._tare_pending_dump = False
                 if self.on_disconnected:
                     self.on_disconnected()
                 GLib.timeout_add(5000, lambda: self._start_scan() or False)
@@ -328,6 +335,7 @@ class BLESubscriber:
         if cylinder_state == 'UNINSTALLED':
             threading.Timer(1.0, lambda: self.write_command('TARE')).start()
             self.last_boot_used_tare = True
+            self._tare_pending_dump = True
             if cal_factor is not None:
                 threading.Timer(2.0,
                     lambda cf=cal_factor: self.write_command(f'SET_CAL:{cf:.4f}')).start()

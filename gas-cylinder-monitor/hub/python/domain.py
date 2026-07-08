@@ -96,6 +96,16 @@ def parse_tare_from_journal(journal_path):
         return None
 
 
+def _atomic_write_config(cfg, path):
+    import tempfile as _tmp
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(cfg, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.rename(tmp, path)
+
+
 def update_tare_in_config(tare_raw, config_path):
     """Read config_path, update tare_raw field, write back. Preserves all other keys."""
     try:
@@ -105,12 +115,7 @@ def update_tare_in_config(tare_raw, config_path):
         except Exception:
             cfg = {}
         cfg['tare_raw'] = tare_raw
-        tmp = config_path + '.tmp'
-        with open(tmp, 'w') as f:
-            json.dump(cfg, f, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        os.rename(tmp, config_path)
+        _atomic_write_config(cfg, config_path)
         print(f'[DOMAIN] tare_raw updated: {tare_raw}', flush=True)
     except Exception as e:
         print(f'[DOMAIN] update_tare_in_config failed: {e}', flush=True)
@@ -118,6 +123,14 @@ def update_tare_in_config(tare_raw, config_path):
 
 def load_config():
     global _cylinder_state, _brand, _steel_source, _steel_g, _install_mode
+    tmp_path = _CONFIG_PATH + '.tmp'
+    if not os.path.exists(_CONFIG_PATH) and os.path.exists(tmp_path):
+        print('[DOMAIN] load_config: config.json missing, .tmp found — crash recovery: renaming',
+              flush=True)
+        try:
+            os.rename(tmp_path, _CONFIG_PATH)
+        except Exception as e:
+            print(f'[DOMAIN] load_config: crash recovery rename failed: {e}', flush=True)
     try:
         with open(_CONFIG_PATH) as f:
             cfg = json.load(f)
@@ -162,15 +175,10 @@ def _save_config():
         cfg['steel_source']      = _steel_source
         cfg['steel_anchored_at'] = ts
         cfg['cal_factor']        = cfg.get('cal_factor', None)
-        cfg['tare_raw']          = cfg.get('tare_raw', None)
+        cfg['tare_raw']          = None if _cylinder_state == 'UNINSTALLED' else cfg.get('tare_raw', None)
         cfg['cal_tare_session']  = cfg.get('cal_tare_session', None)
 
-        tmp = _CONFIG_PATH + '.tmp'
-        with open(tmp, 'w') as f:
-            json.dump(cfg, f, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        os.rename(tmp, _CONFIG_PATH)
+        _atomic_write_config(cfg, _CONFIG_PATH)
         print(f'[DOMAIN] config saved: state={_cylinder_state} steel_g={_steel_g}', flush=True)
     except Exception as e:
         print(f'[DOMAIN] config save failed: {e}', flush=True)
@@ -315,7 +323,7 @@ def set_uninstall_mode():
     _candidate_window  = []
     _removal_start_ts  = None
     _save_config()
-    print('[DOMAIN] set_uninstall_mode: explicit user action — steel_g cleared, UNINSTALLED',
+    print('[DOMAIN] set_uninstall_mode: steel_g cleared, tare_raw cleared, CMD_TARE triggered',
           flush=True)
     hub_logger.log_domain('STATE_CHANGE', new_state='UNINSTALLED',
                           source='USER_EXPLICIT_UNINSTALL')

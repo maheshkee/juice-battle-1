@@ -123,6 +123,11 @@ def on_setup(sid, data):
 
 def on_uninstall(sid, data):
     domain.set_uninstall_mode()
+    if ble.cmd_char is not None:
+        ble.write_command('TARE')
+    else:
+        print('[MAIN] uninstall: BLE not connected — tare_raw cleared in config, CMD_TARE will fire on next BLE connect',
+              flush=True)
     ui.send_message('weight_update', domain.get_state_snapshot())
     print('[MAIN] uninstall: cylinder removed explicitly by user', flush=True)
     hub_logger.log_hub('USER_UNINSTALL')
@@ -144,8 +149,23 @@ def _on_log_transfer_complete():
         tare_raw = domain.parse_tare_from_journal(journal_path)
         if tare_raw is not None:
             domain.update_tare_in_config(tare_raw, _CONFIG_PATH)
+            ble._tare_pending_dump = False
         else:
             print('[MAIN] tare update: TARE line not found in journal', flush=True)
+            if ble._tare_pending_dump:
+                ble._tare_pending_dump = False
+                print('[BLE_SUB] tare_raw absent after primary DUMP_LOG — '
+                      'secondary DUMP_LOG scheduled in 25s', flush=True)
+                def _do_secondary():
+                    ble._secondary_dump_timer = None
+                    ble.write_command('DUMP_LOG')
+                    hub_logger.log_ble('CMD_SENT', cmd='DUMP_LOG_SECONDARY')
+                t = threading.Timer(25.0, _do_secondary)
+                ble._secondary_dump_timer = t
+                t.start()
+            else:
+                print('[BLE_SUB] WARNING: tare_raw still absent after secondary DUMP_LOG — '
+                      'manual power cycle of node required', flush=True)
     except Exception as e:
         print(f'[MAIN] tare update failed: {e}', flush=True)
 
