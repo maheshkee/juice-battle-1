@@ -17,3 +17,15 @@
 # --- no PyPI packages needed ---
 # arduino.app_utils / arduino.app_bricks  -> App Lab runtime
 # dbus, gi.repository                     -> installed via wheels above
+/app/wheels/moonshine_voice-0.0.65-py3-none-manylinux_2_31_aarch64.manylinux_2_39_aarch64.whl
+/app/wheels/certifi-2026.6.17-py3-none-any.whl
+/app/wheels/cffi-2.1.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl
+/app/wheels/charset_normalizer-3.4.8-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+/app/wheels/filelock-3.29.6-py3-none-any.whl
+/app/wheels/idna-3.18-py3-none-any.whl
+/app/wheels/platformdirs-4.10.0-py3-none-any.whl
+/app/wheels/pycparser-3.0-py3-none-any.whl
+/app/wheels/requests-2.34.2-py3-none-any.whl
+/app/wheels/sounddevice-0.5.5-py3-none-any.whl
+/app/wheels/tqdm-4.68.3-py3-none-any.whl
+/app/wheels/urllib3-2.7.0-py3-none-any.whl

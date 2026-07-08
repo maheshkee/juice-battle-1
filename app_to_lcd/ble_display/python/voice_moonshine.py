@@ -20,7 +20,7 @@ SILENCE_THRESH      = 350
 SILENCE_SECS        = 1.0
 MAX_LISTEN_SECS     = 7.0
 
-MOONSHINE_MODEL_PATH = '/home/app/.cache/moonshine_voice/download.moonshine.ai/model/tiny-streaming-en/quantized'
+MOONSHINE_MODEL_PATH = '/app/models/download.moonshine.ai/model/tiny-streaming-en/quantized'
 
 WHISTLE_WORDS = {'whistle', 'whistles', 'wistle', 'wistles'}
 

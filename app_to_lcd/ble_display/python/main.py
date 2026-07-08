@@ -84,6 +84,7 @@ def _load_board_key() -> str:
 PHONE_SVC_UUID = 'a00b0000-0000-0000-0000-000000000000'
 PHONE_CMD_UUID = 'a00b0002-0000-0000-0000-000000000000'
 PHONE_EVT_UUID = 'a00b0003-0000-0000-0000-000000000000'
+WRIST_CMD_UUID = 'a00b0004-0000-0000-0000-000000000000'
 
 WHISTLE_MODEL_PATH  = '/app/models/whistle.eim'
 WHISTLE_THRESHOLD   = 0.95
@@ -145,6 +146,7 @@ display_mode = 'overlay'
 
 _phone_authenticated = False
 _voice_command       = False
+_wristband_macs      = set()
 
 ALARM_PATH = '/app/assets/alarm.wav'
 
@@ -766,6 +768,18 @@ def _wifi_provision(ssid: str, password: str):
 
 
 
+def _dispatch_cmd(cmd: str):
+    """Dispatch a player/whistle command directly, bypassing auth."""
+    log(f'[WRIST] CMD: {cmd}')
+    if cmd == 'PLAYER_PAUSE':     handle_player_cmd('pause')
+    elif cmd == 'PLAYER_RESUME':  handle_player_cmd('resume')
+    elif cmd == 'PLAYER_STOP':    handle_player_cmd('stop')
+    elif cmd == 'PLAYER_MUTE':    handle_player_cmd('mute')
+    elif cmd == 'PLAYER_UNMUTE':  handle_player_cmd('unmute')
+    elif cmd == 'PLAYER_SEEK_FWD':  handle_player_cmd('seek_fwd')
+    elif cmd == 'PLAYER_SEEK_BACK': handle_player_cmd('seek_back')
+    else: log(f'[WRIST] Unknown cmd: {cmd}')
+
 def handle_phone_command(text: str):
     global led_state, schedule, whistle_count, whistle_consec
     global whistle_active, whistle_last_action, whistle_last_detect
@@ -1292,6 +1306,7 @@ class BLEObjectWatcher:
             threading.Timer(1.0, lambda m=mac: connect_device(m)).start()
 
 
+
     def _interfaces_removed(self, path, interfaces):
         if DEVICE_IFACE not in interfaces: return
         for mac, d in list(scan_results.items()):
@@ -1313,6 +1328,7 @@ class BLEObjectWatcher:
                         {'mac': mac, 'time': now_str()})
                     push_connected_devices()
                     GLib.idle_add(_start_advertising)
+
 
 def _autoconnect_existing():
     if not trusted: return
@@ -1388,6 +1404,43 @@ class PhoneCmdChar(dbus.service.Object):
         self.value = value
         handle_phone_command(bytes(value).decode('utf-8', errors='ignore'))
 
+
+class WristCmdChar(dbus.service.Object):
+    def __init__(self, bus, service):
+        self.path = '/org/bluez/hci0/phoneapp/service0/char2'
+        self.uuid = WRIST_CMD_UUID; self.service = service
+        self.value = dbus.Array([], signature='y')
+        dbus.service.Object.__init__(self, bus, self.path)
+
+    def get_props(self):
+        return {'Service': dbus.ObjectPath(self.service.path),
+                'UUID': dbus.String(self.uuid),
+                'Flags': dbus.Array(['write','write-without-response'],
+                    signature='s')}
+
+    @dbus.service.method(GATT_CHRC_IFACE, in_signature='aya{sv}')
+    def WriteValue(self, value, options):
+        self.value = value
+        text = bytes(value).decode('utf-8', errors='ignore').strip()
+        log(f'[WRIST] {text}')
+        # record this MAC as a known wristband
+        try:
+            sender = options.get('device', '')
+            if sender:
+                for p, ifaces in get_all_objects().items():
+                    if DEVICE_IFACE in ifaces:
+                        if str(p) == str(sender) or p.endswith(str(sender)):
+                            mac = str(ifaces[DEVICE_IFACE].get('Address', ''))
+                            if mac:
+                                _wristband_macs.add(mac.upper())
+                                log(f'[WRIST] Registered MAC: {mac}')
+                                break
+        except Exception as e:
+            log(f'[WRIST] MAC lookup failed: {e}')
+        # dispatch command directly
+        if text.startswith('CMD:'):
+            cmd = text[4:].strip()
+            GLib.idle_add(_dispatch_cmd, cmd)
 
 class PhoneEvtChar(dbus.service.Object):
     def __init__(self, bus, service):
@@ -1479,9 +1532,10 @@ def ble_main():
         adv_mgr_global  = dbus.Interface(adapter_obj, LE_ADVERTISING_MANAGER_IFACE)
         phone_app = PhoneApplication(bus)
         phone_svc = PhoneService(bus)
-        cmd_char  = PhoneCmdChar(bus, phone_svc)
-        evt_char  = PhoneEvtChar(bus, phone_svc)
-        phone_svc.chars = [cmd_char, evt_char]
+        cmd_char   = PhoneCmdChar(bus, phone_svc)
+        evt_char   = PhoneEvtChar(bus, phone_svc)
+        wrist_char = WristCmdChar(bus, phone_svc)
+        phone_svc.chars = [cmd_char, evt_char, wrist_char]
         phone_app.add_service(phone_svc)
         evt_char_global = evt_char
         gatt_mgr_global.RegisterApplication(dbus.ObjectPath(phone_app.path), {},
@@ -1591,6 +1645,9 @@ def _auth_enforcer():
                             addr_type = str(ifaces[DEVICE_IFACE].get('AddressType', 'public'))
                             if 'random' not in addr_type and mac not in scan_results:
                                 continue
+                            # skip known wristbands
+                            if mac.upper() in _wristband_macs:
+                                continue
                             log(f'[AUTH] Unauthenticated device found: {mac} -- disconnecting')
                             try:
                                 dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, path),
@@ -1615,7 +1672,7 @@ threading.Thread(target=_whistle_loop, daemon=True).start()
 def _voice_assistant_thread():
     try:
         import importlib.util, sys
-        spec = importlib.util.spec_from_file_location('voice_assistant', '/app/python/voice_intent.py')
+        spec = importlib.util.spec_from_file_location('voice_assistant', '/app/python/voice_moonshine.py')
         va   = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(va)
         def _set_voice_flag(state):
