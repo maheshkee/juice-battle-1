@@ -18,7 +18,8 @@ def db_init():
         gas_pct        REAL,
         gas_g          REAL,
         alert_level    TEXT,
-        cylinder_state TEXT
+        cylinder_state TEXT,
+        temp_c         REAL
     )''')
     conn.execute('''CREATE TABLE IF NOT EXISTS config (
         key   TEXT PRIMARY KEY,
@@ -30,6 +31,7 @@ def db_init():
         'ALTER TABLE readings ADD COLUMN gas_g          REAL',
         'ALTER TABLE readings ADD COLUMN alert_level    TEXT',
         'ALTER TABLE readings ADD COLUMN cylinder_state TEXT',
+        'ALTER TABLE readings ADD COLUMN temp_c         REAL',
     ]:
         try:
             conn.execute(col_sql)
@@ -43,14 +45,15 @@ def db_init():
 
 def db_insert_reading(ts, grams, quality, sigma,
                       gas_pct=None, gas_g=None,
-                      alert_level=None, cylinder_state=None):
+                      alert_level=None, cylinder_state=None,
+                      temp_c=None):
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.execute(
             '''INSERT INTO readings
-               (ts, grams, quality, sigma, gas_pct, gas_g, alert_level, cylinder_state)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-            (ts, grams, quality, sigma, gas_pct, gas_g, alert_level, cylinder_state)
+               (ts, grams, quality, sigma, gas_pct, gas_g, alert_level, cylinder_state, temp_c)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (ts, grams, quality, sigma, gas_pct, gas_g, alert_level, cylinder_state, temp_c)
         )
         conn.commit()
         conn.close()

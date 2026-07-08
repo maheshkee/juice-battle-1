@@ -762,3 +762,38 @@ A declining trend across boots or across a long run would indicate a fragmentati
 **Location:** node/gas_monitor_v1/ (weight module)
 **Verification method:** direct source read, session 61
 **Status:** PRODUCTION value already in firmware — no revert needed. Previously tracked as pending at 1000g (DEV); that was incorrect.
+
+---
+
+## 3E-008 Trial 1 — Confirmed Hardware Measurements (2026-07-08)
+
+**Load cell system:** 3× YZC-161A parallel + GISLAB HX711 + ESP32-C3 SuperMini
+**Boundary row:** id=2207296 | Start: 07 Jul 16:55:34 IST | Duration: 17.53h
+
+**Fast creep (single-exponential fit, Phase A = first 6h):**
+- Plateau: A = 20210.56 ±0.41g (very tight, reliable)
+- Magnitude: B = -4.15 ±0.82g (downward; platform conditioned, tiny compared to 30-80g documented elsewhere)
+- Time constant: τ₁ = 4721 ±2131s (1.31 ±0.59h) — single trial, wide CI, needs 2 more trials
+
+**Thermal coefficient:**
+- α = 29.19 ±1.36 g/°C, p=3.5×10⁻⁹⁷ (highly significant)
+- Valid for: slow gradual temperature changes (hours timescale, closed room)
+- NOT valid for: rapid airflow/ventilation events (seconds-minutes timescale)
+  - At h≈15.2, office door opened: DHT22 cooled rapidly (29.5→28.3°C) but aluminium platform lagged — α model predicts weight decrease, actual weight spiked +126g
+
+**Slow second creep component:**
+- From h=6 to h=15: residual drift +27g at ~3g/h continuously after fast creep subtracted
+- Temperature change in window: 0.3°C × 29.19 = 8.8g — insufficient to explain 27g
+- Interpretation: second viscoelastic relaxation component, τ₂ estimated >>6h (not yet fitted)
+- Impact: single-exponential model is incomplete; two-component model needed
+
+**Data quality:**
+- Unique readings: 2100 (4200 total rows — duplicate row bug still active)
+- temp_c null rows: 0/4200 (DHT22 working correctly throughout)
+- Environment: closed office overnight, opened 08:00 (produced ventilation event)
+
+**Hardware systems under parallel evaluation (no production decision yet):**
+- Current: 3× YZC-161A parallel + GISLAB HX711
+- ADS1230 + Adafruit 4543 breakout
+- Single YZC-161A + HX711
+- CZL601 single-point load cell

@@ -59,6 +59,11 @@ else
     log "PyGObject wheel built."
 fi
 
+# -- Analysis tools (host-only, not Docker) -----------------------------------
+log "Step 2b -- Installing host analysis tools (scipy, numpy)..."
+pip install scipy numpy --break-system-packages --quiet
+log "scipy and numpy installed."
+
 # -- 3. Copy shared libraries -------------------------------------------------
 log "Step 3 -- Copying shared libraries..."
 mkdir -p "$WHEELS_DIR"

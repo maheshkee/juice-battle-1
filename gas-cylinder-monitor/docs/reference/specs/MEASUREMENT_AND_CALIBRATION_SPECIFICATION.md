@@ -738,4 +738,37 @@ Health Monitoring
 
 Only after trustworthy weight exists can the remainder of the product function correctly.
 
+# 41. DRIFT CORRECTION ARCHITECTURE — PLANNED
+
+Two-stage design, gated by evidence, not assumed in advance.
+
+Stage 1 — additive correction (default path):
+
+gas_g_corrected = gas_g_raw − creep(Δt since disturbance) − thermal(T_measured)
+
+Parameters (τ, plateau magnitude, α) come from 3E-008. Validate by checking the
+residual after correction is small and structureless (consistent with existing
+noise floor).
+
+Stage 2 — recursive estimator (escalation path only):
+
+Triggered only if Stage 1's residual retains structure after correction — evidence
+creep and thermal interact rather than simply summing.
+
+State vector: [W_true, creep_bias, burn_rate]. Temperature is measured directly,
+not a hidden state — subtracted before the filter runs.
+
+Process model: W(t+1) = W(t) − r(t)·Δt, b(t+1) = b(t)·e^(−Δt/τ), r(t+1) ≈ r(t).
+
+Observation: raw(t) − α·(T(t) − T_ref) = W(t) + b(t) + noise(t).
+
+Measurement noise variance = existing measured σ² (3E-001/002) — no new
+characterisation needed.
+
+Decision criterion: Stage 2 is only justified if Stage 1 fails validation. Do not
+build Stage 2 speculatively.
+
+Note: sections 39–40 are existing closing sections of this document. This section
+was added in Session 63 as section 41.
+
 END OF MEASUREMENT_AND_CALIBRATION_SPECIFICATION.md v1.0

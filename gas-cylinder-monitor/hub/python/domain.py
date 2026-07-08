@@ -27,9 +27,13 @@ DAILY_USE_DEFAULT_G = 350.0
 # ── G5 analytics constants ────────────────────────────────────────────────────
 # TEST values - see GasMonitor_Complete_Revert_Reference.docx for production values
 MIN_DATA_HOURS           = 0.25          # PRODUCTION: 24.0
-BURN_RATE_WINDOW_DAYS    = 0.14583       # PRODUCTION: 7.0  (3.5 hrs test = 7 days prod)
+BURN_RATE_WINDOW_DAYS    = 7.0           # production rolling window; test was 0.14583 (3.5 h)
 MIN_BURN_RATE_G_PER_DAY  = 10.0          # same in production
 MAX_BURN_RATE_G_PER_DAY  = 100000.0      # PRODUCTION: 2000.0
+# OLS fit quality gate — results below this R² are treated as unreliable.
+# Starting value 0.3; revisit after production-constant backtest and 3E-008 thermal correction.
+R2_MIN_THRESHOLD         = 0.3
+SECONDS_PER_DAY          = 86400         # seconds in one day — used in all elapsed-day calculations
 
 # ── Alert constants ────────────────────────────────────────────────────────────
 # Gram failsafe - same in test and production
@@ -250,6 +254,7 @@ def get_state_snapshot():
         'quality':             None,
         'sigma':               None,
         'ts':                  None,
+        'temp_c':              None,
         'gas_pct':             None,
         'gas_g':               None,
         'alert_level':         None,
@@ -295,6 +300,25 @@ def set_install_mode(mode, brand=None):
     hub_logger.log_domain('STATE_CHANGE', new_state=_cylinder_state, source=f'INSTALL_{mode}')
     print(f'[DOMAIN] install mode set: mode={mode} brand={brand} '
           f'state={_cylinder_state} steel_g={_steel_g}', flush=True)
+
+
+def set_uninstall_mode():
+    """Explicit user-initiated uninstall via WebUI button.
+    Clears steel_g completely — next install will need full anchor window.
+    Never called by automatic logic — only by user action."""
+    global _cylinder_state, _steel_g, _steel_source, _steel_anchored_at
+    global _candidate_window, _removal_start_ts
+    _cylinder_state    = 'UNINSTALLED'
+    _steel_g           = None
+    _steel_source      = None
+    _steel_anchored_at = None
+    _candidate_window  = []
+    _removal_start_ts  = None
+    _save_config()
+    print('[DOMAIN] set_uninstall_mode: explicit user action — steel_g cleared, UNINSTALLED',
+          flush=True)
+    hub_logger.log_domain('STATE_CHANGE', new_state='UNINSTALLED',
+                          source='USER_EXPLICIT_UNINSTALL')
 
 
 def compute_analytics(current_gas_g, cylinder_state='TRACKING'):
@@ -345,7 +369,7 @@ def compute_analytics(current_gas_g, cylinder_state='TRACKING'):
         if anchor_ts is None:
             return _none_result('WAITING')
 
-        elapsed_days  = (now - anchor_ts).total_seconds() / 86400.0
+        elapsed_days  = (now - anchor_ts).total_seconds() / SECONDS_PER_DAY
         elapsed_hours = elapsed_days * 24.0
 
         if elapsed_hours < MIN_DATA_HOURS:
@@ -392,7 +416,7 @@ def compute_analytics(current_gas_g, cylinder_state='TRACKING'):
             if len(parsed) >= 2:
                 first_ts, first_gas = parsed[0]
                 last_ts,  last_gas  = parsed[-1]
-                window_days  = (last_ts - first_ts).total_seconds() / 86400.0
+                window_days  = (last_ts - first_ts).total_seconds() / SECONDS_PER_DAY
                 window_hours = window_days * 24.0
                 delta = first_gas - last_gas
                 if delta > 0 and window_hours >= MIN_DATA_HOURS:
@@ -427,6 +451,175 @@ def compute_analytics(current_gas_g, cylinder_state='TRACKING'):
         return _none_result('ERROR')
 
 
+def _ols_burn_rate(points):
+    """
+    OLS linear regression of gas_g vs elapsed days across the full point set.
+    points: [(datetime, gas_g), ...] sorted oldest to newest, len >= 2.
+    Returns (burn_rate_g_per_day, r2, n) or None if computation fails.
+    Burn rate = -slope: positive means gas is decreasing.
+    """
+    n = len(points)
+    if n < 2:
+        return None
+    t0 = points[0][0]
+    xs = [(ts - t0).total_seconds() / SECONDS_PER_DAY for ts, _ in points]
+    ys = [g for _, g in points]
+
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    ss_xy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    ss_xx = sum((x - mean_x) ** 2 for x in xs)
+    if ss_xx == 0.0:
+        return None
+
+    slope     = ss_xy / ss_xx
+    intercept = mean_y - slope * mean_x
+    ss_res    = sum((y - (intercept + slope * x)) ** 2 for x, y in zip(xs, ys))
+    ss_tot    = sum((y - mean_y) ** 2 for y in ys)
+    r2        = 1.0 - ss_res / ss_tot if ss_tot > 0.0 else 0.0
+    return (-slope, r2, n)
+
+
+def compute_analytics_ols(current_gas_g, cylinder_state='TRACKING'):
+    """
+    Experimental variant of compute_analytics using OLS regression for the rolling window.
+    Preserves all adaptive logic (cumulative / rolling / fallback), sanity bounds,
+    and TRACKING-only filter. Adds r2 and ols_n to the result dict.
+    DO NOT use in production until backtest comparison reviewed.
+    """
+    import sqlite3
+    from datetime import datetime, timedelta
+
+    _TS_FMT  = '%d %b %Y  %H:%M:%S'
+    _db_path = os.path.join(os.path.dirname(_CONFIG_PATH), 'data', 'monitor.db')
+
+    def _none_result_ols(source, elapsed=None):
+        return {
+            'burn_rate_g_per_day': None, 'days_remaining': None,
+            'predicted_empty':     None, 'burn_rate_source': source,
+            'elapsed_days':        elapsed, 'r2': None, 'ols_n': None,
+        }
+
+    try:
+        now = datetime.now()
+
+        anchor_ts = None
+        try:
+            with open(_CONFIG_PATH) as f:
+                cfg = json.load(f)
+            sat = cfg.get('steel_anchored_at')
+            if sat:
+                anchor_ts = datetime.strptime(sat, _TS_FMT)
+        except Exception:
+            pass
+
+        if anchor_ts is None:
+            try:
+                conn = sqlite3.connect(_db_path)
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT ts FROM readings WHERE cylinder_state='TRACKING' "
+                    "AND gas_g IS NOT NULL ORDER BY rowid ASC LIMIT 1"
+                )
+                row = cur.fetchone()
+                conn.close()
+                if row:
+                    anchor_ts = datetime.strptime(row['ts'], _TS_FMT)
+            except Exception:
+                pass
+
+        if anchor_ts is None:
+            return _none_result_ols('WAITING')
+
+        elapsed_days  = (now - anchor_ts).total_seconds() / SECONDS_PER_DAY
+        elapsed_hours = elapsed_days * 24.0
+
+        if elapsed_hours < MIN_DATA_HOURS:
+            return _none_result_ols('WAITING', elapsed_days)
+
+        total_consumed_g = NET_GAS_G - current_gas_g
+        if total_consumed_g <= 0:
+            return _none_result_ols('NO_CONSUMPTION', elapsed_days)
+
+        source    = None
+        burn_rate = None
+        r2        = None
+        ols_n     = None
+
+        if elapsed_days < BURN_RATE_WINDOW_DAYS:
+            burn_rate = total_consumed_g / elapsed_days
+            source    = 'CUMULATIVE'
+        else:
+            cutoff = now - timedelta(days=BURN_RATE_WINDOW_DAYS)
+            try:
+                conn = sqlite3.connect(_db_path)
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT ts, AVG(gas_g) as gas_g FROM readings "
+                    "WHERE cylinder_state='TRACKING' AND gas_g IS NOT NULL "
+                    "GROUP BY ts ORDER BY ts ASC"
+                )
+                rows = cur.fetchall()
+                conn.close()
+            except Exception as e:
+                print(f'[DOMAIN] compute_analytics_ols rolling query failed: {e}', flush=True)
+                rows = []
+
+            parsed = []
+            for row in rows:
+                try:
+                    ts = datetime.strptime(row['ts'], _TS_FMT)
+                    if ts >= cutoff:
+                        parsed.append((ts, row['gas_g']))
+                except Exception:
+                    continue
+
+            if len(parsed) >= 2:
+                window_days  = (parsed[-1][0] - parsed[0][0]).total_seconds() / SECONDS_PER_DAY
+                window_hours = window_days * 24.0
+                ols_result   = _ols_burn_rate(parsed)
+                if ols_result is not None:
+                    ols_br, ols_r2, ols_n_pts = ols_result
+                    if ols_br > 0 and window_hours >= MIN_DATA_HOURS:
+                        if ols_r2 < R2_MIN_THRESHOLD:
+                            source = 'ROLLING_LOW_CONFIDENCE'
+                        else:
+                            burn_rate = ols_br
+                            r2        = ols_r2
+                            ols_n     = ols_n_pts
+                            source    = 'ROLLING_OLS'
+
+            if burn_rate is None:
+                burn_rate = total_consumed_g / elapsed_days
+                if source is None:
+                    source = 'CUMULATIVE_FALLBACK'
+
+        if burn_rate < MIN_BURN_RATE_G_PER_DAY:
+            return _none_result_ols('BELOW_MIN', elapsed_days)
+
+        if cylinder_state != 'LOW_GAS' and burn_rate > MAX_BURN_RATE_G_PER_DAY:
+            return _none_result_ols('ABOVE_MAX', elapsed_days)
+
+        days_remaining  = round(current_gas_g / burn_rate, 1)
+        predicted_empty = (now + timedelta(days=days_remaining)).strftime('%d %b %Y')
+
+        return {
+            'burn_rate_g_per_day': round(burn_rate, 1),
+            'days_remaining':      days_remaining,
+            'predicted_empty':     predicted_empty,
+            'burn_rate_source':    source,
+            'elapsed_days':        elapsed_days,
+            'r2':                  round(r2, 4) if r2 is not None else None,
+            'ols_n':               ols_n,
+        }
+
+    except Exception as e:
+        print(f'[DOMAIN] compute_analytics_ols error: {e}', flush=True)
+        return _none_result_ols('ERROR')
+
+
 def process_reading(grams, quality, sigma, hub_ts):
     global _cylinder_state, _steel_g, _steel_source, _candidate_window
     global _first_reading_check, _last_alert_level, _removal_start_ts
@@ -440,11 +633,11 @@ def process_reading(grams, quality, sigma, hub_ts):
                 print(f'[DOMAIN] CROSS-CHECK FAIL: gross={grams:.1f} '
                       f'expected_min={expected_min:.1f} - transitioning to UNINSTALLED',
                       flush=True)
-                _cylinder_state = 'UNINSTALLED'
-                _steel_g        = None
-                _steel_source   = None
+                _cylinder_state = 'CYLINDER_ABSENT'
+                # steel_g intentionally preserved — cylinder may have just been absent during
+                # power cut or HX711 startup artifact. Weight-match on return will confirm.
                 _save_config()
-                hub_logger.log_domain('STATE_CHANGE', new_state='UNINSTALLED', source='CROSS_CHECK_FAIL')
+                hub_logger.log_domain('STATE_CHANGE', new_state='CYLINDER_ABSENT', source='CROSS_CHECK_FAIL')
 
     print(f'[DOMAIN] process_reading: grams={grams:.1f} state={_cylinder_state}', flush=True)
 
@@ -479,13 +672,12 @@ def process_reading(grams, quality, sigma, hub_ts):
                 print(f'[DOMAIN] Cylinder low/removed: grace window started ({REMOVAL_GRACE_S}s)', flush=True)
             elif time.time() - _removal_start_ts > REMOVAL_GRACE_S:
                 print(f'[DOMAIN] Grace expired: transitioning to UNINSTALLED', flush=True)
-                _cylinder_state   = 'UNINSTALLED'
-                _steel_g          = None
-                _steel_source     = None
+                _cylinder_state   = 'CYLINDER_ABSENT'
+                # steel_g intentionally preserved for weight-match on return
                 _candidate_window = []
                 _removal_start_ts = None
                 _save_config()
-                hub_logger.log_domain('STATE_CHANGE', new_state='UNINSTALLED', source='CYLINDER_REMOVED')
+                hub_logger.log_domain('STATE_CHANGE', new_state='CYLINDER_ABSENT', source='CYLINDER_REMOVED')
 
         else:
             _removal_start_ts = None
@@ -542,12 +734,12 @@ def process_reading(grams, quality, sigma, hub_ts):
                 print(f'[DOMAIN] Cylinder low/removed from LOW_GAS: grace window started ({REMOVAL_GRACE_S}s)', flush=True)
             elif time.time() - _removal_start_ts > REMOVAL_GRACE_S:
                 print(f'[DOMAIN] Grace expired from LOW_GAS: transitioning to UNINSTALLED', flush=True)
-                _cylinder_state = 'UNINSTALLED'
-                _steel_g        = None
-                _steel_source   = None
+                _cylinder_state   = 'CYLINDER_ABSENT'
+                # steel_g intentionally preserved for weight-match on return
+                _candidate_window = []
                 _removal_start_ts = None
                 _save_config()
-                hub_logger.log_domain('STATE_CHANGE', new_state='UNINSTALLED', source='REMOVED_FROM_LOW_GAS')
+                hub_logger.log_domain('STATE_CHANGE', new_state='CYLINDER_ABSENT', source='REMOVED_FROM_LOW_GAS')
 
         else:
             _removal_start_ts = None
@@ -576,6 +768,29 @@ def process_reading(grams, quality, sigma, hub_ts):
             if gas_g >= ALERT_AMBER_G:
                 _cylinder_state = 'TRACKING'
                 hub_logger.log_domain('STATE_CHANGE', new_state='TRACKING', source='ALERT_CLEAR')
+
+    elif _cylinder_state == 'CYLINDER_ABSENT':
+        if _steel_g is not None and grams >= (_steel_g - 500.0):
+            # Weight matches known steel — same cylinder returned. Resume TRACKING
+            # directly without anchor rebuild. No human intervention needed.
+            _cylinder_state   = 'TRACKING'
+            _removal_start_ts = None
+            _candidate_window = []
+            _save_config()
+            print(f'[DOMAIN] Cylinder returned: gross={grams:.1f}g >= steel_g={_steel_g:.1f}g-500 '
+                  f'— resuming TRACKING directly', flush=True)
+            hub_logger.log_domain('STATE_CHANGE', new_state='TRACKING', source='CYLINDER_RETURN')
+        elif grams > 500.0:
+            # Something on platform but weight is well below steel_g — unknown object or
+            # different cylinder. Run anchor to establish new identity.
+            _cylinder_state   = 'BOOTSTRAP_ANCHOR'
+            _candidate_window = []
+            _save_config()
+            print(f'[DOMAIN] Unknown weight: gross={grams:.1f}g, expected >={_steel_g - 500.0 if _steel_g else "?"}g '
+                  f'— going BOOTSTRAP_ANCHOR', flush=True)
+            hub_logger.log_domain('STATE_CHANGE', new_state='BOOTSTRAP_ANCHOR',
+                                  source='UNKNOWN_WEIGHT_ON_PLATFORM')
+        # else grams <= 500g — nothing on platform, stay CYLINDER_ABSENT
 
     elif _cylinder_state == 'EMPTY':
         pass  # future stub — treat same as TRACKING for now

@@ -24,6 +24,24 @@ The primary seam in the system. ESP32-C3 node sends; UNO Q hub receives.
 | `quality` | string | node | Node's assessment: `"GOOD"` / `"DEGRADED"` / `"FAILED"` |
 | `sigma` | float | node | Noise std from node's most recent noise characterisation (grams) |
 
+## 1.1 SEAM EXTENSION — approved 2026-07-07, boss-approved
+
+Payload extended from {grams, quality, sigma} to:
+
+```json
+{ "grams": 29420.5, "quality": "GOOD", "sigma": 2.3, "temp_c": 31.4 }
+```
+
+| Field | Type | Owner | Description |
+|---|---|---|---|
+| temp_c | float or null | node | Platform-local temperature from DHT22 (GPIO5), co-located with load cell. `null` if DHT22 read failed. |
+
+Rationale: temperature must travel with the physical sensor node, not the hub, to remain correct if hub and platform are ever decoupled. Existing {grams, quality, sigma} semantics, quality states, and timestamp-on-receipt rule are unchanged.
+
+Hub compatibility: `temp_c` is absent in pre-extension firmware payloads. Hub treats missing and `null` identically — stores `NULL` in `readings.temp_c`.
+
+---
+
 **What is NOT in the payload:**
 - `timestamp` — stamped by HUB on receipt (ESP32-C3 has no RTC)
 - `raw` — raw ADC counts never leave the node

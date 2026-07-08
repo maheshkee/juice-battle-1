@@ -22,4 +22,4 @@ extern volatile bool  g_cmd_clear_log_pending;
 
 void ble_init();
 void ble_init_command_char();
-void ble_notify(float grams, const char* quality_str, float sigma_g);
+void ble_notify(float grams, const char* quality_str, float sigma_g, float temp_c);

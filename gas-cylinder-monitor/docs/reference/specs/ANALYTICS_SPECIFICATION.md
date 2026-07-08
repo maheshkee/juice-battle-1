@@ -216,6 +216,19 @@ Units
 
 grams/day
 
+## 11.1 KNOWN LIMITATION — endpoint-difference sensitivity to drift
+
+Current implementation used only the two boundary readings in the rolling window,
+not the full window. Measured thermal drift (400-600g single-day swings, 3E-008
+pending) is comparable in magnitude to typical burn signals (150-800g/day),
+especially in cumulative mode during early tracking. Sanity bounds (10-2000 g/day)
+do not catch moderate bias of this kind.
+
+Fix implemented [Session 63]: ordinary least-squares regression of gas_g vs time
+across the full window; burn rate = negative slope. Preserves adaptive lookback,
+sanity bounds, dash rule, live recompute. Adds R²/standard-error as a confidence
+signal per PREDICTION_SPECIFICATION.md §14.
+
 # 12. BURN RATE TYPES
 
 Instantaneous

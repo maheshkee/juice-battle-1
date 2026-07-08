@@ -49,7 +49,7 @@ def _node_status_payload():
     }
 
 
-def on_weight(grams, quality, sigma, hub_ts):
+def on_weight(grams, quality, sigma, hub_ts, temp_c=None):
     _watchdog.update_last_reading(hub_ts)
     result = domain.process_reading(grams, quality, sigma, hub_ts)
     db_insert_reading(
@@ -58,7 +58,9 @@ def on_weight(grams, quality, sigma, hub_ts):
         gas_g=result.get('gas_g'),
         alert_level=result.get('alert_level'),
         cylinder_state=result.get('cylinder_state'),
+        temp_c=temp_c,
     )
+    result['temp_c'] = temp_c
     ui.send_message('weight_update', result)
     br  = result.get('burn_rate_g_per_day')
     dr  = result.get('days_remaining')
@@ -119,6 +121,13 @@ def on_setup(sid, data):
     print(f'[MAIN] setup complete: mode={mode} brand={brand}', flush=True)
 
 
+def on_uninstall(sid, data):
+    domain.set_uninstall_mode()
+    ui.send_message('weight_update', domain.get_state_snapshot())
+    print('[MAIN] uninstall: cylinder removed explicitly by user', flush=True)
+    hub_logger.log_hub('USER_UNINSTALL')
+
+
 def _on_log_transfer_complete():
     if not ble.last_boot_used_tare:
         return
@@ -149,6 +158,7 @@ def on_log_line_wrapper(line):
 
 ui.on_connect(on_ui_connect)
 ui.on_message('setup', on_setup)
+ui.on_message('uninstall_cylinder', on_uninstall)
 
 ble = BLESubscriber(
     on_weight=on_weight,

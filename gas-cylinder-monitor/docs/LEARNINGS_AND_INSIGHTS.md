@@ -2448,3 +2448,49 @@ Rule: know which logging path an event uses before grepping. Plain `print()` →
 grep silently switches to a useless partial-match mode on any file containing a non-UTF8 byte, emitting "binary file matches" and sometimes surfacing misleading unrelated content rather than failing loudly. Application log files can contain non-UTF8 bytes in exception traces or BLE payloads.
 
 Rule: always use `grep -a` (text mode) when grepping application logs. Without `-a`, a missed match may mean the pattern is absent or may mean grep silently gave up — indistinguishable without the flag.
+
+---
+
+## L-110 — config.json was never a path mismatch — it was a visibility gap
+
+Date: 2026-07-07
+
+`domain.py` computes path as `os.path.join(os.path.dirname(__file__), '..', 'config.json')`. Inside Docker, `__file__ = /app/python/domain.py`, so `../config.json = /app/config.json`. `ble_subscriber.py` hardcodes `/app/config.json`. Both resolve identically inside the container, which maps to `hub/config.json` on the host. `hub/data/config.json` was a June 23 stale artifact that was never mounted or used. The "mystery" was a visibility gap — the file being inspected from the host was not the file the container was reading.
+
+Rule: when debugging Docker config issues, always verify which file is actually mounted into the container, not which file looks similar from the host filesystem.
+
+---
+
+## L-111 — tare_raw is the sole correct guard for CMD_TARE, not steel_g
+
+Date: 2026-07-07
+
+The original CMD_TARE guard (`steel_g is not None AND tare_raw is not None`) was wrong. `steel_g` is domain metadata — it describes which cylinder is currently tracked. `tare_raw` describes whether the platform has a valid mechanical zero. These are independent. In the calibration-stone experiment setup: `steel_g=None` (no cylinder tracked) but `tare_raw` is valid from a previous session. The old guard incorrectly fired CMD_TARE (re-tared with stone on platform, absorbing it into the zero). The correct guard is `tare_raw is not None` — if a valid tare exists, preserve it regardless of cylinder state.
+
+---
+
+## L-112 — CYLINDER_ABSENT: cylinder removal should not lose calibration state
+
+Date: 2026-07-07
+
+The original two-state design (TRACKING → UNINSTALLED on any removal) lost `steel_g` on every power cut or accidental removal, requiring a full 5-reading anchor rebuild on return. This is wrong: `steel_g` characterises a specific cylinder and is valid as long as the same cylinder returns. The correct design preserves `steel_g` in CYLINDER_ABSENT and auto-resumes TRACKING on weight-match (`grams >= steel_g - 500g` — the 500g tolerance is grounded in physics: any LPG cylinder at any fill level always reads at least its steel weight). The UNINSTALLED state is now reached only by explicit user action ("Remove cylinder" button), which clears `steel_g`. This separation — accidental vs intentional removal — is the key architectural insight.
+
+---
+
+## L-113 — α=29.19 g/°C is valid for slow thermal changes, not rapid ventilation
+
+Date: 2026-07-08
+
+3E-008 Trial 1 measured the thermal coefficient from gradual overnight temperature drift (28.8→29.5°C over ~14h in a closed room). This is valid for the dominant use case: slow indoor temperature changes. During the rapid office-opening event (h≈15.2), airflow cooled the DHT22 sensor quickly while the aluminium load cell platform (thermal mass ~kg) lagged behind. The temperature reading dropped (29.5→28.3°C) while the platform was still expanding from residual heat — the α model predicted weight decrease but weight spiked upward.
+
+Rule: α is a quasi-static coefficient. It cannot be applied during transient airflow events (fan on, door opened, AC startup). The thermal correction must include a validity check on the rate of temperature change — if dT/dt exceeds a threshold (TBD), flag the correction as unreliable for that window rather than applying it with false confidence.
+
+---
+
+## L-114 — Slow second creep component exists with τ >> 6h
+
+Date: 2026-07-08
+
+3E-008 Trial 1 Phase A fit window (6h) captured the fast creep correctly (τ₁=1.31h, B=-4.15g). But from h=6 to h=15, the residual (after fast creep subtraction) drifted upward at ~3g/h continuously — 27g total over 9h. Temperature change in that window was only 0.3°C × 29.19 g/°C = 8.8g, insufficient to explain 27g. This is a second, slower viscoelastic relaxation component (τ₂ estimated >10h) inherent to the load cell beam material under sustained load. The single-exponential model `raw(t) = A - B·exp(-t/τ)` is therefore incomplete for this system. A two-component model `raw(t) = A - B₁·exp(-t/τ₁) - B₂·exp(-t/τ₂)` is likely needed.
+
+Rule: for 3E-008 Trial 2, use a Phase A fit window of 12h minimum to capture τ₂.

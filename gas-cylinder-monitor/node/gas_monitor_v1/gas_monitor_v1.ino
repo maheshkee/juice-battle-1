@@ -2,6 +2,7 @@
 // Required Arduino libraries (install via Library Manager before compiling):
 //   NimBLE-Arduino by h2zero      - BLE GATT server
 //   ArduinoJson by Benoit Blanchon - config.json SPIFFS read/write
+//   DHTesp by Beegee-Tokyo         - DHT22 temperature sensor on ESP32
 // Board: ESP32C3 Dev Module, esp32 by Espressif v3.0.7, USB CDC On Boot: ENABLED
 
 #include <SPIFFS.h>
@@ -15,6 +16,7 @@
 #include "health.h"
 #include "journal.h"
 #include "log_transfer.h"
+#include "dht_sensor.h"
 
 enum BootState {
     STATE_SETTLE,
@@ -76,6 +78,7 @@ void setup() {
     Serial.begin(115200);
     SPIFFS.begin(true);
     hx711_init();
+    dht_sensor_init();
     ble_init();
     g_state           = STATE_SETTLE;
     g_settle_start_ms = millis();
@@ -416,7 +419,9 @@ void loop() {
         const char* quality_out = g_cal_degraded ? "DEGRADED" : g_health.quality;
         if (now - g_last_notify_ms >= BLE_NOTIFY_INTERVAL_MS) {
             g_last_notify_ms = now;
-            ble_notify(wr.grams, quality_out, g_sigma_g);
+            DHTResult dht = dht_sensor_read();
+            ble_notify(wr.grams, quality_out, g_sigma_g,
+                       dht.valid ? dht.temp_c : NAN);
         }
         log_transfer_tick();
         journal_run(wr.grams, g_sigma_g, g_health, wr.event, wr.delta);

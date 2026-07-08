@@ -7,11 +7,11 @@
   "scan_timeout_s": 10.0,
   "brand": null,
   "install_mode": "FRESH",
-  "cylinder_state": "TRACKING",
-  "steel_g": 15662.0,
-  "steel_source": "ANCHOR",
-  "steel_anchored_at": "03 Jul 2026  16:12:20",
+  "cylinder_state": "UNINSTALLED",
+  "steel_g": null,
+  "steel_source": null,
+  "steel_anchored_at": null,
   "cal_factor": 36.2231,
-  "tare_raw": -94159.8,
+  "tare_raw": -78298.6,
   "cal_tare_session": "boot13_verified_2026-06-23"
 }

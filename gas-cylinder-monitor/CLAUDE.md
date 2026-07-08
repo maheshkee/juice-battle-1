@@ -134,14 +134,15 @@ The home-hub copy pattern above is superseded for gas-cylinder-monitor hub.
 
 ---
 
-## Current State - 2026-07-03 (Session 62)
+## Current State - 2026-07-08 (Session 63)
 
 ```
-Status:         Session 62 complete. 3E-009 attempt 3 running since 2026-07-03 16:07:59 IST
-                (node boot=47, reset=POWERON — full physical power-cycle reset)
-                3-night unattended run; result to be evaluated at Session 63 start.
-Boot:           boot=47 (fresh power-cycle, clean tare)
-tare_raw:       -107041.4 (hub config, unchanged)
+Status:         Session 63 complete. 3E-009 attempt 3 PASS (68h22m, 99.78% coverage).
+                3E-008 Trial 1 complete and analysed (thermal α measured, slow creep found).
+                CYLINDER_ABSENT implemented and verified. DHT22 live. Trial 2 pending.
+Boot:           boot=47 (last known; stone on platform for 3E-008, do not disturb)
+tare_raw:       None (reset during CYLINDER_ABSENT testing — re-tare at Session 64 start
+                after removing stone and letting platform settle)
 cal_factor:     36.2231 (locked, linear 200g-1800g confirmed)
 sigma:          5.99g (hardware healthy throughout)
 heap_max_block: 114676 bytes (baseline, stable)
@@ -151,19 +152,26 @@ Hub port:       7000 (Docker, arduino@AQ3)
 READING_STALE_S: 1800 (Fix 1 — deployed, unchanged)
 WiFi power save: OFF — DURABLE via NM profile (nmcli powersave 2) + NM dispatcher script;
                 setup.sh patched to auto-apply on any future board/network
-CMD_TARE guard: DEPLOYED (Fix 3 — steel_g+tare_raw null check in ble_subscriber.py)
+CMD_TARE guard: FIXED (tare_raw only — steel_g condition removed; L-111)
 Fix 4:          DEPLOYED — esp_reset_reason() + heap_caps_get_largest_free_block() in journal.cpp
 health.cpp stuck-check: CONFIRMED non-functional (tare_variance_raw always 0.0f, auto-passes);
-                fix fully specified, NOT flashed — pending variance data from attempt 3
-G5 Analytics:   CONFIRMED LIVE in production — burn_rate + days_remaining in active logs
-                (earlier "not built" finding from Session 61 was incorrect; corrected Session 62)
+                fix fully specified, NOT flashed
+G5 Analytics:   CONFIRMED LIVE — burn_rate + days_remaining active
+G5 OLS:         compute_analytics_ols() implemented in domain.py — NOT yet production path
 G7 WebUI:       NOT BUILT — dashboard still absent
-UNINSTALLED redesign: DESIGNED (CYLINDER_ABSENT + weight-matching + button flow)
-                NOT implemented — product decision on cylinder-removal-duration UX still pending
+CYLINDER_ABSENT: IMPLEMENTED — preserves steel_g, auto-resumes on weight-match
+                (grams >= steel_g - 500g); explicit Uninstall button → UNINSTALLED only
+DHT22:          GPIO5, 10kΩ pull-up, temp_c live in DB; BLE seam extended to temp_c
+Thermal model:  α = 29.19 g/°C (valid slow changes; NOT valid rapid airflow events)
+                τ₁ = 4721s fast creep (conditioned platform, tiny B=-4.15g)
+                τ₂ >> 6h slow creep (~3g/h, not yet modelled)
+                Two-component model needed: A - B₁·exp(-t/τ₁) - B₂·exp(-t/τ₂)
+config.json:    hub/config.json is the only real path (hub/data/config.json deleted — was stale)
 Wiring locked (do not change without re-verifying):
   ESP32-C3 GPIO4 = DOUT (SDO), GPIO3 = SCK
   HX711 VCC = 3.3V ONLY (never 5V)
   3-cell parallel: all redE+, all blackE-, all greenA+, all whiteA-
+  DHT22: GPIO5, 10kΩ pull-up to 3.3V
 Arduino IDE locked:
   esp32 by Espressif v3.0.7, Board: ESP32C3 Dev Module
   Port: COM11, USB CDC On Boot: ENABLED
@@ -181,13 +189,20 @@ Time/analytics constants - TEST values (MUST REVERT before production):
   ALERT_AMBER_DAYS       = 0.10417     PRODUCTION = 5.0
   ALERT_RED_DAYS         = 0.0625      PRODUCTION = 3.0
   MAX_BURN_RATE_G_PER_DAY= 100000.0    PRODUCTION = 2000.0
+OLS analytics constants (compute_analytics_ols — NOT yet production path):
+  BURN_RATE_WINDOW_DAYS  = 7.0         (production value, named constant)
+  SECONDS_PER_DAY        = 86400       (named constant)
+  R2_MIN_THRESHOLD       = 0.3
 Permanent constants (same test and production - no revert needed):
   REMOVAL_GRACE_S        = 120.0
 Node constants - PRODUCTION value (already correct in firmware):
   HEAVY_LOAD_THRESHOLD_G = 2000.0f (source-verified 2026-07-02 — no revert needed)
-Authoritative detail: docs/SESSIONS.md Session 62 block
-Next action:    Evaluate attempt 3 results at Session 63 start, then implement
-                config.json atomic writes + UNINSTALLED redesign.
+Authoritative detail: docs/SESSIONS.md Session 63 block
+Next action:    Session 64: re-tare (stone off, platform settle), launch 3E-008 Trial 2
+                (Phase A window ≥12h), evaluate slow creep two-component model fit.
+                Hardware evaluation ongoing (ADS1230+Adafruit 4543, YZC-161A single,
+                CZL601 single-point) — no production hardware decision until drift
+                model finalised and validated across 3 trials.
 ```
 
 ---

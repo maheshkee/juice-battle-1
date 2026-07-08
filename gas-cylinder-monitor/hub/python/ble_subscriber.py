@@ -266,13 +266,17 @@ class BLESubscriber:
             grams   = float(payload['grams'])
             quality = str(payload['quality'])
             sigma   = float(payload['sigma'])
+            temp_c  = payload.get('temp_c')  # None if missing or null (old firmware compat)
+            if temp_c is not None:
+                temp_c = float(temp_c)
             hub_ts  = subprocess.run(
                 ['date', '+%d %b %Y  %H:%M:%S'],
                 capture_output=True, text=True
             ).stdout.strip()
-            print(f'[HUB] grams={grams} quality={quality} sigma={sigma} ts={hub_ts}',
+            temp_str = f'{temp_c:.1f}C' if temp_c is not None else 'null'
+            print(f'[HUB] grams={grams} quality={quality} sigma={sigma} temp={temp_str} ts={hub_ts}',
                   flush=True)
-            self.on_weight(grams, quality, sigma, hub_ts)
+            self.on_weight(grams, quality, sigma, hub_ts, temp_c)
         except Exception as e:
             print(f'[BLE_SUB] Notify parse error: {e}', flush=True)
 
@@ -302,13 +306,12 @@ class BLESubscriber:
         steel_g        = cfg.get('steel_g')
         tare_raw       = cfg.get('tare_raw')
 
-        # Protective check: steel_g + tare_raw both non-null means a valid measurement
-        # session exists on disk. Always skip tare to preserve it — cylinder_state in
-        # memory cannot override this, because cylinder_state may not reflect persisted
-        # reality after a hub restart.
-        if steel_g is not None and tare_raw is not None:
+        # tare_raw non-null means an intentional tare exists and must be preserved
+        # regardless of steel_g. steel_g may be null in experiment setup or after
+        # cylinder removal — the platform tare remains valid in both cases.
+        if tare_raw is not None:
             if cal_factor is None:
-                print('[BLE_SUB] PROTECTIVE_SKIP: steel_g+tare_raw present but cal_factor'
+                print('[BLE_SUB] PROTECTIVE_SKIP: tare_raw present but cal_factor'
                       ' missing in config — cannot send SKIP_TARE+SET_CAL', flush=True)
                 return
             threading.Timer(1.0, lambda: self.write_command('SKIP_TARE')).start()
@@ -316,11 +319,11 @@ class BLESubscriber:
                 lambda cf=cal_factor: self.write_command(f'SET_CAL:{cf:.4f}')).start()
             self.last_boot_used_tare = False
             print(f'[BLE_SUB] PROTECTIVE_SKIP: sent SKIP_TARE + SET_CAL:{cal_factor:.4f} '
-                  f'(steel_g={steel_g:.1f}g + tare_raw present in config — valid session,'
-                  f' TARE suppressed regardless of cylinder_state={cylinder_state})', flush=True)
+                  f'(tare_raw present in config — tare preserved regardless of '
+                  f'steel_g={steel_g}, cylinder_state={cylinder_state})', flush=True)
             return
 
-        # steel_g is null — no valid measurement session exists, safe to apply
+        # tare_raw is null — no intentional tare on disk, safe to apply
         # the cylinder_state-based decision below.
         if cylinder_state == 'UNINSTALLED':
             threading.Timer(1.0, lambda: self.write_command('TARE')).start()

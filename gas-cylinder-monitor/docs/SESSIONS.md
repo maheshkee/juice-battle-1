@@ -1314,3 +1314,57 @@ Verify Session 60/61 fixes survived, protect and analyze 3E-009 attempt 1 data, 
 
 ### Gate
 Attempt 3 launched 2026-07-03 16:07:59 IST after a full physical power-cycle reset (node boot=47, reset=POWERON) — 3-night unattended run, result pending at session close, to be evaluated at start of Session 63.
+
+---
+
+## Session 63 — 2026-07-07 to 2026-07-08
+
+### Goal
+3E-009 attempt 3 analysis + DHT22 integration + OLS burn rate + 3E-008 Trial 1 execution + CYLINDER_ABSENT implementation.
+
+### Real hardware outputs
+
+**3E-009 attempt 3 — declared PASS:**
+- Duration: 68h 22m 43s TRACKING, 99.78% coverage (8187/8205 readings)
+- Host reboots: 0, WCN3990 crashes: 0, WiFi power save held 72h+
+- Grams: min 20141.1g, max 20748.2g, spread 607.1g
+- Nightly baseline drift: +147g (N1→N2), +182g (N2→N3) ≈ 165g/night
+- 3-night unattended run completed without any system failure
+
+**3E-008 Trial 1 — COMPLETE, analysed:**
+- Stone placed: 07 Jul 16:55:34 IST, boundary row id=2207296
+- Duration: 17.53h, rows: 4200 (2100 unique due to duplicate row bug), temp_c null: 0/4200
+- Fast creep: A=20210.56g ±0.41g, B=-4.15g ±0.82g, τ=4721s ±2131s (1.31h ±0.59h)
+  - Direction: downward (reading started 4.15g above plateau, decayed to it)
+  - Magnitude: tiny (4.15g vs documented 30-80g — platform is conditioned)
+- Thermal α: 29.19 ±1.36 g/°C, p=3.5×10⁻⁹⁷ (highly significant)
+  - Valid for: slow gradual changes (hours timescale)
+  - Not valid for: rapid airflow/ventilation events (seconds-minutes timescale)
+- Slow second creep: +27g over h=6 to h=15, τ₂ >> 6h (not yet modelled)
+- Event at h=15.2-15.6: 126g spike when office opened (ventilation event — DHT22 cooled faster than aluminium platform, thermal lag)
+- Post-event drop: platform settled 80g below pre-spike level
+- Duplicate row bug: confirmed still active (4200 rows, 2100 unique)
+
+**CYLINDER_ABSENT — implemented and verified (parallel chat):**
+- Scenarios tested: power-cut restart, brief removal, extended removal, explicit Uninstall button — all PASS
+- CMD_TARE guard fixed: tare_raw only (removed steel_g condition — L-111)
+- hub/data/config.json deleted (June 23 stale artifact — L-110)
+
+### What was built
+- `hub/python/domain.py`: CYLINDER_ABSENT state, `set_uninstall_mode()`, `compute_analytics_ols()`, `_ols_burn_rate()`, `R2_MIN_THRESHOLD=0.3`, `SECONDS_PER_DAY=86400`, `BURN_RATE_WINDOW_DAYS=7.0`
+- `hub/python/ble_subscriber.py`: CMD_TARE guard fix (tare_raw only), temp_c parsing
+- `hub/python/main.py`: uninstall_cylinder socket handler, temp_c threading
+- `hub/python/db.py`: temp_c REAL column (idempotent migration)
+- `node/gas_monitor_v1/dht_sensor.h`, `dht_sensor.cpp`: DHT22 driver on GPIO5
+- `node/gas_monitor_v1/ble.*`, `.ino`: BLE payload extended to include temp_c
+- `hub/analysis/3e008/export_trial.py`, `fit_creep_thermal.py`, `README.md`
+- `hub/setup.sh`: scipy, numpy pip install added
+- `hub/assets/index.html`: CYLINDER_ABSENT arm, Uninstall button, Install guard
+
+### Current state at close
+- tare_raw: None (reset during CYLINDER_ABSENT testing — re-tare needed at Session 64 start)
+- Stone still on platform (Trial 2 pending)
+- OLS burn rate implemented but NOT yet the production path
+
+### Gate
+3E-009 PASS. 3E-008 Trial 1 COMPLETE (not yet Pass/Fail — needs 3 trials). Trial 2 pending.

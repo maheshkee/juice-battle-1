@@ -97,14 +97,20 @@ void ble_init() {
     adv->start();
 }
 
-void ble_notify(float grams, const char* quality_str, float sigma_g) {
+void ble_notify(float grams, const char* quality_str, float sigma_g, float temp_c) {
     if (s_char == nullptr) return;
     if (NimBLEDevice::getServer()->getConnectedCount() == 0) return;
 
     char buf[96];
-    snprintf(buf, sizeof(buf),
-             "{\"grams\":%.1f,\"quality\":\"%s\",\"sigma\":%.2f}",
-             grams, quality_str, sigma_g);
+    if (isnan(temp_c)) {
+        snprintf(buf, sizeof(buf),
+                 "{\"grams\":%.1f,\"quality\":\"%s\",\"sigma\":%.2f,\"temp_c\":null}",
+                 grams, quality_str, sigma_g);
+    } else {
+        snprintf(buf, sizeof(buf),
+                 "{\"grams\":%.1f,\"quality\":\"%s\",\"sigma\":%.2f,\"temp_c\":%.1f}",
+                 grams, quality_str, sigma_g, temp_c);
+    }
 
     s_char->setValue((uint8_t*)buf, strlen(buf));
     s_char->notify();

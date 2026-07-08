@@ -1,9 +1,51 @@
 ---
 
-## 3E-009 - Thermal drift characterisation (DESIGNED, NOT RUN)
+## 3E-008 - Creep and thermal characterisation under sustained load
+
+Date designed: 2026-07-07
+Status: Trial 1 COMPLETE — 2 more trials required before Pass/Fail
+
+### Goal
+Measure load cell creep time constant and thermal coefficient under a known static load.
+Determine: fast creep τ₁, slow creep τ₂, thermal α (g/°C), and stability plateau.
+
+### Setup
+- Platform: stone (known reference load) placed at a precise time (boundary row recorded)
+- DHT22 on GPIO5 logging temp_c to DB alongside grams
+- Hub running, SQLite logging full time series
+- Environment: closed indoor room overnight
+
+### Trial 1 Results — 2026-07-07 to 2026-07-08
+
+Boundary row: id=2207296 | Start: 07 Jul 16:55:34 IST | Duration: 17.53h
+
+Fast creep (Phase A = first 6h, single-exponential fit):
+  A = 20210.56 ±0.41g | B = -4.15 ±0.82g | τ₁ = 4721 ±2131s (1.31 ±0.59h)
+  Direction: downward (platform conditioned — tiny vs documented 30-80g)
+
+Thermal α: 29.19 ±1.36 g/°C, p=10⁻⁹⁷ (valid for slow changes only)
+
+Slow component: +27g drift h=6-15, τ₂ not yet fitted — Phase A window too short
+  Temperature-only explanation: 0.3°C × 29.19 = 8.8g (insufficient — 18g unexplained)
+  Interpretation: second viscoelastic component with τ₂ >> 6h
+
+Event at h=15.2: office opened, ventilation spike (DHT22 cooled faster than platform)
+  α model predicted weight decrease — actual measurement spiked +126g
+  Lesson: α is quasi-static, invalid during rapid airflow (see L-113)
+
+Finding: single-exponential model insufficient — two-component model needed
+  raw(t) = A - B₁·exp(-t/τ₁) - B₂·exp(-t/τ₂)
+
+Phase A window for Trial 2: extend to 12h minimum (to capture τ₂)
+Status: 2 more trials required. Trial 2 pending (launch after Session 63 close).
+
+---
+
+## 3E-009 - Thermal drift characterisation — PASS (attempt 3, 2026-07-06 to 2026-07-08)
 
 Date designed: 2026-06-22
-Status: Ready to run - no prerequisites
+Status: PASS — 68h 22m 43s, 99.78% coverage (8187/8205 readings), 0 host reboots, 0 WCN3990 crashes
+Nightly baseline drift: +147g (N1→N2), +182g (N2→N3) ≈ 165g/night (feeds 3E-008 thermal model)
 Priority: HIGH - blocks HUB-001 auto-retare design
 
 ### Goal
