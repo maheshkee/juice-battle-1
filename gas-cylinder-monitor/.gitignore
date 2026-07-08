@@ -9,3 +9,5 @@ secrets/
 dbus.sock
 *.log
 .DS_Store
+hub/config.json
+hub/logs/
