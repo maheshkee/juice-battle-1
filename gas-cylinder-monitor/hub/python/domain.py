@@ -35,6 +35,13 @@ MAX_BURN_RATE_G_PER_DAY  = 100000.0      # PRODUCTION: 2000.0
 R2_MIN_THRESHOLD         = 0.3
 SECONDS_PER_DAY          = 86400         # seconds in one day — used in all elapsed-day calculations
 
+# ── Drift correction — measured 3E-008, 92h continuous stone run ──────────────
+BASELINE_DRIFT_RATE_G_PER_H = 3.0   # fallback when night window unavailable
+DRIFT_WINDOW_START_H        = 1     # 01:00 IST — window start
+DRIFT_WINDOW_END_H          = 5     # 05:00 IST — window end
+DRIFT_MIN_READINGS          = 20    # below this, use baseline
+DRIFT_MAX_RATE_G_PER_H      = 10.0  # sanity cap — reject if above this
+
 # ── Alert constants ────────────────────────────────────────────────────────────
 # Gram failsafe - same in test and production
 ALERT_AMBER_G            = 2000.0        # unchanged
@@ -57,6 +64,7 @@ BRAND_STEEL_G = {
 
 # ── Config path — derived from this file, never hardcoded ────────────────────
 _CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config.json')
+_db_path     = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'monitor.db')
 
 # ── Module-level state ────────────────────────────────────────────────────────
 _cylinder_state      = 'UNINSTALLED'
@@ -68,6 +76,8 @@ _install_mode        = None   # 'FRESH' | 'PARTIAL_BRAND' | 'PARTIAL_PRIOR'
 _candidate_window    = []     # anchor candidate readings list
 _first_reading_check = False  # True after first reading post-connect
 _last_alert_level    = None
+_steel_anchored_at   = None   # ts string when ANCHOR_COMPLETE fires; persisted in config
+_drift_cache         = {'rate': BASELINE_DRIFT_RATE_G_PER_H, 'date': None}
 
 
 def get_config():
@@ -123,6 +133,7 @@ def update_tare_in_config(tare_raw, config_path):
 
 def load_config():
     global _cylinder_state, _brand, _steel_source, _steel_g, _install_mode
+    global _steel_anchored_at
     tmp_path = _CONFIG_PATH + '.tmp'
     if not os.path.exists(_CONFIG_PATH) and os.path.exists(tmp_path):
         print('[DOMAIN] load_config: config.json missing, .tmp found — crash recovery: renaming',
@@ -137,8 +148,9 @@ def load_config():
         _brand          = cfg.get('brand', None)
         _cylinder_state = cfg.get('cylinder_state', 'UNINSTALLED')
         _steel_source   = cfg.get('steel_source', None)
-        _steel_g        = cfg.get('steel_g', None)
-        _install_mode   = cfg.get('install_mode', None)
+        _steel_g           = cfg.get('steel_g', None)
+        _steel_anchored_at = cfg.get('steel_anchored_at', None)
+        _install_mode      = cfg.get('install_mode', None)
     except Exception as e:
         print(f'[DOMAIN] config load failed: {e} — using defaults', flush=True)
     print(
@@ -149,6 +161,7 @@ def load_config():
 
 
 def _save_config():
+    global _steel_anchored_at
     try:
         try:
             with open(_CONFIG_PATH) as f:
@@ -156,7 +169,7 @@ def _save_config():
         except Exception:
             cfg = {}
 
-        if _steel_g is not None:
+        if _steel_g is not None and _steel_anchored_at is None:
             try:
                 ts = subprocess.run(
                     ['date', '+%d %b %Y  %H:%M:%S'],
@@ -164,8 +177,7 @@ def _save_config():
                 ).stdout.strip()
             except Exception:
                 ts = None
-        else:
-            ts = None
+            _steel_anchored_at = ts
 
         # Update domain keys only — never touch BLE transport keys
         cfg['brand']             = _brand
@@ -173,7 +185,7 @@ def _save_config():
         cfg['cylinder_state']    = _cylinder_state
         cfg['steel_g']           = _steel_g
         cfg['steel_source']      = _steel_source
-        cfg['steel_anchored_at'] = ts
+        cfg['steel_anchored_at'] = _steel_anchored_at
         cfg['cal_factor']        = cfg.get('cal_factor', None)
         cfg['tare_raw']          = None if _cylinder_state == 'UNINSTALLED' else cfg.get('tare_raw', None)
         cfg['cal_tare_session']  = cfg.get('cal_tare_session', None)
@@ -628,6 +640,78 @@ def compute_analytics_ols(current_gas_g, cylinder_state='TRACKING'):
         return _none_result_ols('ERROR')
 
 
+def _get_drift_rate():
+    """
+    Estimate drift rate g/h from last night's 01:00-05:00 TRACKING readings.
+    Cached per calendar day. Falls back to BASELINE_DRIFT_RATE_G_PER_H.
+    """
+    import datetime as _dt
+    today = _dt.date.today()
+    if _drift_cache['date'] == today:
+        return _drift_cache['rate']
+
+    try:
+        import sqlite3 as _sq
+        conn = _sq.connect(_db_path)
+        rows = conn.execute("""
+            SELECT id, ts, grams FROM readings
+            WHERE cylinder_state = 'TRACKING'
+              AND (   ts LIKE '% 01:%'
+                   OR ts LIKE '% 02:%'
+                   OR ts LIKE '% 03:%'
+                   OR ts LIKE '% 04:%')
+            ORDER BY id ASC
+        """).fetchall()
+        conn.close()
+    except Exception as e:
+        print(f'[DOMAIN] drift_rate: DB error: {e}', flush=True)
+        return _drift_cache['rate']
+
+    if len(rows) < DRIFT_MIN_READINGS:
+        print(f'[DOMAIN] drift_rate: {len(rows)} night readings '
+              f'< {DRIFT_MIN_READINGS} — baseline {BASELINE_DRIFT_RATE_G_PER_H} g/h',
+              flush=True)
+        return _drift_cache['rate']
+
+    TS_FMT = '%d %b %Y  %H:%M:%S'
+    t_vals, g_vals = [], []
+    t0 = None
+    for row_id, ts_str, grams in rows:
+        try:
+            dt = _dt.datetime.strptime(ts_str.strip(), TS_FMT)
+            t0 = t0 or dt
+            t_vals.append((dt - t0).total_seconds())
+            g_vals.append(float(grams))
+        except Exception:
+            continue
+
+    if len(t_vals) < DRIFT_MIN_READINGS:
+        return _drift_cache['rate']
+
+    # Closed-form OLS — no external deps
+    n   = len(t_vals)
+    t_m = sum(t_vals) / n
+    g_m = sum(g_vals) / n
+    num   = sum((t_vals[i] - t_m) * (g_vals[i] - g_m) for i in range(n))
+    denom = sum((t_vals[i] - t_m) ** 2 for i in range(n))
+    if denom == 0:
+        return _drift_cache['rate']
+
+    slope_g_per_s = num / denom
+    rate = slope_g_per_s * 3600.0
+
+    if not (0.0 <= rate <= DRIFT_MAX_RATE_G_PER_H):
+        print(f'[DOMAIN] drift_rate: {rate:.3f} g/h outside valid range '
+              f'— baseline {BASELINE_DRIFT_RATE_G_PER_H} g/h', flush=True)
+        return _drift_cache['rate']
+
+    _drift_cache['rate'] = rate
+    _drift_cache['date'] = today
+    print(f'[DOMAIN] drift_rate updated: {rate:.3f} g/h '
+          f'({len(t_vals)} night readings)', flush=True)
+    return rate
+
+
 def process_reading(grams, quality, sigma, hub_ts):
     global _cylinder_state, _steel_g, _steel_source, _candidate_window
     global _first_reading_check, _last_alert_level, _removal_start_ts
@@ -667,6 +751,25 @@ def process_reading(grams, quality, sigma, hub_ts):
 
     elif _cylinder_state == 'TRACKING':
         gas_g, gas_pct = _compute_gas(grams)
+
+        # ── Drift correction (3E-008: linear ~3 g/h, τ₂ >> 30 days) ───────────
+        if _cylinder_state in ('TRACKING', 'LOW_GAS') \
+                and _steel_anchored_at is not None:
+            try:
+                import datetime as _dt
+                _TS_FMT  = '%d %b %Y  %H:%M:%S'
+                t_anchor = _dt.datetime.strptime(_steel_anchored_at.strip(), _TS_FMT)
+                t_now    = _dt.datetime.strptime(hub_ts.strip(), _TS_FMT)
+                hours    = (t_now - t_anchor).total_seconds() / 3600.0
+                if hours > 0:
+                    drift_g = _get_drift_rate() * hours
+                    gas_g   = gas_g - drift_g
+                    gas_g   = max(gas_g, 0.0)
+                    gas_pct = round(gas_g / NET_GAS_G * 100.0, 1)
+                    gas_g   = round(gas_g, 1)
+            except Exception as e:
+                print(f'[DOMAIN] drift correction skipped: {e}', flush=True)
+        # ── end drift correction ────────────────────────────────────────────────
 
         if grams > REFILL_GROSS_MIN_G:
             print(f'[DOMAIN] Refill detected: gross={grams:.1f}g - re-anchoring', flush=True)
@@ -729,6 +832,25 @@ def process_reading(grams, quality, sigma, hub_ts):
 
     elif _cylinder_state == 'LOW_GAS':
         gas_g, gas_pct = _compute_gas(grams)
+
+        # ── Drift correction (3E-008: linear ~3 g/h, τ₂ >> 30 days) ───────────
+        if _cylinder_state in ('TRACKING', 'LOW_GAS') \
+                and _steel_anchored_at is not None:
+            try:
+                import datetime as _dt
+                _TS_FMT  = '%d %b %Y  %H:%M:%S'
+                t_anchor = _dt.datetime.strptime(_steel_anchored_at.strip(), _TS_FMT)
+                t_now    = _dt.datetime.strptime(hub_ts.strip(), _TS_FMT)
+                hours    = (t_now - t_anchor).total_seconds() / 3600.0
+                if hours > 0:
+                    drift_g = _get_drift_rate() * hours
+                    gas_g   = gas_g - drift_g
+                    gas_g   = max(gas_g, 0.0)
+                    gas_pct = round(gas_g / NET_GAS_G * 100.0, 1)
+                    gas_g   = round(gas_g, 1)
+            except Exception as e:
+                print(f'[DOMAIN] drift correction skipped: {e}', flush=True)
+        # ── end drift correction ────────────────────────────────────────────────
 
         if grams > REFILL_GROSS_MIN_G:
             print(f'[DOMAIN] Refill detected from LOW_GAS: re-anchoring', flush=True)
