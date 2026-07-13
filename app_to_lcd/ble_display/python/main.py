@@ -1551,6 +1551,11 @@ def ble_main():
     log('=' * 50)
     log(' BLE Hub Started')
     log('=' * 50)
+
+    # Gas cylinder monitor integration
+    from gas import gas_hub
+    GLib.idle_add(lambda: gas_hub.start(bus, ui, scan_trigger=start_scan) or False)
+
     GLib.MainLoop().run()
 
 
@@ -1647,6 +1652,11 @@ def _auth_enforcer():
                                 continue
                             # skip known wristbands
                             if mac.upper() in _wristband_macs:
+                                continue
+                            # skip devices that don't advertise our service UUID
+                            # (peripherals the board connected TO, like gas node)
+                            dev_uuids = [str(u).lower() for u in ifaces[DEVICE_IFACE].get('UUIDs', [])]
+                            if PHONE_SVC_UUID.lower() not in dev_uuids:
                                 continue
                             log(f'[AUTH] Unauthenticated device found: {mac} -- disconnecting')
                             try:
