@@ -84,7 +84,9 @@ def _load_board_key() -> str:
 PHONE_SVC_UUID = 'a00b0000-0000-0000-0000-000000000000'
 PHONE_CMD_UUID = 'a00b0002-0000-0000-0000-000000000000'
 PHONE_EVT_UUID = 'a00b0003-0000-0000-0000-000000000000'
-WRIST_CMD_UUID = 'a00b0004-0000-0000-0000-000000000000'
+WRIST_CMD_UUID  = 'a00b0004-0000-0000-0000-000000000000'
+WRIST_SVC_UUID  = 'a00b0005-0000-0000-0000-000000000000'
+WRIST_CHAR_UUID = 'a00b0006-0000-0000-0000-000000000000'
 
 WHISTLE_MODEL_PATH  = '/app/models/whistle.eim'
 WHISTLE_THRESHOLD   = 0.95
@@ -144,9 +146,12 @@ whistle_lock        = threading.Lock()
 
 display_mode = 'overlay'
 
-_phone_authenticated = False
-_voice_command       = False
-_wristband_macs      = set()
+_phone_authenticated  = False
+_voice_command        = False
+_wristband_macs       = set()
+_wristband_dev_path   = None
+_wristband_char_path  = None
+_wristband_lock       = threading.Lock()
 
 ALARM_PATH = '/app/assets/alarm.wav'
 
@@ -333,18 +338,23 @@ def _whistle_loop():
 
 
 def load_trusted():
-    global trusted
+    global trusted, _wristband_macs
     try:
         if os.path.exists(TRUSTED_FILE):
             with open(TRUSTED_FILE, 'r') as f:
-                trusted = json.load(f)
+                data = json.load(f)
+            if isinstance(data, dict) and 'devices' in data:
+                trusted = data.get('devices', {})
+                _wristband_macs = set(data.get('wristband_macs', []))
+            else:
+                trusted = data
     except Exception as e:
         log(f'[TRUST] Load failed: {e}')
 
 def save_trusted():
     try:
         with open(TRUSTED_FILE, 'w') as f:
-            json.dump(trusted, f)
+            json.dump({'devices': trusted, 'wristband_macs': list(_wristband_macs)}, f)
     except Exception: pass
 
 def push_trusted():
@@ -767,6 +777,62 @@ def _wifi_provision(ssid: str, password: str):
     }) or False)
 
 
+
+def _wristband_on_notify(iface, changed, inv, path=None):
+    if iface != GATT_CHRC_IFACE or 'Value' not in changed: return
+    if _wristband_char_path and path and str(path) != str(_wristband_char_path): return
+    try:
+        text = bytes(changed['Value']).decode('utf-8', errors='ignore').strip()
+        log(f'[WRIST] Notify: {text}')
+        if text.startswith('CMD:'):
+            GLib.idle_add(_dispatch_cmd, text[4:].strip())
+    except Exception as e:
+        log(f'[WRIST] Notify error: {e}')
+
+def _wristband_subscribe(dev_path):
+    global _wristband_dev_path, _wristband_char_path
+    try:
+        time.sleep(3)
+        for path, ifaces in get_all_objects().items():
+            if GATT_CHRC_IFACE not in ifaces: continue
+            if not path.startswith(dev_path): continue
+            uuid = str(ifaces[GATT_CHRC_IFACE].get('UUID', ''))
+            if uuid.lower() != WRIST_CHAR_UUID.lower(): continue
+            flags = [str(f) for f in ifaces[GATT_CHRC_IFACE].get('Flags', [])]
+            if 'notify' not in flags: continue
+            dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, path),
+                GATT_CHRC_IFACE).StartNotify()
+            _wristband_char_path = path
+            _wristband_dev_path  = dev_path
+            log(f'[WRIST] Subscribed to wristband notifications')
+            GLib.idle_add(lambda: ui.send_message('wristband_status', {'connected': True, 'mac': ''}) or False)
+            return
+        log('[WRIST] Notify characteristic not found')
+    except Exception as e:
+        log(f'[WRIST] Subscribe failed: {e}')
+
+def _wristband_connect(dev_path):
+    global _wristband_dev_path
+    with _wristband_lock:
+        if _wristband_dev_path is not None:
+            return
+        _wristband_dev_path = dev_path
+    try:
+        dev_obj = bus.get_object(BLUEZ_SERVICE_NAME, dev_path)
+        dev_if  = dbus.Interface(dev_obj, DEVICE_IFACE)
+        props   = dbus.Interface(dev_obj, DBUS_PROP_IFACE)
+        mac     = str(props.Get(DEVICE_IFACE, 'Address'))
+        if not bool(props.Get(DEVICE_IFACE, 'Connected')):
+            dev_if.Connect()
+        log(f'[WRIST] Connected to wristband: {mac}')
+        _wristband_macs.add(mac.upper())
+        save_trusted()
+        threading.Thread(target=_wristband_subscribe, args=(dev_path,), daemon=True).start()
+        return
+    except Exception as e:
+        log(f'[WRIST] Connect failed: {e}')
+        with _wristband_lock:
+            _wristband_dev_path = None
 
 def _dispatch_cmd(cmd: str):
     """Dispatch a player/whistle command directly, bypassing auth."""
@@ -1302,25 +1368,65 @@ class BLEObjectWatcher:
         if not mac: return
         scan_results[mac] = {'name': name, 'rssi': rssi, 'path': path}
         push_scan_results()
-        if mac in trusted and mac not in connected:
+        # check if this is our wristband
+        uuids = [str(u).lower() for u in props.get('UUIDs', [])]
+        if WRIST_SVC_UUID.lower() in uuids:
+            if mac.upper() not in _wristband_macs and _wristband_macs:
+                # new wristband — replace old one
+                log(f'[WRIST] New wristband detected: {mac} -- replacing old')
+                old_macs = list(_wristband_macs)
+                _wristband_macs.clear()
+                # disconnect old if connected
+                if _wristband_dev_path:
+                    try:
+                        dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, _wristband_dev_path),
+                            DEVICE_IFACE).Disconnect()
+                    except Exception: pass
+                save_trusted()
+            if _wristband_dev_path is None:
+                log(f'[WRIST] Wristband found: {mac} at {path}')
+                threading.Timer(0.5, lambda p=path: _wristband_connect(p)).start()
+        elif mac in trusted and mac not in connected:
             threading.Timer(1.0, lambda m=mac: connect_device(m)).start()
 
 
 
     def _interfaces_removed(self, path, interfaces):
+        global _wristband_dev_path
         if DEVICE_IFACE not in interfaces: return
         for mac, d in list(scan_results.items()):
-            if d.get('path') == path: scan_results.pop(mac, None)
+            if d.get('path') == path:
+                scan_results.pop(mac, None)
+                if mac.upper() in _wristband_macs:
+                    log(f'[WRIST] Wristband disconnected: {mac}')
+                    GLib.idle_add(lambda: ui.send_message('wristband_status', {'connected': False, 'mac': mac}) or False)
+                    _wristband_dev_path = None
         push_scan_results()
 
     def _props_changed(self, interface, changed, invalidated, path):
+        global _wristband_dev_path, _wristband_char_path
         if interface != DEVICE_IFACE: return
         for mac, d in scan_results.items():
             if d.get('path') == path:
                 if 'RSSI' in changed: scan_results[mac]['rssi'] = int(changed['RSSI'])
                 if 'Name' in changed: scan_results[mac]['name'] = str(changed['Name'])
         push_scan_results()
+        # RSSI appeared = device is advertising = wristband woke up
+        if 'RSSI' in changed and _wristband_dev_path is None:
+            for mac, d in scan_results.items():
+                if d.get('path') == path and mac.upper() in _wristband_macs:
+                    log(f'[WRIST] RSSI detected, wristband advertising: {mac}')
+                    threading.Thread(target=_wristband_connect, args=(path,), daemon=True).start()
+                    break
         if 'Connected' in changed:
+            # wristband disconnect detection
+            if not bool(changed['Connected']):
+                for mac, d in list(scan_results.items()):
+                    if d.get('path') == path and mac.upper() in _wristband_macs:
+                        _wristband_dev_path = None
+                        log(f'[WRIST] Wristband disconnected: {mac}')
+                        GLib.idle_add(lambda m=mac: ui.send_message('wristband_status', {'connected': False, 'mac': m}) or False)
+                        break
             for mac, d in list(connected.items()):
                 if d.get('path') == path and not bool(changed['Connected']):
                     connected.pop(mac, None)
@@ -1437,8 +1543,13 @@ class WristCmdChar(dbus.service.Object):
                                 break
         except Exception as e:
             log(f'[WRIST] MAC lookup failed: {e}')
+        # handle HELLO
+        if text == 'WRIST:HELLO':
+            ui.send_message('wristband_status', {'connected': True, 'mac': ''})
+            log(f'[WRIST] Wristband connected, status sent')
+            GLib.idle_add(_start_advertising)
         # dispatch command directly
-        if text.startswith('CMD:'):
+        elif text.startswith('CMD:'):
             cmd = text[4:].strip()
             GLib.idle_add(_dispatch_cmd, cmd)
 
@@ -1461,6 +1572,7 @@ class PhoneEvtChar(dbus.service.Object):
         self.notifying = True
         global _phone_authenticated
         _phone_authenticated = False
+        ui.send_message('phone_status', {'connected': True})
         GLib.idle_add(_send_auth_required)
 
     @dbus.service.method(GATT_CHRC_IFACE)
@@ -1468,6 +1580,7 @@ class PhoneEvtChar(dbus.service.Object):
         global _phone_authenticated
         self.notifying = False
         _phone_authenticated = False
+        ui.send_message('phone_status', {'connected': False})
         GLib.idle_add(_start_advertising)
 
     @dbus.service.signal(DBUS_PROP_IFACE, signature='sa{sv}as')
@@ -1482,7 +1595,6 @@ class PhoneEvtChar(dbus.service.Object):
 def _send_auth_required():
     push_to_phone('auth_required', {'time': now_str()})
     log('[AUTH] Challenge sent to phone')
-    _stop_advertising()
 
 
 def _stop_advertising():
@@ -1501,7 +1613,7 @@ def _start_advertising():
         try:
             adv_mgr_global.RegisterAdvertisement(dbus.ObjectPath(adv_global.path), {},
                 reply_handler=lambda: log(f'[PHONE] Advertising resumed as {_load_board_name()}'),
-                error_handler=lambda e: None)
+                error_handler=lambda e: log(f'[PHONE] Start adv failed: {e}'))
         except Exception as e:
             log(f'[PHONE] Start adv failed: {e}')
 
@@ -1517,6 +1629,13 @@ def ble_main():
         print(f'[BLE] SystemBus failed: {e}'); return
 
     BLEObjectWatcher(bus)
+    try:
+        adapter_props = dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, ADAPTER_PATH), DBUS_PROP_IFACE)
+        adapter_props.Set('org.bluez.Adapter1', 'Discoverable', dbus.Boolean(True))
+        adapter_props.Set('org.bluez.Adapter1', 'DiscoverableTimeout', dbus.UInt32(0))
+        log('[BLE] Adapter set discoverable')
+    except Exception as e:
+        log(f'[BLE] Discoverable set failed: {e}')
     load_trusted()
     load_schedule()
     load_watch_later()
@@ -1556,6 +1675,32 @@ def ble_main():
     from gas import gas_hub
     GLib.idle_add(lambda: gas_hub.start(bus, ui, scan_trigger=start_scan) or False)
 
+    def _wristband_startup_check():
+        # runs once after 30s — finds wristband if already advertising at boot
+        if _wristband_dev_path is not None:
+            return
+        try:
+            for p, ifaces in get_all_objects().items():
+                if DEVICE_IFACE not in ifaces: continue
+                uuids = [str(u).lower() for u in ifaces[DEVICE_IFACE].get('UUIDs', [])]
+                mac   = str(ifaces[DEVICE_IFACE].get('Address', ''))
+                name  = str(ifaces[DEVICE_IFACE].get('Name', ''))
+                rssi  = int(ifaces[DEVICE_IFACE].get('RSSI', 0))
+                if (WRIST_SVC_UUID.lower() in uuids or name == 'KitchenWristband' or mac.upper() in _wristband_macs) and rssi != 0:
+                    log(f'[WRIST] Startup check found wristband: {mac}')
+                    threading.Thread(target=_wristband_connect, args=(p,), daemon=True).start()
+                    break
+        except Exception as e:
+            log(f'[WRIST] Startup check failed: {e}')
+
+    GLib.timeout_add(30000, lambda: _wristband_startup_check() or False)
+    # register wristband notify receiver ONCE
+    bus.add_signal_receiver(
+        _wristband_on_notify,
+        dbus_interface=DBUS_PROP_IFACE,
+        signal_name='PropertiesChanged',
+        path_keyword='path')
+
     GLib.MainLoop().run()
 
 
@@ -1594,10 +1739,29 @@ def on_player_event(client, data):
     state = (data or {}).get('state', '')
     if state == 'ended': GLib.idle_add(on_video_ended)
 
+def _get_ble_connection_status():
+    status = {'phone': False, 'gas_node': False, 'wristband': False, 'other': []}
+    try:
+        for path, ifaces in get_all_objects().items():
+            if DEVICE_IFACE in ifaces:
+                if bool(ifaces[DEVICE_IFACE].get('Connected', False)):
+                    mac   = str(ifaces[DEVICE_IFACE].get('Address', ''))
+                    uuids = [str(u).lower() for u in ifaces[DEVICE_IFACE].get('UUIDs', [])]
+                    if 'aa206b91-235b-42aa-b370-453a3feedf35' in uuids:
+                        status['gas_node'] = True
+                    elif mac.upper() in _wristband_macs:
+                        status['wristband'] = True
+        status['phone'] = bool(evt_char_global and evt_char_global.notifying)
+    except Exception as e:
+        log(f'[STATUS] BLE status check failed: {e}')
+    return status
+
 def on_get_initial_state(client, data):
     ui.send_message('initial_state', {
         'mode': current_mode, 'current_url': current_url,
         'history': url_history, 'scanning': is_scanning,
+        'phone_connected': bool(evt_char_global and evt_char_global.notifying),
+        'ble_status': _get_ble_connection_status(),
         'queue_status': {
             'active': queue_active, 'paused': queue_paused,
             'index': queue_index, 'total': len(queue), 'queue': queue,

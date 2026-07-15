@@ -2,438 +2,541 @@
 
 const socket = io(`http://${window.location.host}`);
 
-let isScanning    = false;
-let isPlaying     = true;
-let isMuted       = false;
-let scanData      = {};   // mac -> {name, rssi, path}
-let connectedData = {};   // mac -> {name, characteristics}
-let trustedData   = {};   // mac -> name
-let blePanelOpen  = false;
+// state
+let isPlaying    = true;
+let isMuted      = false;
+let isScanning   = false;
+let scanData     = {};
+let connData     = {};
+let trustedData  = {};
+let currentSection = 'dashboard';
+
+// ─────────────────────────────────────────────────────────
+// NAV
+// ─────────────────────────────────────────────────────────
+const sectionTitles = {
+    dashboard: 'Dashboard',
+    youtube: 'Now Playing',
+    gas: 'Gas Cylinder',
+    whistle: 'Whistle Counter',
+    'youtube-ctrl': 'YouTube',
+    ble: 'BLE Devices',
+    log: 'Event Log',
+};
+
+function showSection(id) {
+    document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    const sec = document.getElementById('sec-' + id);
+    if (sec) sec.classList.remove('hidden');
+    document.querySelectorAll('.nav-item').forEach(n => {
+        if (n.getAttribute('onclick')?.includes(`'${id}'`)) n.classList.add('active');
+    });
+    document.getElementById('pageTitle').textContent = sectionTitles[id] || id;
+    currentSection = id;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('urlInput').addEventListener('keydown', e => {
-        if (e.key === 'Enter') sendUrl();
-    });
+    document.getElementById('urlInput')?.addEventListener('keydown', e => { if (e.key === 'Enter') sendUrl(); });
+    document.getElementById('urlInputFull')?.addEventListener('keydown', e => { if (e.key === 'Enter') sendUrlFull(); });
     socket.emit('get_initial_state', {});
 });
 
-// --- socket events ---
-
+// ─────────────────────────────────────────────────────────
+// SOCKET EVENTS
+// ─────────────────────────────────────────────────────────
 socket.on('connect', () => {
-    setWsStatus(true);
+    setWsConnected(true);
     addLog('WebSocket connected', 'success');
     socket.emit('get_initial_state', {});
 });
 
 socket.on('disconnect', () => {
-    setWsStatus(false);
+    setWsConnected(false);
     addLog('WebSocket disconnected', 'error');
 });
 
-socket.on('log', d => addLog(d.message, classifyLog(d.message), d.time));
+socket.on('log', d => {
+    addLog(d.message, classifyLog(d.message), d.time);
+});
 
 socket.on('initial_state', d => {
-    if (d.mode) highlightMode(d.mode);
-    if (d.current_url) setNowPlaying(d.current_url);
-    if (d.history) renderHistory(d.history);
-    if (d.scanning !== undefined) updateScanStatus(d.scanning);
-    if (d.scan_results) {
-        d.scan_results.forEach(dev => { scanData[dev.mac] = dev; });
-        renderBlePanel();
+    if (d.phone_connected !== undefined) setPhoneStatus(d.phone_connected);
+    if (d.ble_status) {
+        setGasNodeDot(d.ble_status.gas_node);
+        const gasNodeEl = document.getElementById('sysGasNode');
+        if (gasNodeEl) gasNodeEl.textContent = d.ble_status.gas_node ? 'Gas Node Online' : 'Gas Node Offline';
+        setText('chipGasVal', d.ble_status.gas_node ? 'Online' : 'Offline');
+        const _cgd2 = document.getElementById('chipGas'); if (_cgd2) _cgd2.className = 'chip-dot' + (d.ble_status.gas_node ? ' green' : '');
+        const wOnline = d.ble_status.wristband;
+        const wristEl = document.getElementById('sysWristband');
+        if (wristEl) wristEl.textContent = wOnline ? 'Wristband Connected' : 'Wristband Idle';
+        setText('chipWrist', wOnline ? 'Connected' : 'Idle');
+        const wd = document.getElementById('sysWristDot');
+        if (wd) wd.className = 'chip-dot' + (wOnline ? ' green' : '');
     }
-    if (d.connected_devices) {
-        d.connected_devices.forEach(dev => { connectedData[dev.mac] = dev; });
-        renderBlePanel();
-        updateConnectedBadge();
-    }
-    if (d.trusted) {
-        d.trusted.forEach(dev => { trustedData[dev.mac] = dev.name; });
-        renderBlePanel();
-    }
+    if (d.mode)             setDisplayMode(d.mode);
+    if (d.current_url)      setNpUrl(d.current_url);
+    if (d.history)          renderHistory(d.history);
+    if (d.scan_results)     { d.scan_results.forEach(dev => { scanData[dev.mac] = dev; }); }
+    if (d.connected_devices){ d.connected_devices.forEach(dev => { connData[dev.mac] = dev; }); updateConnBadge(); }
+    if (d.trusted)          { d.trusted.forEach(dev => { trustedData[dev.mac] = dev.name; }); }
+    renderBleSection();
 });
 
-socket.on('scan_status', d => updateScanStatus(d.scanning));
+socket.on('mode_update',   d => setDisplayMode(d.mode));
+socket.on('url_update',    d => { setNpUrl(d.url); addLog('Playing: ' + d.url, 'url', d.time); });
+socket.on('url_history',   d => renderHistory(d.history));
+socket.on('url_rejected',  d => addLog('Rejected (' + d.reason + '): ' + d.url, 'error', d.time));
+socket.on('player_state',  d => addLog('Player: ' + d.cmd, 'cmd', d.time));
+socket.on('adv_status',    d => setAdvStatus(d.advertising));
+
+socket.on('now_playing', d => {
+    const title = d.title || d.video_id || 'Nothing playing';
+    setText('npTitle', title);
+    setText('fullNpTitle', title);
+    setText('miniNpTitle', title);
+    if (d.video_id) {
+        const thumb = document.getElementById('npThumb');
+        if (thumb) thumb.innerHTML = `<img src="https://img.youtube.com/vi/${d.video_id}/mqdefault.jpg" onerror="this.style.display='none'"/>`;
+    }
+    addLog('Now playing: ' + title, 'url');
+});
+
+socket.on('scan_status', d => setScanStatus(d.scanning));
 
 socket.on('scan_results', d => {
-    // merge results, filter weak signals
-    d.devices.forEach(dev => {
-        if (dev.rssi >= -79 || connectedData[dev.mac] || trustedData[dev.mac]) {
-            scanData[dev.mac] = dev;
-        }
-    });
-    if (blePanelOpen) renderBlePanel();
-});
-
-socket.on('device_connected', d => {
-    connectedData[d.mac] = { mac: d.mac, name: d.name, characteristics: [] };
-    scanData[d.mac] = { ...(scanData[d.mac] || {}), mac: d.mac, name: d.name };
-    updateConnectedBadge();
-    if (blePanelOpen) renderBlePanel();
-    addLog(`Connected: ${d.name || d.mac}`, 'ble', d.time);
-});
-
-socket.on('device_disconnected', d => {
-    delete connectedData[d.mac];
-    updateConnectedBadge();
-    if (blePanelOpen) renderBlePanel();
-    addLog(`Disconnected: ${d.mac}`, 'error', d.time);
-});
-
-socket.on('device_error', d => {
-    addLog(`Connect failed (${d.mac}): ${d.error}`, 'error', d.time);
+    d.devices.forEach(dev => { if ((dev.rssi || -999) >= -80 || connData[dev.mac]) scanData[dev.mac] = dev; });
+    if (currentSection === 'ble') renderBleSection();
 });
 
 socket.on('connected_devices', d => {
-    connectedData = {};
-    d.devices.forEach(dev => { connectedData[dev.mac] = dev; });
-    updateConnectedBadge();
-    if (blePanelOpen) renderBlePanel();
+    connData = {};
+    d.devices.forEach(dev => { connData[dev.mac] = dev; });
+    updateConnBadge();
+    if (currentSection === 'ble') renderBleSection();
+});
+
+socket.on('device_connected', d => {
+    connData[d.mac] = { mac: d.mac, name: d.name };
+    updateConnBadge();
+    if (currentSection === 'ble') renderBleSection();
+    addLog('Connected: ' + (d.name || d.mac), 'ble', d.time);
+});
+
+socket.on('device_disconnected', d => {
+    delete connData[d.mac];
+    updateConnBadge();
+    if (currentSection === 'ble') renderBleSection();
+    addLog('Disconnected: ' + d.mac, 'error', d.time);
 });
 
 socket.on('trusted_devices', d => {
     trustedData = {};
     d.devices.forEach(dev => { trustedData[dev.mac] = dev.name; });
-    if (blePanelOpen) renderBlePanel();
+    if (currentSection === 'ble') renderBleSection();
 });
 
-socket.on('characteristic_update', d => {
-    if (connectedData[d.mac]) {
-        const chars = connectedData[d.mac].characteristics || [];
-        const idx = chars.findIndex(c => c.uuid === d.uuid);
-        if (idx >= 0) chars[idx].value = d.value;
-        else chars.push({ uuid: d.uuid, name: d.name, value: d.value, flags: [] });
-        connectedData[d.mac].characteristics = chars;
-        if (blePanelOpen) renderBlePanel();
-    }
-    addLog(`${d.name} (${d.mac.slice(-5)}): ${d.value}`, 'sensor', d.time);
+// Gas
+socket.on('gas_update', d => {
+    const pct   = d.gas_pct != null ? Math.min(100, Math.max(0, Math.round(d.gas_pct))) : null;
+    const days  = d.days_remaining != null ? parseFloat(d.days_remaining).toFixed(1) : null;
+    const grams = d.gas_g != null ? Math.round(d.gas_g) : null;
+    const state = d.cylinder_state || 'UNINSTALLED';
+    const alert = (d.alert_level || 'none').toLowerCase();
+
+    const colorClass = alert === 'red' ? 'red' : alert === 'amber' ? 'amber' : 'green';
+    const pctStr = pct != null ? pct + '%' : '--%';
+
+    // dashboard ring
+    setGasRing('dashGasRing', pct, colorClass);
+    setText('dashGasPct', pctStr);
+    setText('dashGasDays', days != null ? days : '--');
+    setText('dashGasGrams', grams != null ? grams + 'g' : '--');
+
+    // full page ring
+    setGasRing('fullGasRing', pct, colorClass, 402.1);
+    setText('fullGasPct', pctStr);
+    setText('fullGasDays', days != null ? days + ' days' : '--');
+    setText('fullGasGrams', grams != null ? grams + 'g' : '--');
+    setText('fullGasSteel', d.steel_g != null ? Math.round(d.steel_g) + 'g' : '--');
+    setText('fullGasGross', d.grams != null ? Math.round(d.grams) + 'g' : '--');
+    setText('fullGasAlert', alert.toUpperCase() || '--');
+    setText('fullGasState', state);
+    setText('fullGasBurn', d.burn_rate_g_per_day != null ? Math.round(d.burn_rate_g_per_day) + 'g/day' : '--');
+
+    const isUninstalled = state === 'UNINSTALLED';
+    const isCalibrating = state === 'BOOTSTRAP_ANCHOR';
+
+    // status text
+    const statusText = isUninstalled ? 'Place cylinder on scale' :
+                       isCalibrating ? 'Calibrating — do not move...' :
+                       state + (d.steel_source ? ' · ' + d.steel_source : '');
+    setText('dashGasStatus', statusText);
+
+    // install buttons
+    showEl('dashInstallBtn', isUninstalled);
+    showEl('fullInstallBtn', isUninstalled);
+
+    // sidebar
+    const gasNodeEl = document.getElementById('sysGasNode');
+    if (gasNodeEl) gasNodeEl.textContent = 'Gas Node Online';
+    setGasNodeDot(true);
+
+    // chip
+    setText('chipGasVal', 'Online');
+    const _cgd = document.getElementById('chipGas'); if (_cgd) _cgd.className = 'chip-dot green';
+    setText('sysRowGas', 'Online');
 });
 
-socket.on('url_update', d => {
-    setNowPlaying(d.url);
-    addLog(`Playing: ${d.url}`, 'url', d.time);
+socket.on('gas_node_status', d => {
+    const online = d.connected;
+    setGasNodeDot(online);
+    setText('sysGasNode',  online ? 'Gas Node Online' : 'Gas Node Offline');
+    setText('chipGasVal',  online ? 'Online' : 'Offline');
+    setText('sysRowGas',   online ? 'Online' : 'Offline');
+    setText('fullGasNode', online ? 'Online' : 'Offline');
+    const dot = document.getElementById('chipGas');
+    if (dot) dot.className = 'chip-dot' + (online ? ' green' : '');
+    const rowVal = document.getElementById('sysRowGas');
+    if (rowVal) rowVal.className = 'sys-row-val' + (online ? ' green' : '');
 });
 
-socket.on('url_history', d => renderHistory(d.history));
+// Whistle
+socket.on('whistle_count',   d => updateWhistle(d));
+socket.on('whistle_overlay', d => updateWhistle(d));
 
-socket.on('url_rejected', d => {
-    addLog(`Rejected (${d.reason}): ${d.url}`, 'error', d.time);
-});
+function updateWhistle(d) {
+    const count   = d.count  ?? 0;
+    const target  = d.target ?? null;
+    const active  = d.active ?? false;
+    const pct     = target ? Math.min(100, Math.round((count / target) * 100)) : 0;
 
-socket.on('mode_update', d => highlightMode(d.mode));
+    setText('dashWhistleCount',    count);
+    setText('dashWhistleTarget',   target ?? '--');
+    setText('dashWhistleProgress', target ? pct + '%' : '--%');
+    setText('dashWhistleStatus',   active ? 'Active' : 'Idle');
+    setWidth('dashWhistleFill',    pct);
 
-socket.on('player_state', d => addLog(`Player: ${d.cmd}`, 'cmd', d.time));
+    setText('fullWhistleCount',    count);
+    setText('fullWhistleTarget',   target ?? '--');
+    setText('fullWhistleProgress', target ? pct + '%' : '--%');
+    setText('fullWhistleStatus',   active ? 'Active' : 'Idle');
 
-// --- BLE panel ---
-
-function openBlePanel() {
-    document.getElementById('bleOverlay').classList.add('open');
-    blePanelOpen = true;
-    renderBlePanel();
-    // Auto-scan every time panel opens
-    socket.emit('scan_start', {});
-}
-
-function closeBlePanel(e) {
-    if (e && e.target !== document.getElementById('bleOverlay')) return;
-    document.getElementById('bleOverlay').classList.remove('open');
-    blePanelOpen = false;
-}
-
-function toggleScan() {
-    if (isScanning) {
-        socket.emit('scan_stop', {});
-    } else {
-        scanData = {};   // clear old results on manual refresh
-        renderBlePanel();
-        socket.emit('scan_start', {});
-    }
-}
-
-function updateScanStatus(scanning) {
-    isScanning = scanning;
-    const bar    = document.getElementById('bleScanProgress');
-    const status = document.getElementById('bleScanStatus');
-    const icon   = document.getElementById('refreshIcon');
-    const bleDot = document.getElementById('bleDotIndicator');
-    if (scanning) {
-        bar.classList.add('active');
-        if (status) { status.textContent = 'Scanning...'; status.classList.add('active'); }
-        if (icon)   icon.style.animation = 'spin 1s linear infinite';
-        if (bleDot) bleDot.classList.add('active');
-    } else {
-        bar.classList.remove('active');
-        if (status) { status.textContent = ''; status.classList.remove('active'); }
-        if (icon)   icon.style.animation = '';
-        if (bleDot) bleDot.classList.remove('active');
-    }
-}
-
-function renderBlePanel() {
-    renderKnownDevices();
-    renderAvailableDevices();
-}
-
-function renderKnownDevices() {
-    const section = document.getElementById('knownSection');
-    const list    = document.getElementById('knownList');
-    const conn    = Object.keys(connectedData);
-
-    // Only show section when at least one device is connected
-    if (conn.length === 0) {
-        if (section) section.style.display = 'none';
-        return;
-    }
-    if (section) section.style.display = 'block';
-
-    list.innerHTML = conn.map(mac => {
-        const name    = connectedData[mac]?.name || mac;
-        const chars   = connectedData[mac]?.characteristics || [];
-        const safeId  = mac.replace(/:/g, '_');
-        const isTrusted = !!trustedData[mac];
-
-        return `
-        <div class="ble-device known connected">
-            <div class="ble-device-main" onclick="toggleDeviceExpand('${safeId}')">
-                <div class="ble-device-left">
-                    <div class="ble-conn-dot on"></div>
-                    <div>
-                        <div class="ble-device-name">${escHtml(name)}</div>
-                        <div class="ble-device-mac">${escHtml(mac)}</div>
-                    </div>
-                </div>
-                <div class="ble-device-right">
-                    <span class="ble-status-tag connected">Connected</span>
-                    <span class="ble-expand-arrow" id="arrow-${safeId}">&#8250;</span>
-                </div>
-            </div>
-            <div class="ble-char-expand" id="expand-${safeId}">
-                <div class="ble-device-actions">
-                    <button class="ble-action-btn disconnect full-width" onclick="disconnectDevice('${escHtml(mac)}')">Disconnect</button>
-                    <div class="ble-toggle-row">
-                        <span class="ble-toggle-label">Auto-connect</span>
-                        <label class="ble-toggle-switch">
-                            <input type="checkbox" ${isTrusted ? 'checked' : ''} onchange="toggleAutoConnect('${escHtml(mac)}', this.checked)"/>
-                            <span class="ble-toggle-slider"></span>
-                        </label>
-                    </div>
-                    <button class="ble-forget-btn-full" onclick="forgetDevice('${escHtml(mac)}')">Forget Device</button>
-                </div>
-                ${chars.length > 0 ? chars.map(c => `
-                    <div class="ble-char-row">
-                        <span class="ble-char-name">${escHtml(c.name || c.uuid.slice(0,8))}</span>
-                        <span class="ble-char-val">${escHtml(c.value || '-')}</span>
-                    </div>
-                `).join('') : ''}
-            </div>
-        </div>`;
-    }).join('');
-}
-
-function renderAvailableDevices() {
-    const list = document.getElementById('availableList');
-    // Filter: only named devices, strong signal, not already connected
-    const available = Object.values(scanData).filter(d => {
-        if (connectedData[d.mac] || trustedData[d.mac]) return false;
-        if (!d.name || d.name === d.mac || d.name.trim() === '') return false;
-        return (d.rssi || -999) >= -79;
-    }).sort((a, b) => (b.rssi || -999) - (a.rssi || -999));
-
-    if (available.length === 0) {
-        list.innerHTML = '<div class="ble-empty">' + (isScanning ? 'Scanning for devices...' : 'No devices found. Tap refresh to scan.') + '</div>';
-        return;
+    // ring
+    const ring = document.getElementById('fullWhistleRing');
+    if (ring) {
+        const circ = 402.1;
+        ring.style.strokeDashoffset = circ - (pct / 100) * circ;
     }
 
-    list.innerHTML = available.map(d => `
-        <div class="ble-device">
-            <div class="ble-device-main">
-                <div class="ble-device-left">
-                    <div class="ble-signal ${rssiClass(d.rssi)}">
-                        ${signalBars(d.rssi)}
-                    </div>
-                    <div>
-                        <div class="ble-device-name">${escHtml(d.name || 'Unknown Device')}</div>
-                        <div class="ble-device-mac">${escHtml(d.mac)} &nbsp; ${d.rssi || '?'} dBm</div>
-                    </div>
-                </div>
-                <button class="ble-action-btn connect" onclick="connectDevice('${escHtml(d.mac)}')">Connect</button>
-            </div>
-        </div>
-    `).join('');
+    showEl('dashWhistleBadge', active);
+
+    const liveBadge = document.getElementById('dashWhistleBadge');
+    if (liveBadge) liveBadge.style.display = active ? 'inline-block' : 'none';
 }
 
-function toggleDeviceExpand(safeId) {
-    const el    = document.getElementById('expand-' + safeId);
-    const arrow = document.getElementById('arrow-' + safeId);
-    if (el) {
-        el.classList.toggle('open');
-        if (arrow) arrow.classList.toggle('rotated', el.classList.contains('open'));
-    }
-}
-
-function toggleAutoConnect(mac, enabled) {
-    if (enabled) {
-        const name = connectedData[mac]?.name || mac;
-        trustedData[mac] = name;
-        socket.emit('connect_device', { mac }); // re-trust
-        addLog('Auto-connect enabled: ' + mac, 'ble');
-    } else {
-        delete trustedData[mac];
-        socket.emit('forget_device', { mac });
-        addLog('Auto-connect disabled: ' + mac, 'ble');
-    }
-}
-
-function signalBars(rssi) {
-    const strength = rssi >= -65 ? 4 : rssi >= -72 ? 3 : rssi >= -79 ? 2 : 1;
-    return [1,2,3,4].map(i =>
-        `<div class="bar ${i <= strength ? 'filled' : ''}"></div>`
-    ).join('');
-}
-
-function rssiClass(rssi) {
-    if (rssi >= -65) return 'strong';
-    if (rssi >= -72) return 'medium';
-    return 'weak';
-}
-
-function updateConnectedBadge() {
-    const count = Object.keys(connectedData).length;
-    const badge = document.getElementById('deviceBadge');
-    const dot   = document.getElementById('bleDotIndicator');
-    if (badge) badge.textContent = `${count} connected`;
-    if (dot)   dot.classList.toggle('has-devices', count > 0);
-}
-
-// --- BLE actions ---
-
-function connectDevice(mac) {
-    addLog(`Connecting to ${mac}...`, 'ble');
-    socket.emit('connect_device', { mac });
-}
-
-function disconnectDevice(mac) {
-    addLog(`Disconnecting ${mac}...`, 'ble');
-    socket.emit('disconnect_device', { mac });
-}
-
-function forgetDevice(mac) {
-    delete trustedData[mac];
-    socket.emit('forget_device', { mac });
-    addLog(`Forgot ${mac}`, 'default');
-    renderBlePanel();
-}
-
-// --- YouTube actions ---
-
-function sendUrl() {
-    const input = document.getElementById('urlInput');
-    const url = input.value.trim();
-    if (!url) return;
-    socket.emit('send_url', { url });
-    addLog(`Sent URL: ${url}`, 'url');
-    input.value = '';
-}
-
+// ─────────────────────────────────────────────────────────
+// PLAYER CONTROLS
+// ─────────────────────────────────────────────────────────
 function togglePlayPause() {
-    const btn = document.getElementById('playPauseBtn');
+    if (isPlaying) { sendCmd('pause');  isPlaying = false; }
+    else           { sendCmd('resume'); isPlaying = true;  }
+    updatePlayBtns();
+}
+
+function updatePlayBtns() {
+    const icon    = document.getElementById('npPlayIcon');
+    const fullBtn = document.getElementById('fullPlayBtn');
+    const miniBtn = document.getElementById('miniPlayBtn');
     if (isPlaying) {
-        sendCmd('pause');
-        isPlaying = false;
-        if (btn) btn.textContent = '> Resume';
+        if (icon)    icon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+        if (fullBtn) fullBtn.textContent = '⏸ Pause';
+        if (miniBtn) miniBtn.textContent = '⏸';
     } else {
-        sendCmd('resume');
-        isPlaying = true;
-        if (btn) btn.textContent = '|| Pause';
+        if (icon)    icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+        if (fullBtn) fullBtn.textContent = '▶ Resume';
+        if (miniBtn) miniBtn.textContent = '▶';
     }
 }
 
 function toggleMute() {
-    const btn = document.getElementById('muteBtn');
-    if (isMuted) {
-        sendCmd('unmute');
-        isMuted = false;
-        if (btn) btn.textContent = 'Mute';
-    } else {
-        sendCmd('mute');
-        isMuted = true;
-        if (btn) btn.textContent = 'Unmute';
-    }
+    if (isMuted) { sendCmd('unmute'); isMuted = false; }
+    else         { sendCmd('mute');   isMuted = true;  }
+    const muteBtn = document.getElementById('fullMuteBtn');
+    const miniMute = document.getElementById('miniMuteBtn');
+    if (muteBtn)  muteBtn.textContent  = isMuted ? '🔇 Unmute' : '🔊 Mute';
+    if (miniMute) miniMute.textContent = isMuted ? '🔇' : '🔊';
 }
 
 function sendCmd(cmd) {
     socket.emit('player_cmd', { cmd });
-    addLog(`Command: ${cmd}`, 'cmd');
+    addLog('Player: ' + cmd, 'cmd');
 }
 
 function setMode(mode) {
     socket.emit('set_mode', { mode });
-    highlightMode(mode);
+    setDisplayMode(mode);
+}
+
+function sendUrl() {
+    const el = document.getElementById('urlInput');
+    if (!el || !el.value.trim()) return;
+    socket.emit('send_url', { url: el.value.trim() });
+    addLog('Sent: ' + el.value.trim(), 'url');
+    el.value = '';
+}
+
+function sendUrlFull() {
+    const el = document.getElementById('urlInputFull');
+    if (!el || !el.value.trim()) return;
+    socket.emit('send_url', { url: el.value.trim() });
+    addLog('Sent: ' + el.value.trim(), 'url');
+    el.value = '';
 }
 
 function playFromHistory(url) {
     socket.emit('send_url', { url });
-    addLog(`Replaying: ${url}`, 'url');
+    addLog('Replaying: ' + url, 'url');
 }
 
-// --- UI helpers ---
-
-function setWsStatus(connected) {
-    document.getElementById('statusDot').classList.toggle('connected', connected);
-    document.getElementById('statusText').textContent = connected ? 'Connected' : 'Disconnected';
+// ─────────────────────────────────────────────────────────
+// GAS
+// ─────────────────────────────────────────────────────────
+function gasSetup() {
+    socket.emit('gas_setup', { mode: 'FRESH', brand: null });
+    showEl('dashInstallBtn', false);
+    showEl('fullInstallBtn', false);
+    addLog('Gas: install cylinder mode started', 'cmd');
 }
 
-function setNowPlaying(url) {
-    document.getElementById('npUrl').textContent = url;
+function setGasRing(id, pct, colorClass, circ = 301.6) {
+    const ring = document.getElementById(id);
+    if (!ring) return;
+    ring.style.strokeDashoffset = pct != null ? circ - (pct / 100) * circ : circ;
+    ring.className = 'ring-fill ' + (colorClass || '');
 }
 
-function highlightMode(mode) {
-    ['idle', 'youtube-mode', 'clock'].forEach(m => {
-        const el = document.getElementById('btn-' + m);
-        if (el) el.classList.toggle('active', m === mode || (mode === 'youtube' && m === 'youtube-mode'));
+function setGasNodeDot(online) {
+    ['dashGasNode'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.className = 'node-dot' + (online ? ' online' : '');
     });
 }
 
-function renderHistory(history) {
-    const el = document.getElementById('historyList');
-    if (!history || history.length === 0) {
-        el.innerHTML = '<div class="history-empty">No links sent yet</div>';
+// ─────────────────────────────────────────────────────────
+// WHISTLE
+// ─────────────────────────────────────────────────────────
+function sendWhistleCmd(cmd) {
+    socket.emit('player_cmd', { cmd });
+    addLog('Whistle: ' + cmd, 'cmd');
+}
+
+// ─────────────────────────────────────────────────────────
+// BLE
+// ─────────────────────────────────────────────────────────
+function toggleScan() {
+    if (isScanning) { socket.emit('scan_stop', {}); }
+    else            { scanData = {}; socket.emit('scan_start', {}); }
+}
+
+function setScanStatus(scanning) {
+    isScanning = scanning;
+    const bar    = document.getElementById('bleScanProgress');
+    const badge  = document.getElementById('bleScanBadge');
+    const btn    = document.getElementById('bleScanBtn');
+    if (bar)   bar.className   = 'ble-scan-progress' + (scanning ? ' active' : '');
+    if (badge) badge.style.display = scanning ? 'inline-block' : 'none';
+    if (btn)   btn.textContent = scanning ? '⏹ Stop' : '⟳ Scan';
+}
+
+function renderBleSection() {
+    renderConnectedDevices();
+    renderAvailableDevices();
+}
+
+function renderConnectedDevices() {
+    const el = document.getElementById('bleConnectedList');
+    if (!el) return;
+    const list = Object.values(connData);
+    if (list.length === 0) { el.innerHTML = '<div class="ble-empty">No devices connected</div>'; return; }
+    el.innerHTML = list.map(d => `
+        <div class="ble-device-row">
+            <div class="ble-dev-left">
+                <div class="ble-conn-dot on"></div>
+                <div>
+                    <div class="ble-dev-name">${esc(d.name || d.mac)}</div>
+                    <div class="ble-dev-mac">${esc(d.mac)}</div>
+                </div>
+            </div>
+            <div class="ble-dev-actions">
+                <button class="ble-btn disconnect" onclick="bleDisconnect('${esc(d.mac)}')">Disconnect</button>
+                <button class="ble-btn forget"     onclick="bleForget('${esc(d.mac)}')">Forget</button>
+            </div>
+        </div>`).join('');
+}
+
+function renderAvailableDevices() {
+    const el = document.getElementById('bleAvailableList');
+    if (!el) return;
+    const available = Object.values(scanData)
+        .filter(d => !connData[d.mac] && d.name && d.name !== d.mac)
+        .sort((a,b) => (b.rssi||0) - (a.rssi||0));
+    if (available.length === 0) {
+        el.innerHTML = `<div class="ble-empty">${isScanning ? 'Scanning...' : 'No devices found. Tap Scan.'}</div>`;
         return;
     }
-    el.innerHTML = history.map(item => `
-        <div class="history-item" onclick="playFromHistory('${escHtml(item.url)}')">
-            <span class="history-time">${item.time}</span>
-            <span class="history-url">${escHtml(item.url)}</span>
-            <span class="history-play">&#9654;</span>
-        </div>
-    `).join('');
+    el.innerHTML = available.map(d => `
+        <div class="ble-device-row">
+            <div class="ble-dev-left">
+                <div class="ble-conn-dot"></div>
+                <div>
+                    <div class="ble-dev-name">${esc(d.name)}</div>
+                    <div class="ble-dev-mac">${esc(d.mac)} &nbsp; ${d.rssi || '?'} dBm</div>
+                </div>
+            </div>
+            <button class="ble-btn connect" onclick="bleConnect('${esc(d.mac)}')">Connect</button>
+        </div>`).join('');
+}
+
+function bleConnect(mac)    { socket.emit('connect_device',    { mac }); addLog('Connecting: ' + mac, 'ble'); }
+function bleDisconnect(mac) { socket.emit('disconnect_device', { mac }); addLog('Disconnecting: ' + mac, 'ble'); }
+function bleForget(mac)     { socket.emit('forget_device',     { mac }); delete trustedData[mac]; addLog('Forgot: ' + mac); renderBleSection(); }
+
+function updateConnBadge() {
+    const count = Object.keys(connData).length;
+    const badge = document.getElementById('navBadge');
+    const sysEl = document.getElementById('sysDevices');
+    if (badge) { badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none'; }
+    if (sysEl) sysEl.textContent = count + ' BLE Connected';
+    setText('chipDevVal',  count + ' Connected');
+    setText('sysRowDev',   count + ' Connected');
+    const dot = document.getElementById('chipDev');
+    if (dot) dot.className = 'chip-dot' + (count > 0 ? ' green' : '');
+}
+
+// ─────────────────────────────────────────────────────────
+// UI HELPERS
+// ─────────────────────────────────────────────────────────
+function setWsConnected(ok) {
+    const dot = document.getElementById('wsDot');
+    if (dot) dot.className = 'ws-dot' + (ok ? ' connected' : '');
+    const sysLabel = document.getElementById('sysLabel');
+    if (sysLabel) sysLabel.textContent = ok ? 'System Healthy' : 'Disconnected';
+    const sysDot = document.getElementById('sysDot');
+    if (sysDot) sysDot.className = 'sys-dot' + (ok ? ' green' : '');
+    setText('chipBoardVal', ok ? 'Connected' : 'Disconnected');
+    setText('sysRowBoard',  ok ? 'Connected' : 'Disconnected');
+    const chipB = document.getElementById('chipBoard');
+    if (chipB) chipB.className = 'chip-dot' + (ok ? ' green' : '');
+}
+
+function setAdvStatus(adv) {
+    const pill = document.getElementById('advPill');
+    const dot  = document.getElementById('advDot');
+    const text = document.getElementById('advText');
+    if (adv) {
+        if (pill) pill.style.background = 'rgba(63,185,80,0.1)';
+        if (dot)  dot.style.background = 'var(--green)';
+        if (text) text.textContent = 'Advertising';
+    } else {
+        if (pill) pill.style.background = 'rgba(125,133,144,0.1)';
+        if (dot)  dot.style.background = 'var(--muted)';
+        if (text) text.textContent = 'Not Advertising';
+    }
+    const chipAdv = document.getElementById('chipAdv');
+    if (chipAdv) chipAdv.className = 'chip-dot' + (adv ? ' green' : '');
+    setText('chipAdvVal', adv ? 'Active' : 'Stopped');
+    setText('sysRowAdv',  adv ? 'Active' : 'Stopped');
+}
+
+function setDisplayMode(mode) {
+    setText('npMode',   mode);
+    setText('fullNpMode', mode);
+    document.querySelectorAll('.mode-pill').forEach(p => p.classList.remove('active'));
+}
+
+function setNpUrl(url) {
+    setText('npUrl', url);
+}
+
+function renderHistory(history) {
+    if (!history || history.length === 0) return;
+    const html = history.map(item => `
+        <div class="yt-hist-item" onclick="playFromHistory('${esc(item.url)}')">
+            <span class="yt-hist-time">${item.time || ''}</span>
+            <span class="yt-hist-title">${esc(item.title || item.url)}</span>
+            <span class="yt-hist-play">▶</span>
+        </div>`).join('');
+    setText_html('dashHistory', html);
+    setText_html('fullHistory', html);
+}
+
+function setChip(id, val, colorClass) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = val;
+    el.className = 'sys-row-val' + (colorClass ? ' ' + colorClass : '');
+}
+
+function setText(id, val)      { const e = document.getElementById(id); if (e) e.textContent = val; }
+function setText_html(id, val) { const e = document.getElementById(id); if (e) e.innerHTML   = val; }
+function setWidth(id, pct)     { const e = document.getElementById(id); if (e) e.style.width = pct + '%'; }
+function showEl(id, show)      { const e = document.getElementById(id); if (e) e.style.display = show ? '' : 'none'; }
+function esc(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function setPhoneStatus(connected) {
+    const el = document.getElementById('sysPhoneStatus');
+    if (el) el.textContent = connected ? 'Phone Connected' : 'Phone Disconnected';
+    const dot = document.getElementById('sysPhoneDot');
+    if (dot) dot.className = 'chip-dot' + (connected ? ' green' : '');
+    // update chip
+    const chip = document.getElementById('chipPhone');
+    if (chip) { chip.textContent = connected ? 'Connected' : 'Idle'; chip.className = 'chip-val' + (connected ? '' : ''); }
 }
 
 function addLog(message, type = 'default', time = null) {
-    const c   = document.getElementById('console');
+    const c = document.getElementById('console');
+    if (!c) return;
     const div = document.createElement('div');
     div.className = 'log-entry';
     const t = time || new Date().toLocaleTimeString('en-US', { hour12: false });
-    div.innerHTML = `<span class="log-time">${t}</span><span class="log-msg ${type}">${escHtml(message)}</span>`;
+    div.innerHTML = `<span class="log-time">${t}</span><span class="log-msg ${type}">${esc(message)}</span>`;
     c.appendChild(div);
     c.scrollTop = c.scrollHeight;
-    while (c.children.length > 200) c.removeChild(c.firstChild);
+    while (c.children.length > 300) c.removeChild(c.firstChild);
 }
 
-function clearLog() { document.getElementById('console').innerHTML = ''; }
+function clearLog() { const c = document.getElementById('console'); if (c) c.innerHTML = ''; }
 
 function classifyLog(msg) {
     const m = msg.toLowerCase();
     if (m.includes('error') || m.includes('failed') || m.includes('disconnect')) return 'error';
-    if (m.includes('connected') || m.includes('ok') || m.includes('started')) return 'success';
+    if (m.includes('connected') || m.includes('started') || m.includes('ok')) return 'success';
     if (m.includes('url') || m.includes('playing') || m.includes('video')) return 'url';
-    if (m.includes('command') || m.includes('player')) return 'cmd';
-    if (m.includes('ble') || m.includes('scan') || m.includes('trust') || m.includes('notify')) return 'ble';
-    if (m.includes('battery') || m.includes('temperature') || m.includes('sensor')) return 'sensor';
+    if (m.includes('command') || m.includes('player') || m.includes('whistle')) return 'cmd';
+    if (m.includes('ble') || m.includes('scan') || m.includes('trust')) return 'ble';
     return 'default';
 }
+// phone status
+socket.on('phone_status', d => {
+    setPhoneStatus(d.connected);
+});
 
-function escHtml(str) {
-    return String(str)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+// wristband status
+socket.on('wristband_status', d => {
+    const connected = d.connected;
+    const dot  = document.getElementById('sysWristDot');
+    const chip = document.getElementById('chipWrist');
+    const side = document.getElementById('sysWristband');
+    if (dot)  dot.className  = 'chip-dot' + (connected ? ' green' : '');
+    if (chip) chip.textContent = connected ? 'Connected' : 'Idle';
+    if (side) side.textContent = connected ? 'Wristband Connected' : 'Wristband Idle';
+});
+
+// phone status from log events
+socket.on('log', d => {
+
+});
