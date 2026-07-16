@@ -1,0 +1,92 @@
+#0009 t=29.9 boot=5 [RUN] event=QUALITY_CHANGE from=GOOD to=DEGRADED grams=20006.4 sigma=1.81 diagnosis=jump:20006g
+#0010 t=30.1 boot=5 [HB] event=HEARTBEAT grams=20006.4 quality=DEGRADED sigma=1.81 uptime=30.1 heap_max_block=114676
+#0011 t=30.2 boot=5 [RUN] event=QUALITY_CHANGE from=DEGRADED to=GOOD grams=20006.4 sigma=1.81 diagnosis=ok
+#0012 t=60.3 boot=5 [HB] event=HEARTBEAT grams=20009.8 quality=GOOD sigma=1.81 uptime=60.3 heap_max_block=114676
+#0013 t=90.4 boot=5 [HB] event=HEARTBEAT grams=20011.3 quality=GOOD sigma=1.81 uptime=90.4 heap_max_block=114676
+#0014 t=120.6 boot=5 [HB] event=HEARTBEAT grams=20004.5 quality=GOOD sigma=1.81 uptime=120.6 heap_max_block=114676
+#0015 t=150.7 boot=5 [HB] event=HEARTBEAT grams=20001.2 quality=GOOD sigma=1.81 uptime=150.7 heap_max_block=114676
+#0016 t=180.8 boot=5 [HB] event=HEARTBEAT grams=20000.5 quality=GOOD sigma=1.81 uptime=180.8 heap_max_block=114676
+#0017 t=210.9 boot=5 [HB] event=HEARTBEAT grams=19996.7 quality=GOOD sigma=1.81 uptime=210.9 heap_max_block=114676
+#0018 t=241.1 boot=5 [HB] event=HEARTBEAT grams=19998.2 quality=GOOD sigma=1.81 uptime=241.1 heap_max_block=114676
+#0019 t=271.2 boot=5 [HB] event=HEARTBEAT grams=19991.3 quality=GOOD sigma=1.81 uptime=271.2 heap_max_block=114676
+#0020 t=301.3 boot=5 [HB] event=HEARTBEAT grams=19984.6 quality=GOOD sigma=1.81 uptime=301.3 heap_max_block=114676
+#0021 t=331.3 boot=5 [HB] event=HEARTBEAT grams=19975.1 quality=GOOD sigma=1.81 uptime=331.3 heap_max_block=114676
+#0022 t=361.5 boot=5 [HB] event=HEARTBEAT grams=19956.1 quality=GOOD sigma=1.81 uptime=361.5 heap_max_block=114676
+#0023 t=364.8 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19949.1 prev=19949.4 delta=-7.3
+#0024 t=371.9 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19939.2 prev=19939.5 delta=-7.3
+#0025 t=377.8 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19927.1 prev=19927.4 delta=-7.3
+#0026 t=389.6 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19915.7 prev=19916.1 delta=-7.4
+#0027 t=391.7 boot=5 [HB] event=HEARTBEAT grams=19904.6 quality=GOOD sigma=1.81 uptime=391.7 heap_max_block=114676
+#0028 t=399.2 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19890.7 prev=19891.3 delta=-7.6
+#0029 t=414.0 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19808.5 prev=19812.7 delta=-7.7
+#0030 t=421.9 boot=5 [HB] event=HEARTBEAT grams=19625.3 quality=GOOD sigma=1.81 uptime=421.9 heap_max_block=114676
+#0031 t=437.9 boot=5 [RUN] event=WEIGHT_EVENT type=PLACED grams=19637.5 prev=19637.2 delta=7.3
+#0032 t=452.0 boot=5 [HB] event=HEARTBEAT grams=19637.1 quality=GOOD sigma=1.81 uptime=452.0 heap_max_block=114676
+#0033 t=452.5 boot=5 [RUN] event=WEIGHT_EVENT type=PLACED grams=19638.4 prev=19638.1 delta=7.3
+#0034 t=482.2 boot=5 [HB] event=HEARTBEAT grams=19642.6 quality=GOOD sigma=1.81 uptime=482.2 heap_max_block=114676
+#0035 t=493.7 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19644.6 prev=19644.9 delta=-7.5
+#0036 t=497.4 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19637.6 prev=19638.1 delta=-7.6
+#0037 t=512.4 boot=5 [HB] event=HEARTBEAT grams=19635.8 quality=GOOD sigma=1.81 uptime=512.4 heap_max_block=114676
+#0038 t=543.2 boot=5 [HB] event=HEARTBEAT grams=19628.1 quality=GOOD sigma=1.81 uptime=543.2 heap_max_block=114676
+#0039 t=573.5 boot=5 [HB] event=HEARTBEAT grams=19632.5 quality=GOOD sigma=1.81 uptime=573.5 heap_max_block=114676
+#0040 t=604.3 boot=5 [HB] event=HEARTBEAT grams=19626.2 quality=GOOD sigma=1.81 uptime=604.3 heap_max_block=114676
+#0041 t=634.4 boot=5 [HB] event=HEARTBEAT grams=19624.1 quality=GOOD sigma=1.81 uptime=634.4 heap_max_block=114676
+#0042 t=643.5 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19611.7 prev=19611.9 delta=-7.4
+#0043 t=664.6 boot=5 [HB] event=HEARTBEAT grams=19618.9 quality=GOOD sigma=1.81 uptime=664.6 heap_max_block=114676
+#0044 t=695.7 boot=5 [HB] event=HEARTBEAT grams=19618.2 quality=GOOD sigma=1.81 uptime=695.7 heap_max_block=114676
+#0045 t=726.6 boot=5 [HB] event=HEARTBEAT grams=19621.9 quality=GOOD sigma=1.81 uptime=726.6 heap_max_block=114676
+#0046 t=757.5 boot=5 [HB] event=HEARTBEAT grams=19624.3 quality=GOOD sigma=1.81 uptime=757.5 heap_max_block=114676
+#0047 t=779.8 boot=5 [RUN] event=WEIGHT_EVENT type=PLACED grams=19629.2 prev=19628.7 delta=7.4
+#0048 t=788.4 boot=5 [HB] event=HEARTBEAT grams=19628.8 quality=GOOD sigma=1.81 uptime=788.4 heap_max_block=114676
+#0049 t=818.5 boot=5 [HB] event=HEARTBEAT grams=19631.2 quality=GOOD sigma=1.81 uptime=818.5 heap_max_block=114676
+#0050 t=824.3 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19624.1 prev=19624.4 delta=-7.4
+#0051 t=840.5 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19604.3 prev=19604.6 delta=-7.3
+#0052 t=846.5 boot=5 [RUN] event=WEIGHT_EVENT type=PLACED grams=19609.4 prev=19609.2 delta=7.3
+#0053 t=849.6 boot=5 [HB] event=HEARTBEAT grams=19606.9 quality=GOOD sigma=1.81 uptime=849.6 heap_max_block=114676
+#0054 t=880.7 boot=5 [HB] event=HEARTBEAT grams=19599.0 quality=GOOD sigma=1.81 uptime=880.7 heap_max_block=114676
+#0055 t=911.4 boot=5 [HB] event=HEARTBEAT grams=19596.7 quality=GOOD sigma=1.81 uptime=911.4 heap_max_block=114676
+#0056 t=941.7 boot=5 [HB] event=HEARTBEAT grams=19598.1 quality=GOOD sigma=1.81 uptime=941.7 heap_max_block=114676
+#0057 t=972.1 boot=5 [HB] event=HEARTBEAT grams=19601.6 quality=GOOD sigma=1.81 uptime=972.1 heap_max_block=114676
+#0058 t=1002.4 boot=5 [HB] event=HEARTBEAT grams=19613.1 quality=GOOD sigma=1.81 uptime=1002.4 heap_max_block=114676
+#0059 t=1032.6 boot=5 [RUN] event=WEIGHT_EVENT type=PLACED grams=19616.7 prev=19616.4 delta=7.3
+#0060 t=1033.6 boot=5 [HB] event=HEARTBEAT grams=19616.7 quality=GOOD sigma=1.81 uptime=1033.6 heap_max_block=114676
+#0061 t=1035.0 boot=5 [RUN] event=WEIGHT_EVENT type=PLACED grams=19616.9 prev=19616.8 delta=7.3
+#0062 t=1064.6 boot=5 [HB] event=HEARTBEAT grams=19615.3 quality=GOOD sigma=1.81 uptime=1064.6 heap_max_block=114676
+#0063 t=1077.3 boot=5 [RUN] event=WEIGHT_EVENT type=PLACED grams=19626.5 prev=19626.4 delta=7.3
+#0064 t=1081.8 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19619.0 prev=19619.1 delta=-7.3
+#0065 t=1095.6 boot=5 [HB] event=HEARTBEAT grams=19630.0 quality=GOOD sigma=1.81 uptime=1095.6 heap_max_block=114676
+#0066 t=1102.0 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19624.2 prev=19624.6 delta=-7.6
+#0067 t=1126.1 boot=5 [HB] event=HEARTBEAT grams=19629.3 quality=GOOD sigma=1.81 uptime=1126.1 heap_max_block=114676
+#0068 t=1137.8 boot=5 [RUN] event=WEIGHT_EVENT type=PLACED grams=19632.9 prev=19632.7 delta=7.4
+#0069 t=1157.1 boot=5 [HB] event=HEARTBEAT grams=19636.8 quality=GOOD sigma=1.81 uptime=1157.1 heap_max_block=114676
+#0070 t=1188.2 boot=5 [HB] event=HEARTBEAT grams=19633.9 quality=GOOD sigma=1.81 uptime=1188.2 heap_max_block=114676
+#0071 t=1216.1 boot=5 [RUN] event=WEIGHT_EVENT type=PLACED grams=19641.2 prev=19641.0 delta=7.2
+#0072 t=1218.9 boot=5 [HB] event=HEARTBEAT grams=19639.6 quality=GOOD sigma=1.81 uptime=1218.9 heap_max_block=114676
+#0073 t=1249.4 boot=5 [HB] event=HEARTBEAT grams=19644.7 quality=GOOD sigma=1.81 uptime=1249.4 heap_max_block=114676
+#0074 t=1260.6 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19639.8 prev=19640.3 delta=-7.6
+#0075 t=1279.8 boot=5 [HB] event=HEARTBEAT grams=19636.2 quality=GOOD sigma=1.81 uptime=1279.8 heap_max_block=114676
+#0076 t=1292.1 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19631.0 prev=19631.2 delta=-7.2
+#0077 t=1301.1 boot=5 [RUN] event=WEIGHT_EVENT type=PLACED grams=19633.5 prev=19633.3 delta=7.2
+#0078 t=1310.2 boot=5 [HB] event=HEARTBEAT grams=19639.5 quality=GOOD sigma=1.81 uptime=1310.2 heap_max_block=114676
+#0079 t=1329.4 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19630.6 prev=19630.9 delta=-7.2
+#0080 t=1341.2 boot=5 [HB] event=HEARTBEAT grams=19630.0 quality=GOOD sigma=1.81 uptime=1341.2 heap_max_block=114676
+#0081 t=1346.4 boot=5 [RUN] event=WEIGHT_EVENT type=PLACED grams=19635.6 prev=19635.3 delta=7.5
+#0082 t=1371.4 boot=5 [HB] event=HEARTBEAT grams=19642.3 quality=GOOD sigma=1.81 uptime=1371.4 heap_max_block=114676
+#0083 t=1374.9 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19634.9 prev=19635.2 delta=-7.3
+#0084 t=1381.4 boot=5 [RUN] event=WEIGHT_EVENT type=PLACED grams=19637.1 prev=19637.1 delta=7.3
+#0085 t=1381.7 boot=5 [RUN] event=WEIGHT_EVENT type=PLACED grams=19637.4 prev=19637.3 delta=7.2
+#0086 t=1382.2 boot=5 [RUN] event=WEIGHT_EVENT type=PLACED grams=19637.5 prev=19637.4 delta=7.3
+#0087 t=1401.8 boot=5 [HB] event=HEARTBEAT grams=19635.9 quality=GOOD sigma=1.81 uptime=1401.8 heap_max_block=114676
+#0088 t=1409.6 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19624.4 prev=19624.6 delta=-7.3
+#0089 t=1410.4 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19623.3 prev=19623.5 delta=-7.4
+#0090 t=1417.9 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19619.0 prev=19619.5 delta=-7.3
+#0091 t=1426.7 boot=5 [RUN] event=WEIGHT_EVENT type=REMOVED grams=19612.2 prev=19612.7 delta=-7.7
+#0001 t=0.4 boot=6 [BOOT] event=START fw=1.0 reset=POWERON
+#0002 t=2.3 boot=6 [BOOT] event=PHASE_COMPLETE phase=SETTLE result=OK s=2.1
+#0003 t=16.2 boot=6 [BOOT] event=PHASE_COMPLETE phase=TARE_WAIT result=CMD_SKIP_TARE
+#0004 t=16.4 boot=6 [BOOT] event=PHASE_COMPLETE phase=TARE result=OK mean=-64464.8 spread=0.0 s=0.0
+#0005 t=36.5 boot=6 [BOOT] event=PHASE_COMPLETE phase=NOISE result=OK s=20.0
+#0006 t=36.6 boot=6 [BOOT] event=PHASE_COMPLETE phase=CAL result=OK cal_factor=36.2231 s=0.0
+#0007 t=36.7 boot=6 [BOOT] event=BOOT_COMPLETE total_s=36.7 cal=36.2231 sigma=5.67 tare=-64464.8
+#0008 t=36.8 boot=6 [RUN] event=QUALITY_CHANGE from=NONE to=GOOD grams=0.0 sigma=5.67 diagnosis=ok
+#0009 t=36.9 boot=6 [HB] event=HEARTBEAT grams=0.0 quality=GOOD sigma=5.67 uptime=36.9 heap_max_block=114676

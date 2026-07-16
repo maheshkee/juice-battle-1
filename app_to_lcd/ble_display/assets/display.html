@@ -250,6 +250,22 @@
             z-index: 10;
         }
         #gas-setup-btn:hover { background: rgba(245,158,11,0.3); }
+        #gas-uninstall-btn {
+            position: absolute;
+            bottom: 18px;
+            left: 18px;
+            background: rgba(239,68,68,0.15);
+            border: 1px solid rgba(239,68,68,0.4);
+            border-radius: 10px;
+            padding: 8px 16px;
+            color: #ef4444;
+            font-family: monospace;
+            font-size: 0.82rem;
+            cursor: pointer;
+            display: none;
+            z-index: 10;
+        }
+        #gas-uninstall-btn:hover { background: rgba(239,68,68,0.3); }
         #gas-calibrating {
             position: absolute;
             bottom: 55px;
@@ -525,6 +541,7 @@
     </div>
     <!-- gas setup button (shown when UNINSTALLED) -->
     <button id="gas-setup-btn" onclick="onGasSetupClick()">⛽ Install cylinder</button>
+    <button id="gas-uninstall-btn" onclick="onGasUninstallClick()" style="display:none">⛽ Remove cylinder</button>
 
     <!-- gas calibrating label -->
     <div id="gas-calibrating">⏳ Calibrating — do not disturb</div>
@@ -1045,6 +1062,12 @@ function onGasSetupClick() {
     console.log('[GAS] setup emitted: FRESH');
 }
 
+function onGasUninstallClick() {
+    socket.emit('uninstall_cylinder', {});
+    document.getElementById('gas-uninstall-btn').style.display = 'none';
+    console.log('[GAS] uninstall_cylinder emitted');
+}
+
 socket.on('gas_update', (data) => {
     const pct      = data.gas_pct != null ? Math.round(data.gas_pct) : null;
     const days     = data.days_remaining != null ? data.days_remaining.toFixed(1) : null;
@@ -1062,6 +1085,8 @@ socket.on('gas_update', (data) => {
     const setupBtn     = document.getElementById('gas-setup-btn');
     const calibratingEl = document.getElementById('gas-calibrating');
     if (setupBtn)      setupBtn.style.display      = (data.cylinder_state === 'UNINSTALLED')      ? 'block' : 'none';
+    const uninstallBtn = document.getElementById('gas-uninstall-btn');
+    if (uninstallBtn)  uninstallBtn.style.display  = (data.cylinder_state === 'TRACKING' || data.cylinder_state === 'LOW_GAS') ? 'block' : 'none';
     if (calibratingEl) calibratingEl.style.display = (data.cylinder_state === 'BOOTSTRAP_ANCHOR') ? 'block' : 'none';
 
     // idle widget

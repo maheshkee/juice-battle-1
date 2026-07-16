@@ -297,6 +297,24 @@ def set_install_mode(mode, brand=None):
           f'state={_cylinder_state} steel_g={_steel_g}', flush=True)
 
 
+def set_uninstall_mode():
+    """Explicit user-initiated uninstall via WebUI button.
+    Clears steel_g completely -- next install will need full anchor window.
+    Never called by automatic logic -- only by user action."""
+    global _cylinder_state, _steel_g, _steel_source
+    global _candidate_window, _removal_start_ts
+    _cylinder_state    = 'UNINSTALLED'
+    _steel_g           = None
+    _steel_source      = None
+    _candidate_window  = []
+    _removal_start_ts  = None
+    _save_config()
+    print('[DOMAIN] set_uninstall_mode: steel_g cleared, TARE will be sent',
+          flush=True)
+    hub_logger.log_domain('STATE_CHANGE', new_state='UNINSTALLED',
+                          source='USER_EXPLICIT_UNINSTALL')
+
+
 def compute_analytics(current_gas_g, cylinder_state='TRACKING'):
     import sqlite3
     from datetime import datetime, timedelta

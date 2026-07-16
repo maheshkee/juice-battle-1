@@ -95,6 +95,17 @@ def on_setup(sid, data):
     print(f'[GAS] setup: mode={mode} brand={brand}', flush=True)
 
 
+def on_uninstall(sid, data):
+    domain.set_uninstall_mode()
+    if _ble.cmd_char is not None:
+        _ble.write_command('TARE')
+    else:
+        print('[GAS] uninstall: BLE not connected -- TARE will fire on next connect',
+              flush=True)
+    _ui.send_message('gas_update', domain.get_state_snapshot())
+    print('[GAS] uninstall: cylinder removed explicitly by user', flush=True)
+
+
 def _on_log_transfer_complete():
     if not _ble.last_boot_used_tare:
         return
@@ -131,6 +142,7 @@ def start(bus, ui, scan_trigger=None):
     try:
         _ui.on_connect(on_ui_connect)
         _ui.on_message('gas_setup', on_setup)
+        _ui.on_message('uninstall_cylinder', on_uninstall)
         print('[GAS] ui hooks OK', flush=True)
 
         db_init()
