@@ -11,7 +11,6 @@
     Wire 5 (Col4) -> GPIO 3  (stop)
     Wire 6 (Col5) -> GPIO 4  (mute/unmute toggle)
 
-  Board name  : BLE-Hub-AQ01
   Service UUID: a00b0000-0000-0000-0000-000000000000
   Wrist char  : a00b0004-0000-0000-0000-000000000000
 
@@ -25,11 +24,16 @@
     6. Click Upload
 
   Behavior:
-    - On boot: scans for BLE-Hub-AQ01, connects, stays connected
+    - On boot: scans for the board's advertised service UUID, connects, stays connected
     - Button press: sends command instantly (already connected)
-    - 25 min idle: disconnects and enters light sleep
+    - IDLE_MS idle: disconnects and enters light sleep
     - Any button press during sleep: wakes up, reconnects, sends command
     - Play/pause and mute toggle state maintained across light sleep
+
+  NOTE: scans by SERVICE_UUID (a00b0000), not board name -- the board's
+  advertised name can change (board_id.json / _load_board_name() on the
+  main.py side defaults to "BLE-Hub" if unset), but it always advertises
+  this service UUID, so matching on UUID is robust to that.
 */
 
 #include <BLEDevice.h>
@@ -38,7 +42,6 @@
 #include "esp_sleep.h"
 #include "driver/gpio.h"
 
-const char* BOARD_NAME = "BLE-Hub-AQ01";
 static BLEUUID SERVICE_UUID("a00b0000-0000-0000-0000-000000000000");
 static BLEUUID CHAR_UUID   ("a00b0004-0000-0000-0000-000000000000");
 
@@ -54,10 +57,10 @@ const gpio_num_t BTN_PINS[5] = {
     BTN_SEEK_BACK, BTN_PLAY_PAUSE, BTN_SEEK_FWD, BTN_STOP, BTN_MUTE
 };
 
-// 25 minutes idle timeout
-#define IDLE_MS 10000UL
+// TEST value -- change to 1500000UL for production (25 min)
+#define IDLE_MS 100000UL
 
-// Toggle state — survives light sleep (variables preserved in RAM)
+// Toggle state -- survives light sleep (variables preserved in RAM)
 bool isPlaying = true;
 bool isMuted   = false;
 
@@ -71,10 +74,10 @@ class ScanCB : public BLEAdvertisedDeviceCallbacks {
 public:
     BLEAdvertisedDevice* found = nullptr;
     void onResult(BLEAdvertisedDevice dev) override {
-        if (dev.getName() == BOARD_NAME) {
+        if (dev.haveServiceUUID() && dev.isAdvertisingService(SERVICE_UUID)) {
             BLEDevice::getScan()->stop();
             found = new BLEAdvertisedDevice(dev);
-            Serial.println("[SCAN] Found board");
+            Serial.println("[SCAN] Found board (service UUID match)");
         }
     }
 };
@@ -86,16 +89,33 @@ void sendRaw(const char* text) {
     delay(80);
 }
 
+// Tears down any existing client before creating a new one -- prevents
+// leaking a BLEClient object on every reconnect (sleep/wake, mid-loop
+// reconnect, etc. all call this repeatedly over the device's lifetime).
+void teardownClient() {
+    if (pClient) {
+        if (pClient->isConnected()) {
+            pClient->disconnect();
+            delay(100);
+        }
+        delete pClient;
+        pClient = nullptr;
+    }
+    pChar = nullptr;
+}
+
 bool doConnect(BLEAdvertisedDevice* dev) {
+    teardownClient();
     pClient = BLEDevice::createClient();
     if (!pClient->connect(dev)) {
         Serial.println("[BLE] Connect failed");
+        teardownClient();
         return false;
     }
     BLERemoteService* svc = pClient->getService(SERVICE_UUID);
-    if (!svc) { pClient->disconnect(); Serial.println("[BLE] No service"); return false; }
+    if (!svc) { Serial.println("[BLE] No service"); teardownClient(); return false; }
     pChar = svc->getCharacteristic(CHAR_UUID);
-    if (!pChar) { pClient->disconnect(); Serial.println("[BLE] No char"); return false; }
+    if (!pChar) { Serial.println("[BLE] No char"); teardownClient(); return false; }
     Serial.println("[BLE] Connected and ready");
     return true;
 }
@@ -110,6 +130,7 @@ bool scanAndConnect() {
         scan->start(5, false);
         if (cb->found) {
             bool ok = doConnect(cb->found);
+            delete cb->found;
             delete cb;
             if (ok) return true;
         } else {
@@ -142,15 +163,11 @@ int readButton() {
 }
 
 void goToSleep() {
-    Serial.println("[SLEEP] 25 min idle -- entering light sleep");
+    Serial.println("[SLEEP] Idle timeout -- entering light sleep");
     Serial.flush();
 
-    if (pClient && pClient->isConnected()) {
-        pClient->disconnect();
-        delay(200);
-    }
+    teardownClient();
     bleConnected = false;
-    pChar = nullptr;
 
     // Enable wakeup on all 5 button pins
     for (int i = 0; i < 5; i++) {
@@ -203,8 +220,7 @@ void loop() {
     lastPressTime = millis();
 
     // Reconnect if needed
-    if (!bleConnected || !pClient->isConnected()) {
-        bleConnected = false; pChar = nullptr;
+    if (!bleConnected || !pClient || !pClient->isConnected()) {
         bleConnected = scanAndConnect();
         if (!bleConnected) { delay(500); return; }
     }
