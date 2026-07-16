@@ -314,7 +314,7 @@ function setGasRing(id, pct, colorClass, circ = 301.6) {
     const ring = document.getElementById(id);
     if (!ring) return;
     ring.style.strokeDashoffset = pct != null ? circ - (pct / 100) * circ : circ;
-    ring.className = 'ring-fill ' + (colorClass || '');
+    ring.setAttribute('class', 'ring-fill ' + (colorClass || ''));
 }
 
 function setGasNodeDot(online) {
