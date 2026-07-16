@@ -1,0 +1,27 @@
+# Runtime files (generated at runtime, never commit)
+bt_cmd.txt
+bt_result.txt
+cmd.txt
+dbus.sock
+launcher.sock
+
+# Data files
+data/
+local_queue.json
+queue.json
+
+# Python cache
+__pycache__/
+python/__pycache__/
+*.pyc
+
+# Build artefacts
+.cache/
+app/build/
+app/.dart_tool/
+app/android/.gradle/
+app/android/local.properties
+
+# Backup files
+*.bak
+*.bak2

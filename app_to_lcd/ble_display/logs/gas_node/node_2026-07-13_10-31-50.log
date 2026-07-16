@@ -1,0 +1,8 @@
+#0120 t=3195.1 boot=4 [HB] event=HEARTBEAT grams=20010.7 quality=GOOD sigma=368.12 uptime=3195.1 heap_max_block=114676
+#0121 t=3225.4 boot=4 [HB] event=HEARTBEAT grams=20006.3 quality=GOOD sigma=368.12 uptime=3225.4 heap_max_block=114676
+#0122 t=3255.6 boot=4 [HB] event=HEARTBEAT grams=19997.0 quality=GOOD sigma=368.12 uptime=3255.6 heap_max_block=114676
+#0123 t=3285.8 boot=4 [HB] event=HEARTBEAT grams=19999.7 quality=GOOD sigma=368.12 uptime=3285.8 heap_max_block=114676
+#0124 t=3315.9 boot=4 [HB] event=HEARTBEAT grams=19994.4 quality=GOOD sigma=368.12 uptime=3315.9 heap_max_block=114676
+#0125 t=3346.1 boot=4 [HB] event=HEARTBEAT grams=19991.9 quality=GOOD sigma=368.12 uptime=3346.1 heap_max_block=114676
+#0126 t=3376.2 boot=4 [HB] event=HEARTBEAT grams=19990.6 quality=GOOD sigma=368.12 uptime=3376.2 heap_max_block=114676
+#0127 t=3406.4 boot=4 [HB] event=HEARTBEAT grams=19996.1 quality=GOOD sigma=368.12 uptime=3406.4 heap_max_block=114676

@@ -1,0 +1,17 @@
+{
+  "device_name": "GasCylMonitor",
+  "device_address": "10:00:3B:CD:63:32",
+  "service_uuid": "aa206b91-235b-42aa-b370-453a3feedf35",
+  "weight_char_uuid": "b9b25bb1-f2a9-4545-b48f-295ab2789f41",
+  "reconnect_delay_s": 5.0,
+  "scan_timeout_s": 10.0,
+  "brand": null,
+  "install_mode": "FRESH",
+  "cylinder_state": "TRACKING",
+  "steel_g": 15683.3,
+  "steel_source": "ANCHOR",
+  "steel_anchored_at": "16 Jul 2026  09:27:09",
+  "cal_factor": 36.2231,
+  "tare_raw": -67181.1,
+  "cal_tare_session": "boot13_verified_2026-06-23"
+}

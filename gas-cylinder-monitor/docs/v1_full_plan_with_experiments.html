@@ -1,0 +1,165 @@
+
+<div style="padding:1rem 0">
+
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.5rem">
+  <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:.875rem">
+    <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px">current position</div>
+    <div style="font-size:15px;font-weight:500">Group 1 — Weight</div>
+    <div style="font-size:12px;color:var(--color-text-secondary)">E-001 PASSED · E-002 next</div>
+  </div>
+  <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:.875rem">
+    <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px">transport</div>
+    <div style="font-size:15px;font-weight:500">BLE only</div>
+    <div style="font-size:12px;color:var(--color-text-secondary)">hub-initiated · no WiFi</div>
+  </div>
+  <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:.875rem">
+    <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px">hardware</div>
+    <div style="font-size:15px;font-weight:500">ESP32-C3 + UNO Q</div>
+    <div style="font-size:12px;color:var(--color-text-secondary)">node · hub · arduino@AQ3</div>
+  </div>
+</div>
+
+<div style="border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;font-size:13px">
+
+<div style="display:grid;grid-template-columns:130px 1fr 160px;background:var(--color-background-secondary);border-bottom:0.5px solid var(--color-border-tertiary);padding:8px 14px;font-size:12px;color:var(--color-text-secondary);font-weight:500">
+  <span>group</span><span>experiments</span><span style="text-align:right">status</span>
+</div>
+
+<div style="display:grid;grid-template-columns:130px 1fr 160px;border-bottom:0.5px solid var(--color-border-tertiary);padding:12px 14px;align-items:start">
+  <div>
+    <div style="font-weight:500;color:var(--color-text-primary)">Group 1</div>
+    <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Weight</div>
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:2px">ESP32-C3 node</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:5px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-success);color:var(--color-text-success);font-size:11px;padding:2px 8px;border-radius:4px">PASSED</span><span>E-000 — raw bit-bang read, HX711 bring-up</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-success);color:var(--color-text-success);font-size:11px;padding:2px 8px;border-radius:4px">PASSED</span><span>E-001 — tare derivation, cal_factor, grams output</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-warning);color:var(--color-text-warning);font-size:11px;padding:2px 8px;border-radius:4px">NEXT</span><span>E-002 — noise floor characterisation (N=200, STD, threshold)</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">queued</span><span>E-003 — modular refactor (hx711 / tare / cal / noise modules)</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">queued</span><span>E-004 — measurement stability, plateau detection</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">queued</span><span>E-005 — cal_factor linearity across full kg range</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">queued</span><span>E-006B — minimum detectable consumption (water + measuring cup)</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">queued</span><span>E-007B — threshold stress test, false positive rate (30 min)</span></div>
+  </div>
+  <div style="text-align:right"><span style="background:var(--color-background-warning);color:var(--color-text-warning);font-size:11px;padding:3px 10px;border-radius:4px">in progress</span></div>
+</div>
+
+<div style="display:grid;grid-template-columns:130px 1fr 160px;border-bottom:0.5px solid var(--color-border-tertiary);padding:12px 14px;align-items:start">
+  <div>
+    <div style="font-weight:500;color:var(--color-text-primary)">Group 2</div>
+    <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Transport</div>
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:2px">BLE ESP32 → hub</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:5px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>BLE GATT server on ESP32-C3 — one service, one notify char</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>ESP32 advertises forever, hub connects + subscribes</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Hub BlueZ scan + connect + subscribe (Python, socat D-Bus)</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Auto-reconnect within 30s — silent, no user action</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Gate: one reading arrives at hub over BLE with timestamp</span></div>
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:2px">UUIDs defined in chat at design start · see TRANSPORT_DECISION_BLE_ONLY.md</div>
+  </div>
+  <div style="text-align:right"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:3px 10px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span></div>
+</div>
+
+<div style="display:grid;grid-template-columns:130px 1fr 160px;border-bottom:0.5px solid var(--color-border-tertiary);padding:12px 14px;align-items:start">
+  <div>
+    <div style="font-weight:500;color:var(--color-text-primary)">Group 3</div>
+    <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Storage</div>
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:2px">SQLite on hub</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:5px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>SQLite schema: readings table, refill_events table</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Heartbeat write every 15 min (authoritative spine)</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Event-driven write on ~30–50g drop detection</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Gate: readings survive hub reboot, history grows</span></div>
+  </div>
+  <div style="text-align:right"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:3px 10px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span></div>
+</div>
+
+<div style="display:grid;grid-template-columns:130px 1fr 160px;border-bottom:0.5px solid var(--color-border-tertiary);padding:12px 14px;align-items:start">
+  <div>
+    <div style="font-weight:500;color:var(--color-text-primary)">Group 4</div>
+    <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Domain</div>
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:2px">LPG semantics</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:5px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>E-006A — anchor event logic: steel = gross − 14.2 kg at install</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>gas% = (gross − steel) ÷ 14200 × 100</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>E-007A — refill detection, cylinder state machine</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Gate: gas% correct at 0% and 100%, self-heals at refill</span></div>
+  </div>
+  <div style="text-align:right"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:3px 10px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span></div>
+</div>
+
+<div style="display:grid;grid-template-columns:130px 1fr 160px;border-bottom:0.5px solid var(--color-border-tertiary);padding:12px 14px;align-items:start">
+  <div>
+    <div style="font-weight:500;color:var(--color-text-primary)">Group 5</div>
+    <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Analytics</div>
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:2px">hub — Python</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:5px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Daily consumption from heartbeat spine</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Rolling 7-day burn rate — real data only, no government averages</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Hourly usage patterns</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Gate: burn rate correct after 24h minimum data</span></div>
+  </div>
+  <div style="text-align:right"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:3px 10px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span></div>
+</div>
+
+<div style="display:grid;grid-template-columns:130px 1fr 160px;border-bottom:0.5px solid var(--color-border-tertiary);padding:12px 14px;align-items:start">
+  <div>
+    <div style="font-weight:500;color:var(--color-text-primary)">Group 6</div>
+    <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Prediction</div>
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:2px">hub — Python</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:5px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>E-008 — days remaining = gas ÷ burn rate</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Confidence interval from burn rate variance</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Shows "—" until 24h data exists</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>E-009 — alert validation (low gas, refill reminder)</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Gate: prediction from real data only, correct "—" behaviour</span></div>
+  </div>
+  <div style="text-align:right"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:3px 10px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span></div>
+</div>
+
+<div style="display:grid;grid-template-columns:130px 1fr 160px;border-bottom:0.5px solid var(--color-border-tertiary);padding:12px 14px;align-items:start">
+  <div>
+    <div style="font-weight:500;color:var(--color-text-primary)">Group 7</div>
+    <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Presentation</div>
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:2px">WebUI dashboard</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:5px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Flask / Socket.IO server on hub</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Live gas gauge — % and kg remaining</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Days remaining with confidence band</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Cylinder state + replace button → triggers new steel derivation</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span><span>Gate: live at hub IP, all outputs real-time</span></div>
+  </div>
+  <div style="text-align:right"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:3px 10px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">planned</span></div>
+</div>
+
+<div style="display:grid;grid-template-columns:130px 1fr 160px;padding:12px 14px;align-items:start">
+  <div>
+    <div style="font-weight:500;color:var(--color-text-primary)">Post-V1</div>
+    <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Characterisation</div>
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:2px">after MVP stable</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:5px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">future</span><span>E-T1 — thermal drift: cal_factor + tare vs temperature</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">future</span><span>E-T2 — long-run stability: baseline wander over days/weeks</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">future</span><span>E-T3 — diurnal drift: kitchen heat/cool cycle impact</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">future</span><span>v2.0 — 4-cell summing + TFLite ML on QRB2210</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">future</span><span>v3.0 — LLM agent + gas ordering API + multi-cylinder fleet</span></div>
+  </div>
+  <div style="text-align:right"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;padding:3px 10px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">future</span></div>
+</div>
+
+</div>
+
+<div style="display:flex;gap:10px;margin-top:1rem;flex-wrap:wrap;font-size:12px">
+  <span style="display:flex;align-items:center;gap:5px"><span style="background:var(--color-background-success);color:var(--color-text-success);padding:2px 8px;border-radius:4px">PASSED</span>done + verified on hardware</span>
+  <span style="display:flex;align-items:center;gap:5px"><span style="background:var(--color-background-warning);color:var(--color-text-warning);padding:2px 8px;border-radius:4px">NEXT</span>active now</span>
+  <span style="display:flex;align-items:center;gap:5px"><span style="background:var(--color-background-secondary);color:var(--color-text-secondary);padding:2px 8px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">queued / planned / future</span>not started</span>
+</div>
+
+</div>

@@ -1,0 +1,20 @@
+#0001 t=0.5 boot=4 [BOOT] event=START fw=1.0 reset=POWERON
+#0001 t=0.5 boot=4 [BOOT] event=START fw=1.0 reset=POWERON
+#0002 t=2.3 boot=4 [BOOT] event=PHASE_COMPLETE phase=SETTLE result=OK s=2.0
+#0002 t=2.3 boot=4 [BOOT] event=PHASE_COMPLETE phase=SETTLE result=OK s=2.0
+#0003 t=9.2 boot=4 [BOOT] event=PHASE_COMPLETE phase=TARE_WAIT result=CMD_TARE
+#0003 t=9.2 boot=4 [BOOT] event=PHASE_COMPLETE phase=TARE_WAIT result=CMD_TARE
+#0004 t=30.6 boot=4 [BOOT] event=TARE_CHECK result=NO_REF delta=0.0g
+#0004 t=30.6 boot=4 [BOOT] event=TARE_CHECK result=NO_REF delta=0.0g
+#0005 t=30.7 boot=4 [BOOT] event=PHASE_COMPLETE phase=TARE result=OK mean=423187.3 spread=0.0 s=21.4
+#0005 t=30.7 boot=4 [BOOT] event=PHASE_COMPLETE phase=TARE result=OK mean=423187.3 spread=0.0 s=21.4
+#0006 t=50.8 boot=4 [BOOT] event=PHASE_COMPLETE phase=NOISE result=OK s=20.0
+#0006 t=50.8 boot=4 [BOOT] event=PHASE_COMPLETE phase=NOISE result=OK s=20.0
+#0007 t=50.9 boot=4 [BOOT] event=PHASE_COMPLETE phase=CAL result=OK cal_factor=36.2231 s=0.0
+#0007 t=50.9 boot=4 [BOOT] event=PHASE_COMPLETE phase=CAL result=OK cal_factor=36.2231 s=0.0
+#0008 t=51.0 boot=4 [BOOT] event=BOOT_COMPLETE total_s=51.0 cal=36.2231 sigma=3.38 tare=423187.3
+#0008 t=51.0 boot=4 [BOOT] event=BOOT_COMPLETE total_s=51.0 cal=36.2231 sigma=3.38 tare=423187.3
+#0009 t=51.1 boot=4 [RUN] event=QUALITY_CHANGE from=NONE to=GOOD grams=0.0 sigma=3.38 diagnosis=ok
+#0009 t=51.1 boot=4 [RUN] event=QUALITY_CHANGE from=NONE to=GOOD grams=0.0 sigma=3.38 diagnosis=ok
+#0010 t=51.2 boot=4 [HB] event=HEARTBEAT grams=0.0 quality=GOOD sigma=3.38 uptime=51.2 heap_max_block=114676
+#0010 t=51.2 boot=4 [HB] event=HEARTBEAT grams=0.0 quality=GOOD sigma=3.38 uptime=51.2 heap_max_block=114676

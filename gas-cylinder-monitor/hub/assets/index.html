@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gas Cylinder Monitor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f0f0f;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── top bar ─────────────────────────────────────────── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 18px;
+      border-bottom: 1px solid #1a1a1a;
+      flex-shrink: 0;
+    }
+
+    .node-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .node-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #374151;
+      flex-shrink: 0;
+      transition: background 0.4s;
+    }
+    .node-dot.connected { background: #22c55e; }
+
+    .node-text {
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 11px;
+      color: #6b7280;
+      letter-spacing: 0.02em;
+    }
+    .node-text .name { color: #9ca3af; }
+    .node-text .sep  { margin: 0 5px; color: #374151; }
+    .node-text .mac  { color: #4b5563; }
+
+    /* ── main card ───────────────────────────────────────── */
+    .main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 22px;
+      transition: opacity 0.5s;
+    }
+    .card.node-off { opacity: 0.28; }
+
+    .weight-row {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .grams {
+      font-size: 120px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -4px;
+      color: #ffffff;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .unit {
+      font-size: 48px;
+      font-weight: 300;
+      color: #6b7280;
+    }
+
+    .badge {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      padding: 5px 20px;
+      border-radius: 999px;
+      background: #27272a;
+      color: #ffffff;
+      text-transform: uppercase;
+      transition: background 0.3s;
+    }
+    .badge.good     { background: #166534; color: #86efac; }
+    .badge.degraded { background: #92400e; color: #fcd34d; }
+    .badge.failed   { background: #7f1d1d; color: #fca5a5; }
+    .badge.waiting  { background: #27272a; color: #6b7280; }
+
+    /* ── percentage ──────────────────────────────────────── */
+    .pct-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .pct-value {
+      font-size: 64px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -2px;
+      color: #ffffff;
+      font-variant-numeric: tabular-nums;
+    }
+    .pct-unit {
+      font-size: 28px;
+      font-weight: 300;
+      color: #6b7280;
+    }
+    .pct-label {
+      font-size: 14px;
+      color: #52525b;
+      margin-left: 2px;
+    }
+    .pct-bar-bg {
+      width: 300px;
+      height: 6px;
+      background: #18181b;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .pct-bar-fill {
+      height: 100%;
+      background: #22c55e;
+      border-radius: 3px;
+      transition: width 0.6s ease, background 0.4s;
+      width: 0%;
+    }
+    .setup-btn {
+      margin-top: 8px;
+      padding: 10px 32px;
+      background: #1d4ed8;
+      color: #ffffff;
+      border: none;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .setup-btn:hover { background: #2563eb; }
+    .setup-btn:active { background: #1e40af; }
+
+    /* ── meta (sigma + timestamp) ────────────────────────── */
+    .meta {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      margin-top: 4px;
+    }
+
+    .sigma {
+      font-size: 14px;
+      color: #6b7280;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ts {
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 12px;
+      color: #3f3f46;
+      letter-spacing: 0.04em;
+    }
+
+  </style>
+</head>
+<body>
+
+  <!-- top bar -->
+  <div class="topbar">
+    <div class="node-info">
+      <div class="node-dot" id="node-dot"></div>
+      <div class="node-text">
+        <span class="name" id="node-name">scanning&hellip;</span>
+        <span class="sep" id="node-sep" style="display:none">&bull;</span>
+        <span class="mac"  id="node-mac"></span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- main card -->
+  <div class="main">
+    <div class="card node-off" id="card">
+
+      <div class="weight-row">
+        <span class="grams" id="grams">--</span>
+        <span class="unit">g</span>
+      </div>
+
+      <div class="badge waiting" id="badge">WAITING</div>
+
+      <div id="state-pill" style="display:inline-flex; align-items:center; gap:8px;
+           padding:6px 16px; border-radius:20px; margin: 12px 0;
+           background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);">
+        <span id="state-dot" style="width:8px; height:8px; border-radius:50%;
+              background:#888; display:inline-block;"></span>
+        <span id="state-label" style="font-size:13px; color:#888; font-weight:500;
+              letter-spacing:0.05em; text-transform:uppercase;"></span>
+      </div>
+
+      <div class="pct-row" id="pct-row" style="display:none">
+        <span class="pct-value" id="pct-value">--</span>
+        <span class="pct-unit">%</span>
+        <span class="pct-label">remaining</span>
+      </div>
+
+      <div id="usable-display" style="display:none; margin-top:14px;">
+        <div style="display:flex; justify-content:center; gap:32px;">
+          <div style="text-align:center;">
+            <div id="usable-total-g" style="font-size:28px; font-weight:600;
+                 color:#ef4444;">--</div>
+            <div style="font-size:12px; color:#888; margin-top:2px;">
+                 total on platform</div>
+          </div>
+          <div style="text-align:center;">
+            <div id="usable-usable-g" style="font-size:28px; font-weight:600;
+                 color:#ef4444;">--</div>
+            <div style="font-size:12px; color:#888; margin-top:2px;">
+                 usable by burner</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pct-bar-bg" id="pct-bar-bg" style="display:none">
+        <div class="pct-bar-fill" id="pct-bar-fill"></div>
+      </div>
+
+      <div id="alert-banner" style="display:none; margin-top:16px; padding:12px 20px;
+           border-radius:8px; text-align:center; font-size:14px; font-weight:500;">
+      </div>
+
+      <div id="analytics-section" style="display:none; margin-top: 24px; text-align: center;">
+        <div id="days-remaining-display" style="font-size: 64px; font-weight: 700; color: #ffffff; line-height: 1;">-</div>
+        <div style="font-size: 16px; color: #888; margin-top: 4px; margin-bottom: 20px;">days remaining</div>
+        <div style="font-size: 14px; color: #666; margin-top: 8px;">
+          daily use: <span id="burn-rate-display" style="color: #aaa;">-</span>
+        </div>
+        <div style="font-size: 14px; color: #666; margin-top: 4px;">
+          empty by: <span id="predicted-empty-display" style="color: #aaa;">-</span>
+        </div>
+      </div>
+
+      <div id="calibrating-label" style="display:none;
+           font-size:13px; color:#4b5563; letter-spacing:0.05em">
+        Calibrating&hellip;
+      </div>
+
+      <button class="setup-btn" id="setup-btn" style="display:none" onclick="onSetupClick()">
+        Install cylinder
+      </button>
+
+      <button class="setup-btn" id="uninstall-btn" style="display:none" onclick="onUninstallClick()">
+        Remove cylinder
+      </button>
+
+      <div class="meta">
+        <div class="sigma" id="sigma"></div>
+        <div class="sigma" id="temp-c"></div>
+        <div class="ts"    id="ts"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="/socket.io.min.js"></script>
+  <script>
+    var gramsEl   = document.getElementById('grams');
+    var badgeEl   = document.getElementById('badge');
+    var sigmaEl   = document.getElementById('sigma');
+    var tempEl    = document.getElementById('temp-c');
+    var tsEl      = document.getElementById('ts');
+    var pctRowEl  = document.getElementById('pct-row');
+    var pctBarBg  = document.getElementById('pct-bar-bg');
+    var pctValEl  = document.getElementById('pct-value');
+    var pctFillEl = document.getElementById('pct-bar-fill');
+    var cardEl    = document.getElementById('card');
+    var dotEl     = document.getElementById('node-dot');
+    var nameEl    = document.getElementById('node-name');
+    var sepEl     = document.getElementById('node-sep');
+    var macEl     = document.getElementById('node-mac');
+    var setupBtnEl     = document.getElementById('setup-btn');
+    var uninstallBtnEl = document.getElementById('uninstall-btn');
+    var g_cylinder_state = 'UNINSTALLED';
+
+    var _lastBurnRate       = null;
+    var _lastDaysRemaining  = null;
+    var _lastPredictedEmpty = null;
+
+    function formatDays(dr) {
+      if (dr === null || dr === undefined) return null;
+      if (dr < 0.1) return '< 0.1';
+      if (dr < 2) return dr.toFixed(1);
+      return Math.round(dr).toString();
+    }
+
+    var qualityClass = { GOOD: 'good', DEGRADED: 'degraded', FAILED: 'failed', WAITING: 'waiting' };
+
+    /* Format: "18 Jun 2026  13:09:59" from server strftime, or parse ISO fallback */
+    var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    function formatTs(ts) {
+      if (!ts || ts === '--') return '';
+      /* If already human-formatted (contains letters), return as-is */
+      if (/[A-Za-z]/.test(ts)) return ts;
+      /* ISO fallback: 2026-06-18T13:09:59 */
+      var m = ts.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2}:\d{2})/);
+      if (m) {
+        return parseInt(m[3], 10) + ' ' + MONTHS[parseInt(m[2], 10) - 1] +
+               ' ' + m[1] + ' ' + m[4];
+      }
+      return ts;
+    }
+
+    function applyUpdate(data) {
+      var waiting = data.quality === 'WAITING';
+      var gramsDisplay = Math.max(0, Math.round(data.grams));
+      gramsEl.textContent = waiting ? '--' : gramsDisplay;
+
+      var qualityLabel = { GOOD: 'SENSOR OK', DEGRADED: 'SENSOR DEGRADED', FAILED: 'SENSOR FAILED' };
+      var cls = qualityClass[data.quality] || 'waiting';
+      badgeEl.className   = 'badge ' + cls;
+      badgeEl.textContent = qualityLabel[data.quality] || data.quality;
+
+      sigmaEl.textContent = waiting ? '' : '±' + parseFloat(data.sigma).toFixed(2) + 'g';
+      tempEl.textContent  = (data.temp_c !== null && data.temp_c !== undefined)
+                              ? parseFloat(data.temp_c).toFixed(1) + '°C  platform temp' : '';
+      tsEl.textContent    = waiting ? '' : formatTs(data.ts);
+
+      if (data.gas_pct !== null && data.gas_pct !== undefined) {
+        pctRowEl.style.display = 'flex';
+        pctBarBg.style.display = 'block';
+        var p = Math.min(100, Math.max(0, data.gas_pct));
+        pctValEl.textContent   = Math.round(p);
+        pctFillEl.style.width  = p + '%';
+        pctFillEl.style.background = data.alert_level === 'RED'   ? '#ef4444' :
+                                     data.alert_level === 'AMBER' ? '#f59e0b' : '#22c55e';
+
+        // Show analytics section
+        document.getElementById('analytics-section').style.display = 'block';
+
+        // Days remaining — hold last known good
+        var dr = data.days_remaining;
+        if (dr !== null && dr !== undefined) _lastDaysRemaining = dr;
+        var daysDisplay = formatDays(dr);
+        document.getElementById('days-remaining-display').textContent =
+            daysDisplay !== null ? daysDisplay : (formatDays(_lastDaysRemaining) !== null ? formatDays(_lastDaysRemaining) : '-');
+        // Burn rate — hold last known good
+        var br = data.burn_rate_g_per_day;
+        if (br !== null && br !== undefined) _lastBurnRate = br;
+        document.getElementById('burn-rate-display').textContent =
+            _lastBurnRate !== null ? Math.round(_lastBurnRate) + 'g/day' : '-';
+        // Predicted empty — hold last known good
+        var pe = data.predicted_empty;
+        if (pe !== null && pe !== undefined) _lastPredictedEmpty = pe;
+        document.getElementById('predicted-empty-display').textContent =
+            _lastPredictedEmpty !== null ? _lastPredictedEmpty : '-';
+      } else {
+        pctRowEl.style.display = 'none';
+        pctBarBg.style.display = 'none';
+
+        document.getElementById('analytics-section').style.display = 'none';
+        document.getElementById('days-remaining-display').textContent = '-';
+        document.getElementById('burn-rate-display').textContent = '-';
+        document.getElementById('predicted-empty-display').textContent = '-';
+      }
+
+      var calEl = document.getElementById('calibrating-label');
+      if (calEl) calEl.style.display = (data.cylinder_state === 'BOOTSTRAP_ANCHOR') ? 'block' : 'none';
+      g_cylinder_state = data.cylinder_state || 'UNINSTALLED';
+      if (g_cylinder_state === 'UNINSTALLED') {
+        _lastBurnRate       = null;
+        _lastDaysRemaining  = null;
+        _lastPredictedEmpty = null;
+        document.getElementById('days-remaining-display').style.color = '#ffffff';
+      }
+      if (setupBtnEl)     setupBtnEl.style.display     = (g_cylinder_state === 'UNINSTALLED') ? 'block' : 'none';
+      if (uninstallBtnEl) uninstallBtnEl.style.display = (g_cylinder_state === 'TRACKING' || g_cylinder_state === 'LOW_GAS' || g_cylinder_state === 'CYLINDER_ABSENT') ? 'block' : 'none';
+
+      var state      = data.cylinder_state;
+      var alert      = data.alert_level;
+      var stateDot   = document.getElementById('state-dot');
+      var stateLabel = document.getElementById('state-label');
+      var banner     = document.getElementById('alert-banner');
+      var daysEl     = document.getElementById('days-remaining-display');
+
+      // Reset banner
+      banner.style.display = 'none';
+      banner.textContent   = '';
+
+      if (state === 'UNINSTALLED') {
+        gramsEl.textContent       = '0';
+        stateDot.style.background = '#666';
+        stateLabel.style.color    = '#666';
+        stateLabel.textContent    = 'Platform empty - place cylinder';
+        var usableEl = document.getElementById('usable-display');
+        if (usableEl) usableEl.style.display = 'none';
+
+      } else if (state === 'CYLINDER_ABSENT') {
+        stateDot.style.background = '#E8A838';
+        stateLabel.style.color    = '#E8A838';
+        stateLabel.textContent    = 'CYLINDER ABSENT — will auto-resume on return';
+        var usableEl = document.getElementById('usable-display');
+        if (usableEl) usableEl.style.display = 'none';
+
+      } else if (state === 'BOOTSTRAP_ANCHOR') {
+        stateDot.style.background = '#f59e0b';
+        stateLabel.style.color    = '#f59e0b';
+        stateLabel.textContent    = 'Calibrating - do not disturb';
+
+      } else if (state === 'TRACKING') {
+        if (alert === 'AMBER') {
+          stateDot.style.background = '#f59e0b';
+          stateLabel.style.color    = '#f59e0b';
+          stateLabel.textContent    = 'Low gas';
+          banner.style.display      = 'block';
+          banner.style.background   = 'rgba(245,158,11,0.15)';
+          banner.style.border       = '1px solid rgba(245,158,11,0.4)';
+          banner.style.color        = '#f59e0b';
+          banner.textContent        = 'Gas running low - consider booking a refill';
+          if (daysEl) daysEl.style.color = '#f59e0b';
+          var usableEl = document.getElementById('usable-display');
+          if (usableEl) usableEl.style.display = 'none';
+        } else if (alert === 'RED') {
+          stateDot.style.background = '#ef4444';
+          stateLabel.style.color    = '#ef4444';
+          stateLabel.textContent    = 'Critical';
+          banner.style.display      = 'block';
+          banner.style.background   = 'rgba(239,68,68,0.15)';
+          banner.style.border       = '1px solid rgba(239,68,68,0.4)';
+          banner.style.color        = '#ef4444';
+          banner.textContent        = 'Gas critical - cylinder may stop at any moment. Book now.';
+          if (daysEl) daysEl.style.color = '#ef4444';
+          var usableEl = document.getElementById('usable-display');
+          var totalGEl = document.getElementById('usable-total-g');
+          var usableGEl = document.getElementById('usable-usable-g');
+          if (usableEl) {
+            usableEl.style.display = 'block';
+            totalGEl.textContent  = (data.gas_g   !== null &&
+                                      data.gas_g   !== undefined)
+                                      ? Math.round(data.gas_g)   + 'g' : '--';
+            usableGEl.textContent = (data.usable_g !== null &&
+                                      data.usable_g !== undefined)
+                                      ? Math.round(data.usable_g) + 'g' : '--';
+          }
+        } else {
+          stateDot.style.background = '#22c55e';
+          stateLabel.style.color    = '#22c55e';
+          stateLabel.textContent    = 'Tracking';
+          if (daysEl) daysEl.style.color = '#ffffff';
+          var usableEl = document.getElementById('usable-display');
+          if (usableEl) usableEl.style.display = 'none';
+        }
+
+      } else if (state === 'LOW_GAS') {
+        if (alert === 'RED') {
+          stateDot.style.background = '#ef4444';
+          stateLabel.style.color    = '#ef4444';
+          stateLabel.textContent    = 'Critical';
+          banner.style.display      = 'block';
+          banner.style.background   = 'rgba(239,68,68,0.15)';
+          banner.style.border       = '1px solid rgba(239,68,68,0.4)';
+          banner.style.color        = '#ef4444';
+          banner.textContent        = 'Gas critical - cylinder may stop at any moment. Book now.';
+          if (daysEl) daysEl.style.color = '#ef4444';
+          var usableEl = document.getElementById('usable-display');
+          var totalGEl = document.getElementById('usable-total-g');
+          var usableGEl = document.getElementById('usable-usable-g');
+          if (usableEl) {
+            usableEl.style.display = 'block';
+            totalGEl.textContent  = (data.gas_g   !== null &&
+                                      data.gas_g   !== undefined)
+                                      ? Math.round(data.gas_g)   + 'g' : '--';
+            usableGEl.textContent = (data.usable_g !== null &&
+                                      data.usable_g !== undefined)
+                                      ? Math.round(data.usable_g) + 'g' : '--';
+          }
+        } else {
+          stateDot.style.background = '#f59e0b';
+          stateLabel.style.color    = '#f59e0b';
+          stateLabel.textContent    = 'Low gas';
+          banner.style.display      = 'block';
+          banner.style.background   = 'rgba(245,158,11,0.15)';
+          banner.style.border       = '1px solid rgba(245,158,11,0.4)';
+          banner.style.color        = '#f59e0b';
+          banner.textContent        = 'Gas running low - consider booking a refill';
+          if (daysEl) daysEl.style.color = '#f59e0b';
+          var usableEl = document.getElementById('usable-display');
+          if (usableEl) usableEl.style.display = 'none';
+        }
+      }
+
+      // If days shows '-' (no value yet), always gray regardless of alert colour
+      if (daysEl && daysEl.textContent === '-') {
+        daysEl.style.color = '#888';
+      }
+    }
+
+    function onSetupClick() {
+      socket.emit('setup', { mode: 'FRESH', brand: null });
+      if (setupBtnEl) setupBtnEl.style.display = 'none';
+      console.log('[UI] setup emitted: FRESH');
+    }
+
+    function onUninstallClick() {
+      socket.emit('uninstall_cylinder', {});
+      if (uninstallBtnEl) uninstallBtnEl.style.display = 'none';
+      console.log('[UI] uninstall_cylinder emitted');
+    }
+
+    var socket = io();
+
+    socket.on('weight_update', applyUpdate);
+
+    socket.on('node_status', function(data) {
+      dotEl.className = 'node-dot' + (data.connected ? ' connected' : '');
+      if (data.connected) {
+        nameEl.textContent   = data.name;
+        macEl.textContent    = data.mac;
+        sepEl.style.display  = 'inline';
+        cardEl.classList.remove('node-off');
+      } else {
+        nameEl.innerHTML     = 'scanning&hellip;';
+        macEl.textContent    = '';
+        sepEl.style.display  = 'none';
+        cardEl.classList.add('node-off');
+      }
+    });
+
+</script>
+</body>
+</html>

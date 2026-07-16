@@ -1,0 +1,6 @@
+name: test-weight-scale
+description: "HX711 weight scale test"
+ports: [7001]
+bricks:
+  - arduino:web_ui: {}
+network_mode: "host"

@@ -1,0 +1,33 @@
+# App Lab runtime files
+.cache/
+dbus.sock
+launcher.sock
+
+# Trusted devices file (generated at runtime)
+trusted_devices.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp
+*.swo# Runtime state files
+bt_connected.txt
+bt_result.txt
+bt_cmd.txt
+wifi_result.txt
+wifi_cmd.txt
+wifi_last.txt
+# User data (regenerated at runtime)
+history.json
+schedule.json
+playlists.json
+watchlater.json
+display_mode.json

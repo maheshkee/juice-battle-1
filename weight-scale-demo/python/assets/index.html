@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Weight Monitor</title>
+</head>
+<body>
+  <h1>Weight:</h1>
+  <h2 id="weight">0</h2>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    socket.on("weight_update", (data) => {
+      document.getElementById("weight").innerText = data.weight + " kg";
+    });
+  </script>
+</body>
+</html>
