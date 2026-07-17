@@ -1,5 +1,0 @@
-# 😀 BLE Scanner
-
-
-
-

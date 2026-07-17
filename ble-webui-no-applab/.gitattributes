@@ -1,6 +1,0 @@
-# Force LF line endings for shell scripts always
-*.sh text eol=lf
-*.py text eol=lf
-*.ino text eol=lf
-*.md text eol=lf
-* text=auto

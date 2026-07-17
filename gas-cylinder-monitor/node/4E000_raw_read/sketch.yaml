@@ -1,6 +1,0 @@
-profiles:
-  default:
-    fqbn: esp32:esp32:esp32c3
-    platforms:
-      - platform: esp32:esp32 (3.0.7)
-default_profile: default

@@ -1,5 +1,0 @@
-# 😀 weight-scale-demo
-
-
-
-

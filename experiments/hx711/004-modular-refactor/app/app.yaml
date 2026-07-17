@@ -1,4 +1,0 @@
-name: hx711-003-noise
-description: Experiment 002 — HX711 noise floor characterisation at 10Hz
-version: "1.0"
-network_mode: "host"

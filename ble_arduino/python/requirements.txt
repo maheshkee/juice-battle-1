@@ -1,3 +1,0 @@
-/app/wheels/dbus_python-1.4.0-cp313-cp313-linux_aarch64.whl
-/app/wheels/pycairo-1.29.0-cp313-cp313-linux_aarch64.whl
-/app/wheels/pygobject-3.56.2-cp313-cp313-linux_aarch64.whl

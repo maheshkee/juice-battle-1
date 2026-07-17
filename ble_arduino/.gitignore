@@ -1,3 +1,0 @@
-# ignore app cache folder
-.cache/
-dbus.sock

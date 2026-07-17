@@ -1,6 +1,0 @@
-name: weight-scale-demo
-description: ""
-ports: []
-bricks:
-- arduino:web_ui: {}
-icon: 😀

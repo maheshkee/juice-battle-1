@@ -1,6 +1,0 @@
-name: pir_ble_501
-description: Receives PIR motion data from an ESP32 C3 over BLE and displays it on a live web dashboard. The UNO Q onboard LED3 mirrors the motion state in real
-ports: []
-bricks:
-- arduino:web_ui: {}
-icon: 😀

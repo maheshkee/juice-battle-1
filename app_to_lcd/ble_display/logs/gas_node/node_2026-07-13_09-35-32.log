@@ -1,9 +1,0 @@
-#0001 t=2.1 boot=4 [BOOT] event=START fw=1.0 reset=POWERON
-#0002 t=3.7 boot=4 [BOOT] event=PHASE_COMPLETE phase=SETTLE result=OK s=3.5
-#0003 t=14.4 boot=4 [BOOT] event=PHASE_COMPLETE phase=TARE_WAIT result=CMD_SKIP_TARE
-#0004 t=14.6 boot=4 [BOOT] event=PHASE_COMPLETE phase=TARE result=OK mean=-64464.8 spread=0.0 s=0.0
-#0005 t=34.8 boot=4 [BOOT] event=PHASE_COMPLETE phase=NOISE result=WARN s=20.0
-#0006 t=35.3 boot=4 [BOOT] event=PHASE_COMPLETE phase=CAL result=OK cal_factor=36.2231 s=0.0
-#0007 t=35.5 boot=4 [BOOT] event=BOOT_COMPLETE total_s=35.5 cal=36.2231 sigma=368.12 tare=-64464.8
-#0008 t=35.8 boot=4 [RUN] event=QUALITY_CHANGE from=NONE to=GOOD grams=0.0 sigma=368.12 diagnosis=ok
-#0009 t=36.2 boot=4 [HB] event=HEARTBEAT grams=0.0 quality=GOOD sigma=368.12 uptime=36.2 heap_max_block=114676
