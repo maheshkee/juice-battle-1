@@ -372,10 +372,10 @@ void cal_validate(const CalResult& cal) {
 }
 
 float cal_to_grams(int32_t raw, const CalResult& cal) {
-    float u  = (float)(raw - cal.raw_zero);
-    float u1 = (float)(cal.raw_500  - cal.raw_zero);
-    float u2 = (float)(cal.raw_1000 - cal.raw_zero);
-    float u3 = (float)(cal.raw_5000 - cal.raw_zero);
+    float u  = (float)(cal.raw_zero - raw);
+    float u1 = (float)(cal.raw_zero - cal.raw_500);
+    float u2 = (float)(cal.raw_zero - cal.raw_1000);
+    float u3 = (float)(cal.raw_zero - cal.raw_5000);
 
     if (u <= 0.0f) return 0.0f;
     if (u <= u1)   return (u / u1) * 500.0f;
