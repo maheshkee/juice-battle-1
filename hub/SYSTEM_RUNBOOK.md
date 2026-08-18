@@ -128,6 +128,15 @@ grep ROUND_SIZE ~/ArduinoApps/juice_battle/hub/config.py
 sudo systemctl restart juice-battle
 ```
 
+### Hotspot mode (standalone — no router needed)
+Use when operating without a local router — AQ3 creates its own WiFi network.
+```bash
+sudo nmcli con up "JuiceBattle-AP"     # activate hotspot
+sudo nmcli con down "JuiceBattle-AP"   # deactivate, return to normal WiFi
+```
+Password: see AQ3 NetworkManager connection profile
+(`nmcli con show "JuiceBattle-AP"` on the board — not stored in git)
+
 ---
 
 ## 4. Subsystem Controls
@@ -185,6 +194,12 @@ curl -s -X POST http://localhost:5000/reset/1 | python3 -m json.tool
 curl -s -X POST http://localhost:5000/force_round_end | python3 -m json.tool
 curl -s -X POST http://localhost:5000/set_round \
   -H "Content-Type: application/json" -d '{"round":1}'
+
+# Score adjustment and game control (live UI-wired routes — dashboard.py:2433-2436)
+curl -s -X POST http://localhost:5000/adjust/0/1    # jar 0 +1 glass
+curl -s -X POST http://localhost:5000/adjust/0/-1   # jar 0 -1 glass
+curl -s -X POST http://localhost:5000/adjust/1/2    # jar 1 +2 glasses
+curl -s -X POST http://localhost:5000/game_over     # trigger game over
 ```
 
 ### Visual Subsystem
@@ -318,6 +333,17 @@ Then rescan. If persists, check udev rule:
 DISPLAY=:0 xdotool key F5
 pgrep chromium || bash ~/juice_battle_kiosk.sh &
 ```
+
+### Node sigma elevated (noisy readings)
+**Symptom:** Weight readings unstable; pour detection triggering on vibration or no-pour events
+**Reference values (jars present at tare):**
+| Node | Good sigma | Acceptable |
+|---|---|---|
+| JB-0 | ~3.15 g | up to ~6 g |
+| JB-1 | ~3.92 g | up to ~6 g |
+
+System adapts `slope_threshold` automatically (`fmaxf(15.0f, 5.0f × sigma_g)` in firmware).
+If sigma > 8 g: check load cell wiring, platform stability, and that jars were placed before node power-on.
 
 ---
 
