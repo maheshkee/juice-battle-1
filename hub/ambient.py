@@ -356,24 +356,32 @@ class AmbientPlayer:
             self._announcement_playing = False
 
     def play_round_begin(self, round_number: int) -> None:
-        """Play round begin announcement. Blocks until audio finishes."""
-        if 1 <= round_number <= 10:
-            name = f'ann_round_begin_{round_number}'
-        else:
-            name = 'ann_round_begin_generic'
-        path = os.path.join(SOUNDS_DIR, f"{name}.mp3")
-        if not os.path.exists(path):
-            log.warning("AmbientPlayer: file missing: %s", path)
+        """Play fixed round-begin sequence: voice line, then ding. Blocks until both finish."""
+        voice_path = os.path.join(SOUNDS_DIR, "ann_round_begin.mp3")
+        bell_path = os.path.join(SOUNDS_DIR, "round_begin_bell.mp3")
+        if not os.path.exists(voice_path):
+            log.warning("AmbientPlayer: file missing: %s", voice_path)
+            return
+        if not os.path.exists(bell_path):
+            log.warning("AmbientPlayer: file missing: %s", bell_path)
             return
         try:
-            sound = pygame.mixer.Sound(path)
-            duration = sound.get_length()
             self._announcement_playing = True
             if self._music_ok:
                 pygame.mixer.music.set_volume(DUCKED_VOLUME)
-            log.info("AmbientPlayer: playing '%s' (%.1fs)", name, duration)
-            sound.play()
-            time.sleep(duration + 0.3)
+
+            voice = pygame.mixer.Sound(voice_path)
+            voice_duration = voice.get_length()
+            log.info("AmbientPlayer: playing 'ann_round_begin' (%.1fs)", voice_duration)
+            voice.play()
+            time.sleep(voice_duration + 0.3)
+
+            bell = pygame.mixer.Sound(bell_path)
+            bell_duration = bell.get_length()
+            log.info("AmbientPlayer: playing 'round_begin_bell' (%.1fs)", bell_duration)
+            bell.play()
+            time.sleep(bell_duration + 0.3)
+
             if self._music_ok:
                 pygame.mixer.music.set_volume(MUSIC_VOLUME)
             self._announcement_playing = False
