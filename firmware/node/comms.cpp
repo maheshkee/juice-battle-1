@@ -24,6 +24,10 @@ class ServerCallbacks : public NimBLEServerCallbacks {
             return;
         }
         Serial.printf("[COMMS] AQ3 connected: %s\n", peer.c_str());
+
+        // WHY: 5s supervision timeout — if AQ3 vanishes without clean disconnect,
+        // NimBLE detects ghost connection within 5s and restarts advertising.
+        pServer->updateConnParams(connInfo.getConnHandle(), 16, 32, 0, 500);
     }
 
     void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
