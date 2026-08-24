@@ -373,7 +373,22 @@ html, body {
 @keyframes area-zoom  { 0%{transform:scale(1)} 30%{transform:scale(1.22)} 100%{transform:scale(1)} }
 @keyframes drainBar   { from{width:100%} to{width:0%} }
 
-/* TICKER PLACEHOLDER — added in v5 */
+/* TICKER */
+#ticker-section {
+    background: #111810; border-radius: 8px; flex-shrink: 0;
+    overflow: hidden; display: flex; align-items: center;
+}
+#ticker-track {
+    display: flex; width: max-content;
+    animation: ticker-scroll 40s linear infinite;
+}
+.ticker-item {
+    white-space: nowrap; padding: 12px 28px;
+    font-size: 0.9vw; font-weight: 700; letter-spacing: 0.15em;
+    color: #d4921a; text-transform: uppercase;
+}
+.ticker-sep { color: #6a5010; padding: 0 4px; }
+@keyframes ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 </style>
 </head>
 <body>
@@ -482,7 +497,7 @@ html, body {
         <div class="logo-flip-container" id="logo-flip-container">
             <div class="logo-face logo-front">
                 <img src="/static/dharanova_tm.jpg"
-                     style="max-height:80%;max-width:85%;object-fit:contain;"
+                     style="width:100%;height:100%;object-fit:cover;"
                      onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
                 <div style="display:none;text-align:center;">
                     <div style="font-size:2.5vw;font-weight:900;letter-spacing:5px;color:#c8a030;font-family:'Impact','Arial Black',sans-serif;">DHARANOVA</div>
@@ -491,12 +506,22 @@ html, body {
             </div>
             <div class="logo-face logo-back">
                 <img src="/static/iotsummit26.jpg"
-                     style="max-height:80%;max-width:85%;object-fit:contain;"
+                     style="width:100%;height:100%;object-fit:cover;"
                      onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
                 <div style="display:none;text-align:center;">
                     <div style="font-size:2.5vw;font-weight:900;letter-spacing:3px;color:#5ab8ff;font-family:'Impact','Arial Black',sans-serif;">IoT SUMMIT<br>2026</div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- SECTION 3: TICKER -->
+    <div id="ticker-section">
+        <div id="ticker-track">
+            <span class="ticker-item">Dharanova builds connected hardware — intelligence built into everyday objects</span>
+            <span class="ticker-sep">&nbsp;&nbsp;&nbsp;&middot;&nbsp;&nbsp;&nbsp;</span>
+            <span class="ticker-item">Dharanova builds connected hardware — intelligence built into everyday objects</span>
+            <span class="ticker-sep">&nbsp;&nbsp;&nbsp;&middot;&nbsp;&nbsp;&nbsp;</span>
         </div>
     </div>
 
