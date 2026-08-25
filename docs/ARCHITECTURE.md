@@ -1,121 +1,115 @@
 # ARCHITECTURE — Juice Battle
-# Status: STUB — to be completed in Phase 0
+# Status: current as of 2026-08-20. Replaces the Phase 0 WiFi/MQTT stub
+# (that design was abandoned before S007 — never built).
 
----
-
-## System overview (to be drawn in Phase 0)
+## System overview
 
 ```
-CZL601 Load Cell (Jar A)          CZL601 Load Cell (Jar B)
-        │                                   │
-   ADS1232 ADC                         ADS1232 ADC
-        │                                   │
- ESP32-C3 Node A                    ESP32-C3 Node B
- (firmware/node/)                   (firmware/node/)
- config.h: NODE_ID=0                config.h: NODE_ID=1
-        │                                   │
-        └──────── WiFi (MQTT) ──────────────┘
+CZL601 (jar 0, Lemon)          CZL601 (jar 1, Melon)
+        │                                │
+   ADS1232 ADC                      ADS1232 ADC
+        │                                │
+ ESP32-C3 — JB-0                  ESP32-C3 — JB-1
+ (firmware/node/)                 (firmware/node/)
+ NODE_ID resolved at boot         NODE_ID resolved at boot
+ from BT MAC (NODE_MAC_TABLE      from BT MAC (NODE_MAC_TABLE
+ in juicebattle.ino — one         in juicebattle.ino)
+ binary works on either node)
+        │        BLE GATT notify         │
+        └──────────────┬──────────────────┘
                         │
-              Arduino UNO Q (hub)
-              /home/arduino/arduino_apps/juice_battle/
+              Arduino UNO Q — hub, hostname AQ3
+              ~/ArduinoApps/juice_battle/
                         │
-             Python MPU side (hub/)
-             ├── main.py (orchestrator)
-             ├── receiver.py (MQTT listener)
-             ├── game_engine.py (scoring)
-             ├── persona_engine.py (narrative)
-             └── dashboard.py (Socket.IO)
+         hub/ble_scanner.py  (GATT central, host Linux,
+         systemd: juice-ble-scanner — kept separate from
+         the main app so a BLE hiccup can't kill the game)
+                        │ TCP :7001, NDJSON
+         hub/transport.py  (TCP client, inside juice-battle)
                         │
-             WebUI Brick (port 7000)
+         hub/main.py  (orchestrator — zero logic, wires modules)
+              ┌─────────┼─────────┐
+        game.py     storage.py   ambient.py
+     (all scoring   (SQLite:     (pygame mixer:
+      + rounds)      jb.db)       music + sfx)
+              └─────────┬─────────┘
+         hub/dashboard.py (Flask + Flask-SocketIO :5000)
                         │
-              Browser → index.html
-              (live dashboard)
-                        │
-             MCU side (sketch.ino)
-             (LED indicators only)
-```
-
----
-
-## Communication protocols (to be confirmed in Phase 0)
-
-| Link                      | Protocol   | Status  |
-|---------------------------|------------|---------|
-| Load cell → ADS1232       | Analog     | DERIVED |
-| ADS1232 → ESP32-C3        | Bit-bang SPI-like | TBD Phase 1 |
-| ESP32-C3 → UNO Q          | WiFi + MQTT (or UDP) | TBD Phase 0 |
-| Python → Browser          | Socket.IO  | DERIVED |
-| Python ↔ MCU              | Bridge RPC | DERIVED |
-
----
-
-## Data flow (to be completed in Phase 0)
-
-1. ADS1232 samples load cell at 10 SPS or 80 SPS
-2. ESP32-C3 reads raw 24-bit value via bit-bang
-3. `weight_engine` applies rolling filter and detects pour events
-4. `comms` sends JSON payload to MQTT broker on UNO Q
-5. `receiver.py` receives and parses payload
-6. `game_engine.py` converts pour → ml → score update → game event
-7. `persona_engine.py` translates game event → persona emotion + narrative
-8. `dashboard.py` pushes update to browser via Socket.IO
-9. Browser renders updated personas, scores, and event feed
-
----
-
-## MQTT payload schema (to be confirmed in Phase 0)
-
-```json
-{
-  "node_id": 0,
-  "weight_g": 842.5,
-  "is_pour": true,
-  "pour_g": 187.3,
-  "quality": "GOOD",
-  "timestamp": "2026-07-10T14:32:00"
-}
+         Chromium kiosk → /v4 (splash.html redirects here)
+         + /ops (phone control panel) + /state (JSON API)
 ```
 
 ---
 
-## Game event schema (to be confirmed in Phase 0)
+## Communication protocols
 
-```json
-{
-  "event": "pour_detected",
-  "node_id": 0,
-  "persona": "mango_warrior",
-  "ml_poured": 180,
-  "score_delta": 180,
-  "new_score": 1240,
-  "rival_score": 980,
-  "timestamp": "2026-07-10T14:32:01"
-}
-```
+| Link | Protocol | Verified |
+|---|---|---|
+| Load cell → ADS1232 | Analog differential | S003 |
+| ADS1232 → ESP32-C3 | Bit-bang, SCLK/DOUT, `delayMicroseconds(2)` per edge | S003 |
+| ESP32-C3 → AQ3 | BLE GATT notify (NimBLE) | S007 |
+| `ble_scanner.py` → `transport.py` | TCP `:7001`, NDJSON (one JSON object per line) | S007 |
+| hub → browser | Flask + Flask-SocketIO v4.6.1 (served locally, no CDN) | S010 |
+
+There is **no MQTT and no WiFi-based sensor link** — the ESP32-C3 nodes talk to
+the hub exclusively over BLE. The UNO Q's own MCU (Zephyr) is not in this data
+path at all; both sensor nodes are separate ESP32-C3 boards external to the
+UNO Q.
 
 ---
 
-## SQLite schema (hub/data/game.db) — to be confirmed in Phase 0
+## Data flow
 
-```sql
--- All weights in grams. All volumes in ml.
+1. Each node reads its load cell via `ads1232_read_raw()`, converts through
+   `cal_to_grams()` (calibrated per node, NVS-persisted), and runs a 4-state
+   stability machine (`STAB_WAITING` → `STAB_POUR_IN_PROGRESS` → `STAB_STABLE_SETTLED`)
+   to decide when a reading represents a genuine settled pour vs. noise/motion.
+2. The node streams `HEARTBEAT` / `POUR_ACTIVE` / `POUR_SETTLED` / `DIAG` /
+   `CAL_COMPLETE` / `SIGMA_ALERT` messages over BLE GATT notify — a fixed
+   13-byte payload (see `docs/INTERFACE_CONTRACTS.md`). **The node never
+   decides what counts as a scored pour** — it only reports raw deltas.
+3. `ble_scanner.py` (GATT central, its own systemd service) decodes each
+   notification and republishes it as one NDJSON line on a local TCP server.
+4. `transport.py` (TCP client living inside the main `juice-battle` process)
+   parses NDJSON and calls into `game.py`.
+5. `game.py` is the only place scoring decisions are made: noise-floor
+   filtering (3×σ), disturbance/bounce suppression on large negative deltas,
+   an implausibility ceiling that rejects jar-lift events, split-pour
+   accumulation across multiple settle events, glass counting, and round-end
+   triggering.
+6. `storage.py` persists every scored event, session, and round result to
+   SQLite (`hub/data/jb.db`).
+7. `dashboard.py` pushes state to the kiosk and ops panel via Socket.IO
+   (500ms loop) and serves `/state` as JSON.
 
-CREATE TABLE pour_events (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp    TEXT NOT NULL,        -- ISO 8601
-    node_id      INTEGER NOT NULL,     -- 0 or 1
-    weight_g     REAL NOT NULL,        -- weight at pour start
-    pour_g       REAL NOT NULL,        -- delta weight = juice removed
-    pour_ml      REAL NOT NULL,        -- pour_g / juice_density
-    quality      TEXT NOT NULL         -- GOOD / DEGRADED / FAILED
-);
+---
 
-CREATE TABLE game_sessions (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    started_at    TEXT NOT NULL,
-    ended_at      TEXT,
-    score_node0   REAL NOT NULL DEFAULT 0,
-    score_node1   REAL NOT NULL DEFAULT 0,
-    winner        INTEGER               -- 0 or 1, NULL if ongoing
-);
-```
+## Architecture laws — non-negotiable
+
+- **Hub = brain.** Owns all logic, state, scoring, history.
+- **Node = sensor.** Reports `delta_g` + `sigma_g` only. No decisions, no
+  business logic, no knowledge of glass volume or score.
+- **`main.py` / `juicebattle.ino` = orchestrator.** Zero logic. Wire modules
+  only — if there's a conditional, calculation, or threshold, it's in the
+  wrong file.
+
+---
+
+## Actual DB schema (`hub/data/jb.db`)
+
+Four tables — `sessions`, `pour_events`, `node_health`, `error_log` — plus
+`round_results`, `kv_store`, `overflow_events`, `node_resets` added since.
+See `hub/storage.py` for the authoritative `CREATE TABLE` statements; this
+doc does not duplicate the schema to avoid drifting out of sync with it again.
+
+---
+
+## Open architecture question (2026-08-20, unresolved)
+
+`ads1232.cpp` hardcodes a single ADC-negation compensation
+(`return -data`) shared identically by both nodes, with no per-node
+branching, while `cal.cpp`'s polarity fix (2026-08-13) is a global sign
+flip tuned for JB-1's replacement chip. If JB-0 and JB-1 don't share the
+same physical wiring polarity, this shared-code assumption is a latent
+correctness risk. See `docs/RESEARCH.md` and `CLAUDE.md` for the current
+state of this investigation — not closed out as of this writing.

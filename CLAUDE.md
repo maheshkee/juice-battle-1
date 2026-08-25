@@ -1,32 +1,54 @@
 # CLAUDE.md — Juice Battle
-# Current position updated: S010 close / 2026-07-21
+# Current position updated: Day 2 live product test / 2026-08-20
 
 ## Current position
-Phase 1 — ESP32-C3 Firmware. Complete and hardware verified (S006/S007).
-Phase 2 — Hub (AQ3 Python). S010 complete and hardware verified. S011 next.
+Firmware and hub are both built and hardware-verified. This is no longer active
+feature development — the project is in live product testing at AQ3, working
+toward stall deployment. Both nodes (JB-0, JB-1) connect, score, and have each
+completed a verified end-to-end pour test with correct glass counts (2026-08-20).
 
-## What was just completed (S010)
-- hub/dashboard.py: Flask + Flask-SocketIO threading mode, 500ms push loop
-- hub/main.py: orchestrator, wires transport → game + storage, zero logic
-- hub/juice-battle.service: systemd unit, boot-enabled, PYTHONUNBUFFERED=1
-- hub/setup.sh: socket.io.js download added, both services boot-enabled
-- hub/static/socket.io.js: Socket.IO v4.6.1 served locally (no CDN)
-- config.py: DASHBOARD_PORT=5000, DB_PATH added
-- Gate: PASSED — 4-pour experiment, DB events 18–26 audited, 5 glasses +13g exact match
+## What was just completed (2026-08-20)
+- Audio: root-caused a "mixer not initialized" + underrun-storm failure to a
+  stray PulseAudio override fighting raw `hw:` ALSA access. Fixed by routing
+  `.asoundrc` through `dmix`; PulseAudio override retired (backed up, not
+  deleted). Confirmed clean under sustained load + audible playback.
+- Full end-to-end pour test verified for BOTH nodes: real positive deltas,
+  correct split-pour accumulation, correct glass counting, correct round-end/
+  tie logic, correct anomaly-ceiling rejection of jar-lift events. DB and
+  `/state` reconciled exactly against the log.
+- Docs cleanup pass started: `hub/README.md` rewritten, `hub/SYSTEM_RUNBOOK.md`
+  spot-fixed (stale `/v3` kiosk URL → `/v4`, stale JB-1 MAC corrected), root
+  `HANDOFF_FINAL.md` removed (superseded, S014-era).
 
-## What is next (S011)
-- Second node (JB-1): flash firmware, assign NODE_ID=1
-- Two-jar game: concurrent-pour edge cases, per-node scoring
-- Accumulator restore from DB on startup (see L-019)
-- Replay-from-seq on transport reconnect (see L-020)
+## Open, unresolved as of today — do not assume settled
+- **Calibration polarity investigation (Chunks 21/24b/26, 2026-08-20):** earlier
+  the same day, JB-0 produced an inverted (negative) pour reading that never
+  scored. Root-caused as far as source analysis allows: `ads1232.cpp`
+  hardcodes a blanket ADC negation (`return -data`, comment: "green/white
+  wires physically swapped") shared identically by both nodes with no
+  per-node branching, while `cal.cpp`'s `cal_to_grams()` polarity fix
+  (2026-08-13, tuned for JB-1's replacement chip) is a *global* sign flip,
+  not a self-correcting one. If that fix reached JB-0 without a matching
+  recalibration, JB-0's math and its S003-era NVS calibration would now
+  disagree on sign — fully explains the symptom without needing a real wire
+  fault. **Not confirmed** which firmware/NVS state each node is actually
+  running — that requires physical/serial verification, not git archaeology.
+  The later same-day test (Chunk 27) worked correctly on both nodes, so this
+  did not block, but the root cause is not closed out.
+- Root README.md's "test extraction repo, not the working repo" framing is
+  contradicted by current git state (`origin` is 6 commits ahead of
+  `project13/juice-battle-main`, 0 behind) — needs a real decision, not just
+  a doc fix, on which repo is authoritative before relying on that framing.
 
 ## Locked rules (non-negotiable)
 - Never hardcode thresholds that depend on sigma_live
-- Orchestrator law: juicebattle.ino owns zero logic
-- NODE_ID lives only in config.h
+- Orchestrator law: juicebattle.ino and hub/main.py own zero logic
 - Hub = brain (accumulates, decides, scores). Node = sensor (detects, reports).
-- Every C++ module returns {value, quality, diagnosis}
+- Every C++ module returns {value_g, sigma_g, quality, diagnosis}
 - delayMicroseconds(2) on every GPIO edge
 
----
-
+## Corrected from earlier versions of this file
+- ~~"NODE_ID lives only in config.h"~~ — no longer true. `NODE_ID` is resolved
+  at boot from the BT MAC via a `NODE_MAC_TABLE` in `juicebattle.ino` itself
+  (`resolve_node_id()`), specifically so one identical binary works on either
+  node. Don't look for it in config.h.

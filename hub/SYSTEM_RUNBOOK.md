@@ -1,5 +1,5 @@
 # Juice Battle — System Operations Runbook
-_Last updated: 2026-08-08 | Hardware: Arduino UNO Q (AQ3)_
+_Last updated: 2026-08-20 | Hardware: Arduino UNO Q (AQ3)_
 
 ## 1. System Inventory
 
@@ -8,7 +8,7 @@ _Last updated: 2026-08-08 | Hardware: Arduino UNO Q (AQ3)_
 |---|---|
 | Hub | Arduino UNO Q — hostname AQ3, IP 192.168.88.25 |
 | Node 0 | JB-0 "Lemon Warrior" — ESP32-C3, MAC 70:AF:09:32:F3:C2 |
-| Node 1 | JB-1 "Melon Crusher" — ESP32-C3, MAC 10:00:3B:CD:63:32 |
+| Node 1 | JB-1 "Melon Crusher" — ESP32-C3, MAC AC:27:6E:53:DC:4A (chip replaced 2026-08-13; old chip was 10:00:3B:CD:63:32) |
 | Display | Arzopa 28" via wireless HDMI — Chromium kiosk |
 | Audio | USB audio adapter (card name: Device) + speaker |
 | Pendrive | USB pendrive — exFAT, auto-mounts to /media/arduino/pendrive |
@@ -32,7 +32,7 @@ _Last updated: 2026-08-08 | Hardware: Arduino UNO Q (AQ3)_
 ### Network
 | What | Address |
 |---|---|
-| Dashboard (kiosk) | http://192.168.88.25:5000/v3 |
+| Dashboard (kiosk) | http://192.168.88.25:5000/v4 |
 | Ops panel (phone) | http://192.168.88.25:5000/ops |
 | State API | http://192.168.88.25:5000/state |
 
@@ -118,7 +118,8 @@ sudo journalctl -u juice-battle -n 10 --no-pager | grep -iE "ambient|track|playi
 Expected: `now playing track 1/2: varanasi.mp3` (or pendrive tracks if plugged in)
 
 ### Step 7 — Verify kiosk display
-Open http://192.168.88.25:5000/v3 on phone to confirm dashboard is live.
+Open http://192.168.88.25:5000/v4 on phone to confirm dashboard is live.
+(Kiosk itself boots to `static/splash.html`, which redirects to `/v4` automatically.)
 If kiosk screen shows error page: `DISPLAY=:0 xdotool key F5`
 
 ### Step 8 — Set ROUND_SIZE before going live
