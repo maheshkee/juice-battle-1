@@ -67,6 +67,7 @@ def main():
     transport.on_event(game_inst.on_pour_active,       msg_filter='POUR_ACTIVE')
     transport.on_event(game_inst.on_node_disconnected, msg_filter='NODE_DISCONNECTED')
     transport.on_event(game_inst.on_node_connected,    msg_filter='NODE_CONNECTED')
+    transport.on_event(game_inst.on_diag,              msg_filter='DIAG')
 
     # start in dependency order
     game_inst.start(node_count=2)   # dual node - S013

@@ -2497,6 +2497,8 @@ class Dashboard:
             'round_wins':      self._round_wins,
             'round_number':    state.get('round_number', 1),
             'round_size':      config.ROUND_SIZE,
+            'live_fill_g':          state.get('live_fill_g', {0: None, 1: None}),
+            'live_fill_updated_ms': state.get('live_fill_updated_ms', {0: None, 1: None}),
         }
 
     def _reset_node(self, node_id: int):

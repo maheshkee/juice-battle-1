@@ -90,6 +90,9 @@ class Game:
         self._bounce_until     = {0: 0.0,  1: 0.0}  # wall time: suppress after disturbance
         self._settling_until   = {0: 0.0,  1: 0.0}  # wall time: suppress after anomaly
         self._node_status      = {0: 'connected', 1: 'connected'}  # BLE connectivity
+        self._live_fill_g          = {0: None, 1: None}  # best current absolute-weight estimate
+        self._live_fill_updated_ms = {0: None, 1: None}  # wall-clock ms of last update
+        self._live_fill_baseline_g = {0: None, 1: None}  # internal: weight at this pour episode's start
         self._game_over            = False
         self._winner               = None   # node_id of winner, or None for draw
         self._reset_since_gameover = set()  # tracks which nodes reset after game_over
@@ -117,6 +120,9 @@ class Game:
             self._last_settled_t   = {0: None, 1: None}
             self._bounce_until     = {0: 0.0,  1: 0.0}
             self._settling_until   = {0: 0.0,  1: 0.0}
+            self._live_fill_g          = {0: None, 1: None}
+            self._live_fill_updated_ms = {0: None, 1: None}
+            self._live_fill_baseline_g = {0: None, 1: None}
             _today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             _n = int(self._storage.get_kv(f"slug_counter_{_today}", "0")) + 1
             slug = f"{_today}-{_n:03d}"
@@ -296,6 +302,7 @@ class Game:
             self._node_status[node_id] = 'connected'
             self._partial_g[node_id]       = 0.0
             self._partial_open_ts[node_id] = None
+            self._live_fill_baseline_g[node_id] = None
         log.info("NODE_CONNECTED: node=%d partial_g reset", node_id)
 
     def on_pour_settled(self, event: dict) -> None:
@@ -323,6 +330,12 @@ class Game:
             if not self._running:
                 # Event arrived before start() or after stop() - discard silently
                 return
+
+            # --- Live fill: firmware resets its own pour-episode baseline on
+            # every STAB_STABLE_SETTLED, scored or not - clear ours to match,
+            # regardless of whether this settle passes the gates below. ---
+            self._live_fill_baseline_g[node_id] = None
+
             if self._game_over:
                 return
             if not self._round_in_progress:
@@ -456,6 +469,27 @@ class Game:
                     self._partial_open_ts[node_id] = None
             self._last_settled_t[node_id] = now
 
+            # --- Live fill estimate (additive - does not affect scoring) ---
+            # WHY baseline - delta_g, not +: firmware's delta_g = baseline_g - ema_g
+            # (stability.cpp, computed unconditionally every call, not just at
+            # settle). ema_g is the same absolute platform weight DIAG reports as
+            # current_g, so ema_g = baseline_g - delta_g. Subtracting keeps
+            # live_fill_g consistent with the next DIAG tick; adding would diverge
+            # from it by 2x delta_g mid-pour.
+            delta_g = evt.get('delta_g')
+            if delta_g is not None:
+                if self._live_fill_baseline_g[node_id] is None:
+                    # First POUR_ACTIVE of this episode - baseline from last known
+                    # live weight. If no DIAG has ever arrived, nothing to baseline
+                    # from yet - skip until one does.
+                    if self._live_fill_g[node_id] is not None:
+                        self._live_fill_baseline_g[node_id] = self._live_fill_g[node_id]
+                if self._live_fill_baseline_g[node_id] is not None:
+                    self._live_fill_g[node_id] = (
+                        self._live_fill_baseline_g[node_id] - float(delta_g)
+                    )
+                    self._live_fill_updated_ms[node_id] = int(time.time() * 1000)
+
     def _boundary_check(self, node_id: int, now: float, seq=None) -> None:
         """Called under self._lock. On window expiry, preserve or discard stale partial."""
         if self._last_settled_t[node_id] is None:
@@ -473,6 +507,27 @@ class Game:
             partial, self._partial_open_ts[node_id])
         self._partial_g[node_id] = 0.0
         self._partial_open_ts[node_id] = None
+
+    def on_diag(self, evt: dict) -> None:
+        """DIAG = continuous absolute-weight telemetry, fires every ~5s
+        regardless of pour state (firmware timer, unconditional - see
+        juicebattle.ino). current_g is the node's live EMA weight on the
+        platform right now - the only message type that carries an absolute
+        (not delta) value. Does not affect scoring."""
+        if evt.get('msg') != 'DIAG':
+            log.warning("on_diag received unexpected msg=%s", evt.get('msg'))
+            return
+        node_id = evt.get('node', -1)
+        if node_id not in (0, 1):
+            return
+        current_g = evt.get('current_g')
+        if current_g is None:
+            return
+        with self._lock:
+            if not self._running:
+                return
+            self._live_fill_g[node_id]          = float(current_g)
+            self._live_fill_updated_ms[node_id] = int(time.time() * 1000)
 
     def get_state(self) -> dict:
         """
@@ -503,4 +558,6 @@ class Game:
                 "round_last_winner":  self._round_last_winner,
                 "round_last_score0":  self._round_last_score0,
                 "round_last_score1":  self._round_last_score1,
+                "live_fill_g":          dict(self._live_fill_g),
+                "live_fill_updated_ms": dict(self._live_fill_updated_ms),
             }
