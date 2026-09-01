@@ -105,7 +105,7 @@ Start the next session with:
 
 ```
 Project: Juice Battle
-Read sessions/HANDOFF_FINAL.md fully before responding.
+Read docs/HANDOFF_FINAL.md fully before responding.
 Today we [describe the chunk].
 Confirm you have read the handoff and state our current position.
 ```

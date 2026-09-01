@@ -443,7 +443,7 @@
       <div class="cmd-line multi"><span class="prompt">$ </span><span class="kw">export</span> DISPLAY=:0
 <span class="prompt">$ </span>WID=$(xdotool search --onlyvisible --class chromium | head -1)
 <span class="prompt">$ </span>xdotool key --window $WID <span class="val">ctrl+l</span>  <span class="cmt">  # focus address bar</span>
-<span class="prompt">$ </span>xdotool type --window $WID <span class="val">"http://localhost:5000/v3"</span>
+<span class="prompt">$ </span>xdotool type --window $WID <span class="val">"http://localhost:5000/"</span>
 <span class="prompt">$ </span>xdotool key --window $WID <span class="val">Return</span></div>
     </div>
 
@@ -451,7 +451,7 @@
       <div class="cmd-desc"><span class="tag kiosk">kiosk</span> Kill Chromium entirely and relaunch kiosk (nuclear option)</div>
       <div class="cmd-line multi"><span class="prompt">$ </span><span class="kw">pkill</span> -f chromium
 <span class="prompt">$ </span><span class="kw">sleep</span> 2
-<span class="prompt">$ </span>DISPLAY=:0 <span class="kw">chromium</span> --kiosk --noerrdialogs --disable-infobars <span class="val">http://localhost:5000/v3</span> &amp;</div>
+<span class="prompt">$ </span>DISPLAY=:0 <span class="kw">chromium</span> --kiosk --noerrdialogs --disable-infobars <span class="val">http://localhost:5000/</span> &amp;</div>
     </div>
 
   </div>
@@ -498,7 +498,7 @@
       </tr>
       <tr>
         <td class="desc">Navigate back to game from ops page</td>
-        <td class="key">export DISPLAY=:0 then type URL http://localhost:5000/v3 via xdotool (see kiosk section)</td>
+        <td class="key">export DISPLAY=:0 then type URL http://localhost:5000/ via xdotool (see kiosk section)</td>
       </tr>
       <tr>
         <td class="desc">Missed pour (forgot to score)</td>

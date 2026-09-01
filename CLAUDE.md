@@ -52,3 +52,30 @@ completed a verified end-to-end pour test with correct glass counts (2026-08-20)
   at boot from the BT MAC via a `NODE_MAC_TABLE` in `juicebattle.ino` itself
   (`resolve_node_id()`), specifically so one identical binary works on either
   node. Don't look for it in config.h.
+
+## Recovered from duplicate — 2026-08-31
+The block below is an S003-era snapshot preserved verbatim from the now-deleted
+`docs/CLAUDE.md` (last updated 2026-07-16). **Historical only** — current state is
+at the top of this file. The same session's full results also live in
+`docs/SESSIONS.md` § S003.
+
+> **Current position (as of S003, 2026-07-16):**
+> S003 complete. Phase 1 firmware in progress.
+> cal.cpp + scale.cpp written and verified on hardware.
+> Next session S004: boot redesign (baseline replaces tare, noise under load).
+> Session after S005: stability.cpp.
+>
+> **Completed in S003:**
+> - Polarity bug found and fixed (negation in ads1232.cpp - TODO swap wires)
+> - cal.h / cal.cpp written, 3-point piecewise model verified
+> - 3 calibration runs completed. Best: Run1 confidence=0.968 sigma=2.54g
+> - Validation sweep: 4/4 PASS. Worst 1.64% at 200g, best 0.03% at 10kg
+> - scale.h / scale.cpp written, interactive scale verified on hardware
+> - Boot design corrected: baseline = current platform state (no jar removal)
+> - Noise must be measured under operating load, not empty platform
+>
+> **Locked values added in S003:**
+> - CAL_MAX_ACCEPTABLE_SPREAD = 0.08f (derived from real CZL601 nonlinearity)
+> - SCALE_NOISE_CLAMP_G = 6.0f
+> - Best cal NVS: raw_zero=94690 raw_500=148353 raw_1000=201742 raw_5000=630410
+> - Signal polarity: ads1232.cpp returns -raw_value (software fix, wire swap pending)

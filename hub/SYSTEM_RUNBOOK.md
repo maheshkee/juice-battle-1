@@ -6,7 +6,7 @@ _Last updated: 2026-08-20 | Hardware: Arduino UNO Q (AQ3)_
 ### Hardware
 | Component | Detail |
 |---|---|
-| Hub | Arduino UNO Q — hostname AQ3, IP 192.168.88.25 |
+| Hub | Arduino UNO Q — hostname AQ3, reachable at AQ3.local |
 | Node 0 | JB-0 "Lemon Warrior" — ESP32-C3, MAC 70:AF:09:32:F3:C2 |
 | Node 1 | JB-1 "Melon Crusher" — ESP32-C3, MAC AC:27:6E:53:DC:4A (chip replaced 2026-08-13; old chip was 10:00:3B:CD:63:32) |
 | Display | Arzopa 28" via wireless HDMI — Chromium kiosk |
@@ -32,9 +32,9 @@ _Last updated: 2026-08-20 | Hardware: Arduino UNO Q (AQ3)_
 ### Network
 | What | Address |
 |---|---|
-| Dashboard (kiosk) | http://192.168.88.25:5000/v4 |
-| Ops panel (phone) | http://192.168.88.25:5000/ops |
-| State API | http://192.168.88.25:5000/state |
+| Dashboard (kiosk) | http://AQ3.local:5000/ |
+| Ops panel (phone) | http://AQ3.local:5000/ops |
+| State API | http://AQ3.local:5000/state |
 
 ---
 
@@ -118,7 +118,7 @@ sudo journalctl -u juice-battle -n 10 --no-pager | grep -iE "ambient|track|playi
 Expected: `now playing track 1/2: varanasi.mp3` (or pendrive tracks if plugged in)
 
 ### Step 7 — Verify kiosk display
-Open http://192.168.88.25:5000/v4 on phone to confirm dashboard is live.
+Open http://AQ3.local:5000/ on phone to confirm dashboard is live.
 (Kiosk itself boots to `static/splash.html`, which redirects to `/v4` automatically.)
 If kiosk screen shows error page: `DISPLAY=:0 xdotool key F5`
 
@@ -236,7 +236,7 @@ sqlite3 ~/ArduinoApps/juice_battle/hub/data/jb.db \
 ```
 
 ### Ops Panel
-Open on phone: http://192.168.88.25:5000/ops
+Open on phone: http://AQ3.local:5000/ops
 - Live status, glass counts, round controls
 - Audio volume, pause, resume, next track
 - Node resets, new session, game over

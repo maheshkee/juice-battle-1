@@ -18,10 +18,10 @@ A two-player crowd-interactive juice-pouring game with real-time BLE weighing, p
 ### What is working (S019 verified)
 
 - JB-0 (Lemon Warrior, `70:AF:09:32:F3:C2`, node=0): connected, scoring
-- JB-1 (Melon Crusher, `10:00:3B:CD:63:32`, node=1): connected, scoring
+- JB-1 (Melon Crusher, `AC:27:6E:53:DC:4A`, node=1): connected, scoring
 - Firmware: 5 s supervision timeout via `onConnect updateConnParams` — both nodes reflashed
 - Services: `juice-ble-scanner` + `juice-battle` running, boot-enabled on AQ3
-- Dashboard: `http://AQ3:5000/v3` live on Arzopa 28" via wireless HDMI kiosk
+- Dashboard: `http://AQ3:5000/` live on Arzopa 28" via wireless HDMI kiosk
 - Auto-round system: `ROUND_SIZE=10` glasses combined, persisted in SQLite `kv_store`, 10 s TTS cooldown
 - Clean-restart flag: SIGTERM → fresh scores; crash or power loss → session resumes
 - Audio: varanasi.mp3 → anirudh.mp3 ordered playlist; TTS announcements; pygame buffer 4096
@@ -39,7 +39,7 @@ A two-player crowd-interactive juice-pouring game with real-time BLE weighing, p
 | Node | MAC | NODE_ID | σ_g | Cal | Power |
 |------|-----|---------|-----|-----|-------|
 | JB-0 | `70:AF:09:32:F3:C2` | 0 | ~3.15 g | NVS persisted | USB adapter |
-| JB-1 | `10:00:3B:CD:63:32` | 1 | ~3.92 g | NVS persisted | USB adapter |
+| JB-1 | `AC:27:6E:53:DC:4A` | 1 | ~3.92 g | NVS persisted | USB adapter |
 
 <!-- LIVE:END -->
 
@@ -122,9 +122,7 @@ ESP32-C3 JB-0      ESP32-C3 JB-1
 ```
 juice-battle/
 ├── CLAUDE.md                          # AI agent working contract
-├── HANDOFF_FINAL.md                   # S014→S015 handoff (root copy)
 ├── SESSION_CLOSE_PROTOCOL.md          # Mandatory session-close checklist
-├── SESSIONS.md                        # Root session index
 ├── deploy.sh                          # Developer redeploy (restart services)
 ├── setup.sh                           # One-time board setup
 ├── docs/

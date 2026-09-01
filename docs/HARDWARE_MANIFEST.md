@@ -11,7 +11,7 @@ All values must be marked: VERIFIED (tested on real hardware) or DERIVED
 
 | Component | Qty | Status |
 |---|---|---|
-| Arduino UNO Q | 1 | Deployed — hub, hostname `AQ3`, IP `192.168.88.25` |
+| Arduino UNO Q | 1 | Deployed — hub, hostname `AQ3`, last confirmed IP: 192.168.88.25 (use `AQ3.local` — this is a fallback if mDNS resolution fails) |
 | ESP32-C3 SuperMini | 2 | Deployed — JB-0, JB-1 (JB-1 chip physically replaced 2026-08-13) |
 | CZL601 load cell | 2 | Deployed — 40kg rated, single-point |
 | ADS1232 ADC board | 2 | Deployed — TI ADS1232, 24-bit, differential |
@@ -88,7 +88,7 @@ first re-reading that backlog item's reasoning.
 | MCU | STM32, Zephyr + Arduino Core — **not used in this project's sensor path**; both ESP32-C3 nodes are external boards talking BLE directly to the MPU's Linux side, bypassing the UNO Q's own MCU entirely |
 | MCU GPIO voltage | 3.3V |
 | JCTL / JMISC voltage | **1.8V ONLY** — applying 3.3V causes permanent hardware damage. Not relevant to this project's own wiring (nothing here uses those headers), but flag before ever touching them |
-| Hostname / IP | `AQ3` / `192.168.88.25` |
+| Hostname / IP | `AQ3` / `AQ3.local` |
 
 ---
 

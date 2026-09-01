@@ -74,7 +74,7 @@ graph TD
 
 > `game_engine.py`, `persona_engine.py`, and `receiver.py` also exist in this directory but are empty, unused stubs left over from the original 2026-07-10 bootstrap scaffold — superseded by `game.py` / `ble_scanner.py`+`transport.py` respectively. Not part of the running system; candidates for deletion.
 >
-> `inject_v3.py` is a one-time migration script (already run) that patched the `/v3` route and template into `dashboard.py` — not a live runtime component. `templates/v3.html` and `templates/v4.html` are the actual served templates; `/v4` is what the kiosk shows.
+> `inject_v3.py` was a one-time migration script that patched the `/v3` route and template into `dashboard.py`. The migration ran and the script has been removed — it survives only in git history. `templates/v3.html` and `templates/v4.html` are the actual served templates; `/v4` is what the kiosk shows.
 
 ---
 
@@ -82,13 +82,13 @@ graph TD
 
 | What | Value |
 |---|---|
-| Hub | Arduino UNO Q, hostname `AQ3`, `192.168.88.25` |
+| Hub | Arduino UNO Q, hostname `AQ3`, `AQ3.local` |
 | JB-0 (Lemon) | ESP32-C3, MAC `70:AF:09:32:F3:C2` |
 | JB-1 (Melon) | ESP32-C3, MAC `AC:27:6E:53:DC:4A` (chip replaced 2026-08-13) |
 | BLE transport | `:7001` — TCP, NDJSON, `ble_scanner.py` → `transport.py` |
-| Dashboard | `http://192.168.88.25:5000/v4` (kiosk) |
-| Ops panel | `http://192.168.88.25:5000/ops` (phone) |
-| State API | `http://192.168.88.25:5000/state` |
+| Dashboard | `http://AQ3.local:5000/` (kiosk) |
+| Ops panel | `http://AQ3.local:5000/ops` (phone) |
+| State API | `http://AQ3.local:5000/state` |
 
 ## ⚙️ Key config (`config.py`)
 
