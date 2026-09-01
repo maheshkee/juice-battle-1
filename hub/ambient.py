@@ -19,15 +19,12 @@ import time
 import logging
 import pygame
 import config
+from config import (AMBIENT_PLAYLIST, MUSIC_VOLUME, DUCKED_VOLUME,
+                    ANNOUNCE_INTERVAL_S, FADE_MS)
 
 log = logging.getLogger(__name__)
 
 SOUNDS_DIR       = os.path.join(os.path.dirname(__file__), "static", "sounds")
-AMBIENT_PLAYLIST = ['fuzzy_horizon.mp3']   # single track, loops forever
-MUSIC_VOLUME     = 0.20   # 0.0–1.0  (background level — low enough to talk over)
-DUCKED_VOLUME    = 0.05   # near-silent while announcement plays
-ANNOUNCE_INTERVAL_S = 30  # seconds between announcements
-FADE_MS          = 800    # music fade duration in ms
 
 # Announcement files in rotation order
 ANNOUNCEMENTS = [

@@ -13,7 +13,7 @@ import dbus.mainloop.glib
 from gi.repository import GLib
 from config import (DEVICE_PREFIX, TRANSPORT_HOST, TRANSPORT_PORT,
                     WATCHDOG_TIMEOUT_S, MSG_NAMES, JB_CHAR_UUID, MSG_DIAG,
-                    NODE_SILENCE_THRESHOLD_S)
+                    NODE_SILENCE_THRESHOLD_S, GATT_ABORT_TIMEOUT_S)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -321,7 +321,8 @@ def _connect(dev_path: str, node_name: str) -> bool:
 
 def _connect_worker(dev_path: str, node_name: str, device, abort_event: threading.Event) -> None:
     # WHY: runs in a thread — device.Connect() blocks up to 25s (D-Bus timeout),
-    # sleep(4) waits for GATT discovery. Both are safe off the GLib loop.
+    # then abort_event.wait(GATT_ABORT_TIMEOUT_S) holds for the GATT discovery
+    # window. Both are safe off the GLib loop.
     # Shared state (_active_connections, _connecting_nodes) is NEVER touched here —
     # all state updates are posted back to the GLib loop via idle_add.
     try:
@@ -332,7 +333,7 @@ def _connect_worker(dev_path: str, node_name: str, device, abort_event: threadin
         # during this window. If that happens, the connection is already dead —
         # calling _on_connect_success would create a phantom _active_connections
         # entry, causing the hub to believe JB-X is connected when it isn't.
-        aborted = abort_event.wait(timeout=4)
+        aborted = abort_event.wait(timeout=GATT_ABORT_TIMEOUT_S)
         if aborted:
             log.warning(
                 "%s disconnected during GATT discovery window — aborting connect",

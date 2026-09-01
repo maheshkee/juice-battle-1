@@ -31,6 +31,11 @@ TRANSPORT_RECONNECT_S = 5   # seconds between reconnect attempts
 WATCHDOG_TIMEOUT_S = 120
 NODE_SILENCE_THRESHOLD_S = 30   # per-node silence before forced eviction
 
+# GATT discovery window: after Connect() succeeds, wait this long for an abort
+# signal (Connected=False) before treating the link as good. Confirmed GATT
+# blind-window duration — see ble_scanner._connect_worker.
+GATT_ABORT_TIMEOUT_S = 4
+
 # Payload protocol
 PAYLOAD_VERSION  = 0x01
 MSG_HEARTBEAT    = 0x01
@@ -61,27 +66,39 @@ MIN_DELTA_G    = 10.0
 # POUR_WINDOW_S: events within this window accumulate (same glass, split settle);
 #                gap > window = new visitor, discard stale partial
 POUR_SIGMA_K  = 3.0
-POUR_MIN_G    = 10.0
+POUR_MIN_G    = 10.0   # coincidentally equals MIN_DELTA_G (10.0); unrelated concern — do not merge
 POUR_WINDOW_S = 20.0   # was 8.0 - extended for multi-settlement pours (max observed gap: 13.95s)
 
 # POUR_MAX_G_FRAC: single settled delta > this many glasses is physically not a pour
 #   (jar lifted off platform = ~5000g positive delta = 33 false glasses).
 #   Log as anomaly, do not score.
-POUR_MAX_G_FRAC = 3.0
+POUR_MAX_G_FRAC = 3.0   # coincidentally equals POUR_SIGMA_K (3.0); unrelated concern — do not merge
 
 BOUNCE_SETTLE_S  = 5.0    # suppress all events after large negative disturbance
 ANOMALY_SETTLE_S = 30.0   # suppress all events after jar-removal anomaly
 
 DASHBOARD_PORT = 5000
 
+# Active crowd-facing dashboard version. Bump this on every dashboard version
+# release — nothing else should hardcode the version.
+ACTIVE_DASHBOARD_VERSION = "v5"
+
 RESUME_SESSION = True   # WHY: on restart, resume active session from DB
 
 ROUND_SIZE = 2   # glasses per round (both jars combined)
 
 # pygame.mixer init parameters — identical in game.py and ambient.py.
-# buffer=4096 (8x default 512) gives ARM Cortex-A53 enough headroom to decode
+# buffer=8192 (16x default 512) gives ARM Cortex-A53 enough headroom to decode
 # long MP3s (anirudh.mp3 is 38min) without starving the ALSA buffer.
 PYGAME_MIXER_FREQUENCY = 48000
 PYGAME_MIXER_SIZE      = -16
 PYGAME_MIXER_CHANNELS  = 2
 PYGAME_MIXER_BUFFER    = 8192
+
+# Ambient audio (ambient.py) — background music + periodic voice announcements.
+AMBIENT_PLAYLIST    = ['fuzzy_horizon.mp3']   # single track, loops forever
+MUSIC_VOLUME        = 0.20   # 0.0–1.0  (background level — low enough to talk over)
+DUCKED_VOLUME       = 0.05   # near-silent while announcement plays
+ANNOUNCE_INTERVAL_S = 30     # seconds between announcements; coincidentally equals
+                             # NODE_SILENCE_THRESHOLD_S / ANOMALY_SETTLE_S — unrelated concern, do not merge
+FADE_MS             = 800    # music fade duration in ms

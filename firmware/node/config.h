@@ -84,7 +84,9 @@
 // ── Nominal sensitivity estimate from S002 hardware measurement ───────────────
 // Used ONLY during calibration before cal model exists
 // Value: sigma_raw=336.18 at sigma_g=6.23 → approx 54 counts/gram
-#define NOMINAL_COUNTS_PER_GRAM   54.0f
+// Same physical constant as ADS_NOMINAL_COUNTS_PER_GRAM — derive it so the two
+// names cannot drift apart.
+#define NOMINAL_COUNTS_PER_GRAM   ADS_NOMINAL_COUNTS_PER_GRAM
 
 // ── NVS namespace and keys ────────────────────────────────────────────────────
 #define NVS_NAMESPACE             "jb_cal"

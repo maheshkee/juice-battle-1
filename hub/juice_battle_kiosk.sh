@@ -13,7 +13,16 @@ xfconf-query -c xfce4-notifyd -p /do-not-disturb -s true 2>/dev/null || true
 pkill blueman-applet 2>/dev/null || true
 pkill blueman-tray   2>/dev/null || true
 
-until curl -s http://localhost:5000 > /dev/null; do sleep 1; done
+# Dashboard port is owned by hub/config.py — read it at runtime, never hardcode it here.
+JB_HUB="$HOME/ArduinoApps/juice_battle/hub"
+DASHBOARD_PORT="$(cd "$JB_HUB" && python3 -c 'from config import DASHBOARD_PORT; print(DASHBOARD_PORT)')"
+if [ -z "$DASHBOARD_PORT" ]; then
+  echo "kiosk: could not read DASHBOARD_PORT from $JB_HUB/config.py" >&2
+  exit 1
+fi
+DASHBOARD_URL="http://localhost:${DASHBOARD_PORT}"
+
+until curl -s "$DASHBOARD_URL" > /dev/null; do sleep 1; done
 
 pkill chromium || true
 
@@ -34,7 +43,7 @@ chromium \
   --no-default-browser-check \
   --disable-component-update \
   --check-for-update-interval=31536000 \
-  "http://localhost:5000/static/splash.html" &
+  "${DASHBOARD_URL}/static/splash.html" &
 
 # Focus keeper: re-raise kiosk window within 3s if anything steals focus
 (
